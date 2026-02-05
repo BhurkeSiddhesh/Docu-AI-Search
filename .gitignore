@@ -1,0 +1,54 @@
+# Compiled Python files
+*.pyc
+__pycache__/
+
+# Pickle files (often generated/temporary)
+*.pkl
+
+# Test artifacts
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+
+# Dependencies
+.venv/
+venv/
+venv_new/
+env/
+node_modules/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment files
+.env
+.env.local
+*.env.*
+
+# Models and Large Binaries
+models/
+*.gguf
+
+# Generated indices and databases
+*.faiss
+*.db
+index_docs.pkl
+index_tags.pkl
+
+# Configuration and Local Files
+config.ini
+stress_test_output.txt
+*_files.txt
+git_status*.txt
+search_results.txt
+file_index.pkl
+
+# Editors
+.vscode/
+.idea/
+
+# Agent skill files (reference only)
+.agent/skills/

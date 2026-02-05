@@ -1,0 +1,379 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+@layer base {
+  :root {
+    /* Light Mode - Cosmic Light */
+    --background: 220 30% 97%;
+    --foreground: 240 10% 10%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 10%;
+
+    --primary: 250 85% 60%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 250 30% 95%;
+    --secondary-foreground: 240 10% 20%;
+
+    --muted: 220 20% 94%;
+    --muted-foreground: 220 10% 45%;
+
+    --accent: 280 70% 60%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 20% 88%;
+    --input: 220 20% 88%;
+    --ring: 250 85% 60%;
+
+    --radius: 1rem;
+
+    /* Cosmic Gradients */
+    --cosmic-start: 250 85% 60%;
+    --cosmic-mid: 280 70% 55%;
+    --cosmic-end: 200 90% 50%;
+  }
+
+  .dark {
+    /* Dark Mode - Deep Cosmic */
+    --background: 240 20% 6%;
+    --foreground: 220 20% 95%;
+
+    --card: 240 20% 9%;
+    --card-foreground: 220 20% 95%;
+
+    --popover: 240 20% 9%;
+    --popover-foreground: 220 20% 95%;
+
+    --primary: 250 85% 65%;
+    --primary-foreground: 240 20% 6%;
+
+    --secondary: 240 20% 14%;
+    --secondary-foreground: 220 20% 95%;
+
+    --muted: 240 15% 16%;
+    --muted-foreground: 220 15% 60%;
+
+    --accent: 280 70% 65%;
+    --accent-foreground: 240 20% 6%;
+
+    --destructive: 0 62% 35%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 15% 18%;
+    --input: 240 15% 18%;
+    --ring: 250 85% 65%;
+
+    /* Dark Cosmic Gradients */
+    --cosmic-start: 250 85% 55%;
+    --cosmic-mid: 280 70% 50%;
+    --cosmic-end: 200 90% 45%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    font-family: 'Lexend', sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   COSMIC GLASSMORPHISM DESIGN SYSTEM
+   ═══════════════════════════════════════════════════════════════ */
+
+/* Cosmic Background - Animated Gradient */
+.bg-cosmic {
+  background: linear-gradient(135deg,
+      hsl(var(--background)) 0%,
+      hsl(240 20% 8%) 50%,
+      hsl(250 30% 12%) 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Dynamic background managed by CosmicBackground.jsx */
+/* Legacy radial gradients removed */
+
+@keyframes cosmic-pulse {
+  0% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+
+  100% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+}
+
+/* Glass Card - Primary */
+.glass-card {
+  background: hsla(var(--card), 0.3);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid hsla(var(--border), 0.3);
+  box-shadow:
+    0 8px 32px hsla(0 0% 0% / 0.15),
+    inset 0 1px 0 hsla(255 255 255 / 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  background: hsla(var(--card), 0.75);
+  border-color: hsla(var(--primary), 0.3);
+  box-shadow:
+    0 12px 40px hsla(var(--primary), 0.15),
+    0 4px 12px hsla(0 0% 0% / 0.1),
+    inset 0 1px 0 hsla(255 255 255 / 0.08);
+  transform: translateY(-2px);
+}
+
+/* Glass Navbar */
+.glass-nav {
+  background: hsla(var(--background), 0.5);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid hsla(var(--border), 0.2);
+  box-shadow: 0 4px 30px hsla(0 0% 0% / 0.1);
+}
+
+/* Glass Input */
+.glass-input {
+  background: hsla(var(--secondary), 0.5);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid hsla(var(--border), 0.5);
+  transition: all 0.3s ease;
+}
+
+.glass-input:focus {
+  background: hsla(var(--secondary), 0.7);
+  border-color: hsla(var(--primary), 0.5);
+  box-shadow:
+    0 0 0 3px hsla(var(--primary), 0.15),
+    0 0 20px hsla(var(--primary), 0.2);
+  outline: none;
+}
+
+/* Glass Modal Overlay */
+.glass-overlay {
+  background: hsla(var(--background), 0.85);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border: 1px solid hsla(var(--border), 0.3);
+  box-shadow:
+    0 25px 50px -12px hsla(0 0% 0% / 0.25),
+    inset 0 1px 0 hsla(255 255 255 / 0.05);
+}
+
+/* Glow Effects */
+.glow-primary {
+  box-shadow: 0 0 20px hsla(var(--primary), 0.4);
+}
+
+.glow-accent {
+  box-shadow: 0 0 20px hsla(var(--accent), 0.4);
+}
+
+.text-glow {
+  text-shadow: 0 0 20px hsla(var(--primary), 0.5);
+}
+
+/* Cosmic Button */
+.btn-cosmic {
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--accent)) 100%);
+  color: hsl(var(--primary-foreground));
+  border: none;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.btn-cosmic::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, hsla(255 255 255 / 0.2) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.btn-cosmic:hover::before {
+  opacity: 1;
+}
+
+.btn-cosmic:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px hsla(var(--primary), 0.4);
+}
+
+/* Shimmer Animation */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(90deg,
+      hsla(var(--primary), 0) 0%,
+      hsla(var(--primary), 0.3) 50%,
+      hsla(var(--primary), 0) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Floating Animation */
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+/* Particle Effect Container */
+.particles-container {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: hsla(var(--primary), 0.5);
+  border-radius: 50%;
+  animation: particle-float 15s infinite;
+}
+
+@keyframes particle-float {
+  0% {
+    transform: translateY(100vh) rotate(0deg);
+    opacity: 0;
+  }
+
+  10% {
+    opacity: 0.6;
+  }
+
+  90% {
+    opacity: 0.6;
+  }
+
+  100% {
+    transform: translateY(-100vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+/* Premium Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsla(var(--primary), 0.3);
+  border-radius: 100px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsla(var(--primary), 0.5);
+}
+
+/* AI Insights Panel */
+.ai-panel {
+  background: linear-gradient(180deg,
+      hsla(var(--card), 0.8) 0%,
+      hsla(var(--card), 0.6) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid hsla(var(--primary), 0.2);
+  box-shadow:
+    0 0 40px hsla(var(--primary), 0.1),
+    inset 0 1px 0 hsla(255 255 255 / 0.05);
+}
+
+/* Result Card Hover Glow */
+.result-card {
+  @apply glass-card rounded-xl overflow-hidden;
+  position: relative;
+}
+
+.result-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, hsla(var(--primary), 0.3), hsla(var(--accent), 0.3));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.result-card:hover::before {
+  opacity: 1;
+}
+
+/* Section Divider */
+.cosmic-divider {
+  height: 1px;
+  background: linear-gradient(90deg,
+      transparent 0%,
+      hsla(var(--primary), 0.3) 50%,
+      transparent 100%);
+}
+
+/* Progress Bar Glow */
+.progress-cosmic {
+  background: linear-gradient(90deg, hsl(var(--primary)) 0%, hsl(var(--accent)) 100%);
+  box-shadow: 0 0 10px hsla(var(--primary), 0.5);
+}
