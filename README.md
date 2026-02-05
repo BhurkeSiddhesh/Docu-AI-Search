@@ -1,4 +1,4 @@
-# File Search Engine - AI-Powered Local Document Search
+# Docu AI Search - AI-Powered Local Document Search
 
 An intelligent, semantic search engine for your local documents powered by AI embeddings and large language models. Search across PDFs, Word documents, Excel spreadsheets, PowerPoint presentations, and text files using natural language queries.
 
@@ -76,8 +76,8 @@ User searches → Generate query embedding → Find similar documents → Return
 ### 1. Clone & Setup
 
 ```bash
-git clone https://github.com/yourusername/File-Search-Engine
-cd File-Search-Engine-1
+git clone https://github.com/BhurkeSiddhesh/Docu-AI-Search
+cd Docu-AI-Search
 
 # Install all dependencies (backend + frontend + tools)
 npm run install-all
@@ -417,7 +417,7 @@ This verifies:
 ## 📂 Project Structure
 
 ```
-File-Search-Engine-1/
+Docu-AI-Search/
 ├── backend/                  # Python backend code
 │   ├── api.py                # FastAPI server & endpoints
 │   ├── database.py           # SQLite operations
@@ -482,7 +482,7 @@ Contributions welcome! Please:
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/File-Search-Engine/issues)
+- **Issues**: [GitHub Issues](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues)
 - **Docs**: See `README.md` and inline code comments
 - **Tests**: Run `python test_workflow.py` for diagnostics
 

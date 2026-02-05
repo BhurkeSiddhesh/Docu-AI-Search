@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Master Test Runner for File Search Engine
+Master Test Runner for Docu AI Search
 
 This script discovers and runs all unit tests in the tests directory.
 It provides detailed output with a LIVE PROGRESS BAR and summary statistics.
@@ -153,7 +153,7 @@ def run_all_tests():
     return suite
 
 def main():
-    parser = argparse.ArgumentParser(description='Run File Search Engine tests')
+    parser = argparse.ArgumentParser(description='Run Docu AI Search tests')
     parser.add_argument('--quick', action='store_true', 
                        help='Run quick tests only (skip slow model tests)')
     parser.add_argument('--verbose', '-v', action='store_true',
@@ -164,7 +164,7 @@ def main():
                        help='Test file pattern to match')
     args = parser.parse_args()
     
-    print_header("FILE SEARCH ENGINE TEST SUITE")
+    print_header("DOCU AI SEARCH TEST SUITE")
     
     start_time = time.time()
     

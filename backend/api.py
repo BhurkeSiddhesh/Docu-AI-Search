@@ -117,7 +117,7 @@ bm25 = None
 
 @app.get("/")
 async def root():
-    return {"status": "online", "message": "File Search Engine API is running"}
+    return {"status": "online", "message": "Docu AI Search API is running"}
 
 @app.get("/api/health")
 async def health_check():

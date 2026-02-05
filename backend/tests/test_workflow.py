@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 print("=" * 70)
-print(" FILE SEARCH ENGINE - LOCAL MODEL TEST WORKFLOW")
+print(" DOCU AI SEARCH - LOCAL MODEL TEST WORKFLOW")
 print("=" * 70)
 
 # Step 1: Test folder and file detection

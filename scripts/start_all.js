@@ -1,5 +1,5 @@
 /**
- * Unified Startup Script for File Search Engine
+ * Unified Startup Script for Docu AI Search
  * Starts both backend (FastAPI) and frontend (Vite) with health checks
  */
 
@@ -117,7 +117,7 @@ function killPort(port) {
 
 async function main() {
     console.log('\n' + colors.bright + colors.cyan + '═'.repeat(60) + colors.reset);
-    console.log(colors.bright + colors.cyan + '  FILE SEARCH ENGINE - Unified Startup' + colors.reset);
+    console.log(colors.bright + colors.cyan + '  DOCU AI SEARCH - Unified Startup' + colors.reset);
     console.log(colors.bright + colors.cyan + '═'.repeat(60) + colors.reset + '\n');
 
     // Check port availability and KILL if necessary

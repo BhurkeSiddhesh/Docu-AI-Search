@@ -406,7 +406,7 @@ def main():
     args = parser.parse_args()
     
     print("\n" + "="*60)
-    print(" FILE SEARCH ENGINE - Model Benchmarking Suite")
+    print(" DOCU AI SEARCH - Model Benchmarking Suite")
     print("="*60)
     
     if args.model:

@@ -1,5 +1,5 @@
 """
-Comprehensive Stress Test for File Search Engine
+Comprehensive Stress Test for Docu AI Search
 Tests all major components to verify the application works as intended.
 """
 import os
@@ -90,7 +90,7 @@ class StressTest:
     def run_all_tests(self):
         """Run all stress tests"""
         print("=" * 70)
-        print(" FILE SEARCH ENGINE - COMPREHENSIVE STRESS TEST")
+        print(" DOCU AI SEARCH - COMPREHENSIVE STRESS TEST")
         print("=" * 70)
         print(f" Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 70)

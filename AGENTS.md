@@ -1,4 +1,4 @@
-# File Search Engine - Workspace Instructions
+# Docu AI Search - Workspace Instructions
 
 > AI-powered local document search with semantic search, LLM integration, and modern React frontend.
 > **Always read and update the Change Log section after making any changes.**
