@@ -5,6 +5,7 @@ import numpy as np
 import shutil
 from unittest.mock import patch, MagicMock, call
 from backend.indexing import create_index, save_index, load_index
+from backend import database
 
 class MockFuture:
     def __init__(self, result):
@@ -34,6 +35,11 @@ class TestIndexing(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.test_folder = self.temp_dir
         
+        # Setup temp database
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = os.path.join(self.temp_dir, 'test_metadata.db')
+        database.init_database()
+
         # Create a dummy file
         self.test_file = os.path.join(self.test_folder, "test.txt")
         with open(self.test_file, "w") as f:
@@ -49,6 +55,9 @@ class TestIndexing(unittest.TestCase):
 
     def tearDown(self):
         """Clean up after each test method."""
+        # Restore DB path
+        database.DATABASE_PATH = self.original_db_path
+
         self.pp_patcher.stop()
         self.tp_patcher.stop()
         self.ac_patcher.stop()
@@ -180,6 +189,11 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         
+        # Setup temp database
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = os.path.join(self.temp_dir, 'test_metadata.db')
+        database.init_database()
+
         # Create two test folders
         self.folder1 = os.path.join(self.temp_dir, "folder1")
         self.folder2 = os.path.join(self.temp_dir, "folder2")
@@ -191,6 +205,12 @@ class TestIndexingMultipleFolders(unittest.TestCase):
             f.write("Content from folder 1")
         with open(os.path.join(self.folder2, "doc2.txt"), 'w') as f:
             f.write("Content from folder 2")
+
+    def tearDown(self):
+        # Restore DB path
+        database.DATABASE_PATH = self.original_db_path
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
 
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
