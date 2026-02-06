@@ -192,6 +192,13 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         
+        # Setup temp DB
+        from backend import database
+        self.original_db_path = database.DATABASE_PATH
+        self.temp_db_path = os.path.join(self.temp_dir, "test.db")
+        database.DATABASE_PATH = self.temp_db_path
+        database.init_database()
+
         # Create two test folders
         self.folder1 = os.path.join(self.temp_dir, "folder1")
         self.folder2 = os.path.join(self.temp_dir, "folder2")
@@ -203,6 +210,13 @@ class TestIndexingMultipleFolders(unittest.TestCase):
             f.write("Content from folder 1")
         with open(os.path.join(self.folder2, "doc2.txt"), 'w') as f:
             f.write("Content from folder 2")
+
+    def tearDown(self):
+        from backend import database
+        database.DATABASE_PATH = self.original_db_path
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
 
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
@@ -297,6 +311,13 @@ class TestSaveIndex(unittest.TestCase):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
 
+        # Setup temp DB
+        from backend import database
+        self.original_db_path = database.DATABASE_PATH
+        self.temp_db_path = os.path.join(self.temp_dir, "test.db")
+        database.DATABASE_PATH = self.temp_db_path
+        database.init_database()
+
     def test_save_index_creates_all_files(self):
         """Test that save_index creates .faiss, _docs.pkl, and _tags.pkl files."""
         import faiss
@@ -322,6 +343,13 @@ class TestLoadIndex(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
+
+        # Setup temp DB
+        from backend import database
+        self.original_db_path = database.DATABASE_PATH
+        self.temp_db_path = os.path.join(self.temp_dir, "test.db")
+        database.DATABASE_PATH = self.temp_db_path
+        database.init_database()
 
     def test_load_index_preserves_data(self):
         """Test that load_index correctly restores saved data."""
