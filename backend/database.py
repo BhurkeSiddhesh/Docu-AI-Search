@@ -141,6 +141,31 @@ def add_file(path: str, filename: str, extension: str, size_bytes: int,
     conn.close()
     return file_id
 
+def batch_add_files(files_data: List[Dict]) -> int:
+    """Add multiple files to the database in a single transaction."""
+    if not files_data:
+        return 0
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.executemany("""
+            INSERT OR REPLACE INTO files
+            (path, filename, extension, size_bytes, modified_date, chunk_count, faiss_start_idx, faiss_end_idx)
+            VALUES (:path, :filename, :extension, :size_bytes, :modified_date, :chunk_count, :faiss_start_idx, :faiss_end_idx)
+        """, files_data)
+
+        count = cursor.rowcount
+        conn.commit()
+        return count
+    except Exception as e:
+        print(f"Batch insert failed: {e}")
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
 def get_all_files() -> List[Dict]:
     """Get all indexed files."""
     conn = get_connection()
