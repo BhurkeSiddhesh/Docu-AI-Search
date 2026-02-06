@@ -30,6 +30,8 @@ class TestIndexing(unittest.TestCase):
     """Test cases for indexing module"""
 
     def setUp(self):
+        from backend import database
+        database.init_database()
         """Set up test environment before each test method."""
         self.temp_dir = tempfile.mkdtemp()
         self.test_folder = self.temp_dir
@@ -177,6 +179,8 @@ class TestIndexingMultipleFolders(unittest.TestCase):
     """Test indexing with multiple folders."""
 
     def setUp(self):
+        from backend import database
+        database.init_database()
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         
@@ -282,6 +286,8 @@ class TestSaveIndex(unittest.TestCase):
     """Dedicated tests for save_index function."""
 
     def setUp(self):
+        from backend import database
+        database.init_database()
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
 
@@ -308,6 +314,8 @@ class TestLoadIndex(unittest.TestCase):
     """Dedicated tests for load_index function."""
 
     def setUp(self):
+        from backend import database
+        database.init_database()
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
 

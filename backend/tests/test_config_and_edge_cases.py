@@ -77,6 +77,9 @@ class TestModelPathValidation(unittest.TestCase):
 
 
 class TestSearchHistoryEdgeCases(unittest.TestCase):
+    def setUp(self):
+        from backend import database
+        database.init_database()
     """Edge case tests for search history."""
     
     def test_empty_query_handling(self):
@@ -119,6 +122,8 @@ class TestAPIResponseFormats(unittest.TestCase):
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
+        from backend import database
+        database.init_database()
     
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
@@ -173,6 +178,8 @@ class TestErrorHandling(unittest.TestCase):
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
+        from backend import database
+        database.init_database()
     
     def test_search_without_index(self):
         """Test search returns appropriate error when no index exists."""
