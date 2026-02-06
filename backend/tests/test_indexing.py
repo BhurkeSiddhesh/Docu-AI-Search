@@ -46,9 +46,21 @@ class TestIndexing(unittest.TestCase):
         self.pp_patcher.start()
         self.tp_patcher.start()
         self.ac_patcher.start()
+        # Setup temp DB
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False)
+        self.temp_db.close()
+        from backend import database
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = self.temp_db.name
+        database.init_database()
 
     def tearDown(self):
         """Clean up after each test method."""
+        from backend import database
+        database.DATABASE_PATH = self.original_db_path
+        if os.path.exists(self.temp_db.name):
+            os.unlink(self.temp_db.name)
+
         self.pp_patcher.stop()
         self.tp_patcher.stop()
         self.ac_patcher.stop()
