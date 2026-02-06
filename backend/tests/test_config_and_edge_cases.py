@@ -77,6 +77,20 @@ class TestModelPathValidation(unittest.TestCase):
 
 
 class TestSearchHistoryEdgeCases(unittest.TestCase):
+    def setUp(self):
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False)
+        self.temp_db.close()
+        from backend import database
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = self.temp_db.name
+        database.init_database()
+
+    def tearDown(self):
+        from backend import database
+        database.DATABASE_PATH = self.original_db_path
+        if os.path.exists(self.temp_db.name):
+            os.unlink(self.temp_db.name)
+
     """Edge case tests for search history."""
     
     def test_empty_query_handling(self):
@@ -115,10 +129,23 @@ class TestAPIResponseFormats(unittest.TestCase):
     """Tests for API response format consistency."""
     
     def setUp(self):
-        """Set up test client."""
+        """Set up test client with temp DB."""
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False)
+        self.temp_db.close()
+        from backend import database
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = self.temp_db.name
+        database.init_database()
+
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
+
+    def tearDown(self):
+        from backend import database
+        database.DATABASE_PATH = self.original_db_path
+        if os.path.exists(self.temp_db.name):
+            os.unlink(self.temp_db.name)
     
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
@@ -169,10 +196,23 @@ class TestErrorHandling(unittest.TestCase):
     """Tests for error handling in edge cases."""
     
     def setUp(self):
-        """Set up test client."""
+        """Set up test client with temp DB."""
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False)
+        self.temp_db.close()
+        from backend import database
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = self.temp_db.name
+        database.init_database()
+
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
+
+    def tearDown(self):
+        from backend import database
+        database.DATABASE_PATH = self.original_db_path
+        if os.path.exists(self.temp_db.name):
+            os.unlink(self.temp_db.name)
     
     def test_search_without_index(self):
         """Test search returns appropriate error when no index exists."""
