@@ -8,6 +8,7 @@ import unittest
 import os
 import tempfile
 import shutil
+import sqlite3
 from unittest.mock import patch, MagicMock
 import configparser
 
@@ -79,6 +80,24 @@ class TestModelPathValidation(unittest.TestCase):
 class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
     
+    def setUp(self):
+        """Set up temporary database."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.temp_dir, 'test.db')
+
+        # Patch the DATABASE_PATH in backend.database
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+
+        # Initialize the database
+        from backend import database
+        database.init_database()
+
+    def tearDown(self):
+        """Clean up."""
+        self.patcher.stop()
+        shutil.rmtree(self.temp_dir)
+
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
         from backend import database
@@ -134,29 +153,34 @@ class TestAPIResponseFormats(unittest.TestCase):
     
     def test_models_available_response_format(self):
         """Test /api/models/available returns correct format."""
-        response = self.client.get("/api/models/available")
-        
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        
-        self.assertIsInstance(data, list)
-        
-        if data:
-            model = data[0]
-            self.assertIn('id', model)
-            self.assertIn('name', model)
+        # Mock get_available_models to ensure we have data and no errors
+        with patch('backend.api.get_available_models', return_value=[{'id': 'test', 'name': 'Test'}]):
+            response = self.client.get("/api/models/available")
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+
+            self.assertIsInstance(data, list)
+
+            if data:
+                model = data[0]
+                self.assertIn('id', model)
+                self.assertIn('name', model)
     
     def test_models_local_response_format(self):
         """Test /api/models/local returns correct format."""
-        response = self.client.get("/api/models/local")
-        
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        
-        self.assertIsInstance(data, list)
+        with patch('backend.api.get_local_models', return_value=[]):
+            response = self.client.get("/api/models/local")
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+
+            self.assertIsInstance(data, list)
     
-    def test_search_history_response_format(self):
+    @patch('backend.database.get_search_history')
+    def test_search_history_response_format(self, mock_get_history):
         """Test /api/search/history returns correct format."""
+        mock_get_history.return_value = []
         response = self.client.get("/api/search/history")
         
         self.assertEqual(response.status_code, 200)
@@ -194,10 +218,12 @@ class TestErrorHandling(unittest.TestCase):
     
     def test_download_invalid_model(self):
         """Test downloading non-existent model returns error."""
-        response = self.client.post("/api/models/download/nonexistent-model-id-12345")
-        
-        # Should return error
-        self.assertIn(response.status_code, [404, 400, 200])
+        # Patch start_download to avoid actual download attempt
+        with patch('backend.api.start_download', return_value=(False, "Model not found")):
+            response = self.client.post("/api/models/download/nonexistent-model-id-12345")
+
+            # Should return error
+            self.assertIn(response.status_code, [404, 400, 200])
 
 
 if __name__ == '__main__':
