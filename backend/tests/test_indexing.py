@@ -197,14 +197,6 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         self.addCleanup(self.patcher.stop)
 
 
-        # Setup temp database
-        self.db_path = os.path.join(self.temp_dir, 'test_indexing.db')
-        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
-        self.patcher.start()
-        from backend import database
-        database.init_database()
-
-
         
         # Create two test folders
         self.folder1 = os.path.join(self.temp_dir, "folder1")
@@ -316,14 +308,7 @@ class TestSaveIndex(unittest.TestCase):
         self.patcher.start()
         from backend import database
         database.init_database()
-
-
-        # Setup temp database
-        self.db_path = os.path.join(self.temp_dir, 'test_indexing.db')
-        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
-        self.patcher.start()
-        from backend import database
-        database.init_database()
+        self.addCleanup(self.patcher.stop)
 
 
 
@@ -358,14 +343,7 @@ class TestLoadIndex(unittest.TestCase):
         self.patcher.start()
         from backend import database
         database.init_database()
-
-
-        # Setup temp database
-        self.db_path = os.path.join(self.temp_dir, 'test_indexing.db')
-        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
-        self.patcher.start()
-        from backend import database
-        database.init_database()
+        self.addCleanup(self.patcher.stop)
 
 
 
