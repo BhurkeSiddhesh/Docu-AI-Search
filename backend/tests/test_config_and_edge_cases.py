@@ -10,6 +10,7 @@ import tempfile
 import shutil
 from unittest.mock import patch, MagicMock
 import configparser
+from backend import database
 
 
 class TestConfiguration(unittest.TestCase):
@@ -79,9 +80,16 @@ class TestModelPathValidation(unittest.TestCase):
 class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
     
+    def setUp(self):
+        """Ensure database is initialized."""
+        database.init_database()
+
+    def tearDown(self):
+        """Clean up."""
+        database.delete_all_search_history()
+
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
-        from backend import database
         
         # Empty query should still be storable
         database.add_search_history("", 0, 0)
@@ -92,7 +100,6 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
     
     def test_very_long_query(self):
         """Test handling of very long search queries."""
-        from backend import database
         
         long_query = "word " * 1000  # 5000+ characters
         
@@ -101,7 +108,6 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
         
     def test_special_characters_in_query(self):
         """Test handling of special characters in queries."""
-        from backend import database
         
         special_query = "test's \"quoted\" <html> & special chars: 日本語"
         
@@ -119,6 +125,7 @@ class TestAPIResponseFormats(unittest.TestCase):
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
+        database.init_database()
     
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
