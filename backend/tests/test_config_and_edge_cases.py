@@ -79,6 +79,19 @@ class TestModelPathValidation(unittest.TestCase):
 class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
     
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.temp_dir, 'test_history.db')
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        from backend import database
+        database.init_database()
+
+    def tearDown(self):
+        self.patcher.stop()
+        shutil.rmtree(self.temp_dir)
+
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
         from backend import database
@@ -118,7 +131,21 @@ class TestAPIResponseFormats(unittest.TestCase):
         """Set up test client."""
         from fastapi.testclient import TestClient
         from backend.api import app
-        self.client = TestClient(app)
+
+        # Patch database path
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.temp_dir, 'test_api.db')
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+
+        # Use context manager to trigger startup events
+        self.client_context = TestClient(app)
+        self.client = self.client_context.__enter__()
+
+    def tearDown(self):
+        self.client_context.__exit__(None, None, None)
+        self.patcher.stop()
+        shutil.rmtree(self.temp_dir)
     
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
@@ -172,7 +199,21 @@ class TestErrorHandling(unittest.TestCase):
         """Set up test client."""
         from fastapi.testclient import TestClient
         from backend.api import app
-        self.client = TestClient(app)
+
+        # Patch database path
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.temp_dir, 'test_api.db')
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+
+        # Use context manager to trigger startup events
+        self.client_context = TestClient(app)
+        self.client = self.client_context.__enter__()
+
+    def tearDown(self):
+        self.client_context.__exit__(None, None, None)
+        self.patcher.stop()
+        shutil.rmtree(self.temp_dir)
     
     def test_search_without_index(self):
         """Test search returns appropriate error when no index exists."""
