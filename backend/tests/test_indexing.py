@@ -33,8 +33,11 @@ class TestIndexing(unittest.TestCase):
     def setUp(self):
         """Set up test environment before each test method."""
         self.temp_dir = tempfile.mkdtemp()
-        self.test_folder = self.temp_dir
-        
+
+        # Use a subfolder for documents to avoid indexing the DB file
+        self.test_folder = os.path.join(self.temp_dir, "documents")
+        os.makedirs(self.test_folder, exist_ok=True)
+
         # Setup temp database
         self.original_db_path = database.DATABASE_PATH
         database.DATABASE_PATH = os.path.join(self.temp_dir, 'test_metadata.db')
