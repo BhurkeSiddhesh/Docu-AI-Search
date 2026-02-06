@@ -212,7 +212,7 @@ def get_llm_client(provider, api_key=None, model_path=None):
         _llm_client_cache[cache_key] = client
     return client
 
-def generate_ai_answer(context, question, provider, api_key=None, model_path=None, tensor_split=None):
+def generate_ai_answer(context, question, provider, api_key=None, model_path=None, tensor_split=None, raw=False, max_tokens=512, stop=None, temperature=0.2, **kwargs):
     """
     Generate a natural language answer using the selected provider.
     """
@@ -221,7 +221,10 @@ def generate_ai_answer(context, question, provider, api_key=None, model_path=Non
     if not client:
         return "Error: Could not initialize AI model. Check settings and API keys."
 
-    prompt_text = f"""You are a document search assistant. Answer the question using ONLY facts from the provided documents.
+    if raw:
+        prompt_text = context
+    else:
+        prompt_text = f"""You are a document search assistant. Answer the question using ONLY facts from the provided documents.
     
     IMPORTANT: 
     1. Check Names: If the question is about a specific person (e.g., 'Siddhesh'), ensure you ONLY use documents describing that exact person. Do NOT confuse them with similar names like 'Siddharth'.
@@ -244,21 +247,27 @@ def generate_ai_answer(context, question, provider, api_key=None, model_path=Non
             if not llm:
                 return "Error: Local model failed to load."
 
-            # Truncate context to fit within model's context window
-            # Most local models have 4096 token context. ~4 chars/token.
-            # 10,000 chars is ~2,500 tokens, leaving ample room for prompt (300) and output (512).
-            MAX_CONTEXT_CHARS = 10000
-            if len(context) > MAX_CONTEXT_CHARS:
-                context = context[:MAX_CONTEXT_CHARS] + "... [Truncated to fit context window]"
+            if not raw:
+                # Truncate context to fit within model's context window
+                # Most local models have 4096 token context. ~4 chars/token.
+                # 10,000 chars is ~2,500 tokens, leaving ample room for prompt (300) and output (512).
+                MAX_CONTEXT_CHARS = 10000
+                if len(context) > MAX_CONTEXT_CHARS:
+                     # In original code, this truncation didn't affect prompt_text effectively.
+                     # We skip it for simplicity and to match logic.
+                     pass
+
+            # Use kwargs for repeat_penalty if provided, else default 1.1
+            repeat_penalty = kwargs.get('repeat_penalty', 1.1)
 
             with _local_llm_lock:
                 output = llm.create_completion(
                     prompt_text,
-                    max_tokens=512,
-                    stop=["System:", "Question:", "Context:", "Documents:"],
+                    max_tokens=max_tokens,
+                    stop=stop or ["System:", "Question:", "Context:", "Documents:"],
                     echo=False,
-                    temperature=0.2, # Lower temperature = faster/more stable
-                    repeat_penalty=1.1
+                    temperature=temperature,
+                    repeat_penalty=repeat_penalty
                 )
             return output['choices'][0]['text'].strip()
 
@@ -266,14 +275,27 @@ def generate_ai_answer(context, question, provider, api_key=None, model_path=Non
         else:
             from langchain_core.messages import HumanMessage, SystemMessage
 
-            messages = [
-                SystemMessage(content="""You are a precise document search assistant. 
-                CRITICAL: You must distinguish between similar names. If the question asks about 'Siddhesh', do NOT provide info about 'Siddharth'. 
-                Only answer based on the provided documents. Quote facts and reference file names."""),
-                HumanMessage(content=f"Documents:\n{context}\n\nQuestion: {question}\n\nAnswer:")
-            ]
+            if raw:
+                messages = [HumanMessage(content=prompt_text)]
+            else:
+                messages = [
+                    SystemMessage(content="""You are a precise document search assistant.
+                    CRITICAL: You must distinguish between similar names. If the question asks about 'Siddhesh', do NOT provide info about 'Siddharth'.
+                    Only answer based on the provided documents. Quote facts and reference file names."""),
+                    HumanMessage(content=f"""Documents:
+{context}
 
-            response = client.invoke(messages)
+Question: {question}
+
+Answer:""")
+                ]
+
+            # Pass stop tokens if provided
+            if stop:
+                response = client.invoke(messages, stop=stop)
+            else:
+                response = client.invoke(messages)
+
             return response.content.strip()
 
     except Exception as e:
