@@ -378,7 +378,7 @@ def cached_generate_ai_answer(context, question, provider, api_key=None, model_p
     # 1. Check Cache
     cached_text = database.get_cached_response(query_hash, context_hash, model_id, "ai_answer")
     if cached_text:
-        print(f"[CACHE] Hit for AI answer on query: '{question[:30]}...'")
+        print(f"[CACHE] Hit for AI answer on query: <redacted>")
         return cached_text
     
     print(f"[CACHE] Miss for AI answer. Generating with {model_id}...")
@@ -439,7 +439,7 @@ def smart_summary(text, query, provider, api_key=None, model_path=None, file_nam
         # Fallback to regex summary if no model available
         return summarize(text, provider, api_key, model_path, query)
     
-    print(f"[AI] Smart Summary: Analyzing '{file_name or 'unnamed document'}' for query '{query}'")
+    print(f"[AI] Smart Summary: Analyzing '{file_name or 'unnamed document'}'")
 
     # Truncate text to avoid token limits (approx 3000 chars ~ 750 tokens)
     truncated_text = text[:3000]
