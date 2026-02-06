@@ -55,9 +55,10 @@ class TestIndexing(unittest.TestCase):
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
     
+    @patch('backend.indexing.database')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index(self, mock_extract_text, mock_get_embeddings):
+    def test_create_index(self, mock_extract_text, mock_get_embeddings, mock_database):
         """Test creating an index."""
         # Mock the extract_text function to return test content
         mock_extract_text.return_value = "This is test content for indexing."
@@ -68,9 +69,7 @@ class TestIndexing(unittest.TestCase):
         mock_get_embeddings.return_value = mock_embeddings_model
         
         # Mock the get_tags and clustering functions
-        with patch('backend.indexing.get_tags', return_value="test, indexing"), \
-             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+        with patch('backend.indexing.get_tags', return_value="test, indexing"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
             res = create_index(self.test_folder, "openai", "fake_api_key")
             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
             
@@ -83,9 +82,10 @@ class TestIndexing(unittest.TestCase):
             self.assertEqual(len(tags), 1)
 
     
+    @patch('backend.indexing.database')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index_empty_folder(self, mock_extract_text, mock_get_embeddings):
+    def test_create_index_empty_folder(self, mock_extract_text, mock_get_embeddings, mock_database):
         """Test creating an index with empty folder."""
         empty_folder = os.path.join(self.temp_dir, "empty_folder")
         os.makedirs(empty_folder, exist_ok=True)
@@ -95,9 +95,7 @@ class TestIndexing(unittest.TestCase):
         mock_embeddings_model = MagicMock()
         mock_get_embeddings.return_value = mock_embeddings_model
         
-        with patch('backend.indexing.get_tags', return_value=""), \
-             patch('backend.indexing.perform_global_clustering', return_value={}), \
-             patch('backend.indexing.smart_summary', return_value=""):
+        with patch('backend.indexing.get_tags', return_value=""),              patch('backend.indexing.perform_global_clustering', return_value={}),              patch('backend.indexing.smart_summary', return_value=""):
             res = create_index(empty_folder, "openai", "fake_api_key")
             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
 
@@ -116,7 +114,7 @@ class TestIndexing(unittest.TestCase):
         embeddings = np.array([[1.0, 2.0, 3.0]], dtype='float32')
         index.add(embeddings)
         
-        docs = ["Test document"]
+        docs = [{"text": "Test document", "filepath": "test.txt", "faiss_idx": 0}]
         tags = [["test", "tag"]]
         
         # Save the index
@@ -125,8 +123,8 @@ class TestIndexing(unittest.TestCase):
         
         # Check that files were created
         self.assertTrue(os.path.exists(index_path))
-        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "test_index_docs.pkl")))
-        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "test_index_tags.pkl")))
+        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "test_index_docs.json")))
+        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "test_index_tags.json")))
         
         # Load the index
         res = load_index(index_path)
@@ -140,8 +138,8 @@ class TestIndexing(unittest.TestCase):
     @patch('faiss.read_index')
     @patch('os.path.exists')
     @patch('builtins.open')
-    @patch('pickle.load')
-    def test_load_index(self, mock_pickle_load, mock_open, mock_exists, mock_read_index):
+    @patch('json.load')
+    def test_load_index(self, mock_json_load, mock_open, mock_exists, mock_read_index):
         """Test loading an index."""
         # Mock the index reading
         mock_faiss_index = MagicMock()
@@ -150,9 +148,9 @@ class TestIndexing(unittest.TestCase):
         # Mock os.path.exists: True for main file, False for others
         mock_exists.side_effect = lambda path: path == index_path
         
-        # Mock pickle loading
-        mock_pickle_load.side_effect = [
-            ["Test document"],
+        # Mock json loading
+        mock_json_load.side_effect = [
+            [{"text": "Test document", "filepath": "test.txt", "faiss_idx": 0}],
             [["test", "tag"]]
         ]
         
@@ -162,11 +160,11 @@ class TestIndexing(unittest.TestCase):
         
         # Verify the functions were called
         mock_read_index.assert_called_once_with(index_path)
-        self.assertEqual(mock_pickle_load.call_count, 2)
+        self.assertEqual(mock_json_load.call_count, 2)
         
         # Verify the results
         self.assertEqual(loaded_index, mock_faiss_index)
-        self.assertEqual(loaded_docs, ["Test document"])
+        self.assertEqual(loaded_docs, [{"text": "Test document", "filepath": "test.txt", "faiss_idx": 0}])
         self.assertEqual(loaded_tags, [["test", "tag"]])
 
 if __name__ == '__main__':
@@ -192,9 +190,10 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         with open(os.path.join(self.folder2, "doc2.txt"), 'w') as f:
             f.write("Content from folder 2")
 
+    @patch('backend.indexing.database')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index_multiple_folders(self, mock_extract_text, mock_get_embeddings):
+    def test_create_index_multiple_folders(self, mock_extract_text, mock_get_embeddings, mock_database):
         """Test creating index from multiple folders."""
         mock_extract_text.return_value = "Test content"
         
@@ -202,9 +201,7 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
         mock_get_embeddings.return_value = mock_embeddings_model
         
-        with patch('backend.indexing.get_tags', return_value="test"), \
-             patch('backend.indexing.perform_global_clustering', return_value={0: [0, 1]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0, 1]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
             res = create_index(
                 [self.folder1, self.folder2], 
                 "openai", 
@@ -216,9 +213,10 @@ class TestIndexingMultipleFolders(unittest.TestCase):
             self.assertEqual(len(docs), 2)
 
 
+    @patch('backend.indexing.database')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index_with_progress_callback(self, mock_extract_text, mock_get_embeddings):
+    def test_create_index_with_progress_callback(self, mock_extract_text, mock_get_embeddings, mock_database):
         """Test progress callback during indexing."""
         mock_extract_text.return_value = "Test content"
         
@@ -230,15 +228,14 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         def progress_callback(current, total, filename):
             progress_calls.append((current, total, filename))
         
-        with patch('backend.indexing.get_tags', return_value="test"), \
-             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
             create_index(self.folder1, "openai", "fake_key", progress_callback=progress_callback)
             
             # Verify progress was called
             self.assertGreater(len(progress_calls), 0)
 
-    def test_create_index_nonexistent_folder(self):
+    @patch('backend.indexing.database')
+    def test_create_index_nonexistent_folder(self, mock_database):
         """Test creating index with nonexistent folder."""
         with patch('backend.indexing.get_embeddings') as mock_embed:
             mock_embeddings_model = MagicMock()
@@ -253,9 +250,10 @@ class TestIndexingMultipleFolders(unittest.TestCase):
             
             self.assertIsNone(index)
 
+    @patch('backend.indexing.database')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index_string_folder_path(self, mock_extract_text, mock_get_embeddings):
+    def test_create_index_string_folder_path(self, mock_extract_text, mock_get_embeddings, mock_database):
         """Test that string folder path is converted to list."""
         mock_extract_text.return_value = "Test content"
         
@@ -263,9 +261,7 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3]]
         mock_get_embeddings.return_value = mock_embeddings_model
         
-        with patch('backend.indexing.get_tags', return_value="test"), \
-             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
             # Pass string instead of list
             res = create_index(
                 self.folder1,  # String, not list
@@ -286,7 +282,7 @@ class TestSaveIndex(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
 
     def test_save_index_creates_all_files(self):
-        """Test that save_index creates .faiss, _docs.pkl, and _tags.pkl files."""
+        """Test that save_index creates .faiss, _docs.json, and _tags.json files."""
         import faiss
         
         index = faiss.IndexFlatL2(3)
@@ -300,8 +296,8 @@ class TestSaveIndex(unittest.TestCase):
         save_index(index, docs, tags, index_path)
         
         self.assertTrue(os.path.exists(index_path))
-        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_docs.pkl")))
-        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_tags.pkl")))
+        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_docs.json")))
+        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_tags.json")))
 
 
 class TestLoadIndex(unittest.TestCase):
@@ -320,7 +316,10 @@ class TestLoadIndex(unittest.TestCase):
         embeddings = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype='float32')
         original_index.add(embeddings)
         
-        original_docs = ["Doc A", "Doc B"]
+        original_docs = [
+            {"text": "Doc A", "filepath": "a.txt", "faiss_idx": 0},
+            {"text": "Doc B", "filepath": "b.txt", "faiss_idx": 1}
+        ]
         original_tags = [["alpha"], ["beta", "gamma"]]
         
         index_path = os.path.join(self.temp_dir, "test.faiss")
