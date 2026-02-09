@@ -34,7 +34,7 @@ const SearchResults = ({ results, aiAnswer }) => {
     const resultsList = useMemo(() => {
         return results.map((result, index) => (
             <motion.div
-                key={index}
+                key={result.faiss_idx !== undefined ? result.faiss_idx : index}
                 initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: index * 0.05 }}
