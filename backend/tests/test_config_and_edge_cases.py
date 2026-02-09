@@ -79,6 +79,24 @@ class TestModelPathValidation(unittest.TestCase):
 class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
     
+    def setUp(self):
+        """Set up test environment."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.temp_dir, 'test_metadata.db')
+
+        # Patch database path
+        from backend import database
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = self.db_path
+        database.init_database()
+
+    def tearDown(self):
+        """Clean up."""
+        from backend import database
+        database.DATABASE_PATH = self.original_db_path
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
         from backend import database
@@ -116,9 +134,27 @@ class TestAPIResponseFormats(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
+        # Use a separate temp db for API tests too to ensure isolation
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.temp_dir, 'api_test.db')
+
+        from backend import database
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = self.db_path
+        database.init_database()
+        # BUT we must ensure the patched path is visible to the app
+
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
+        # Force startup to run if it hasn't
+        # TestClient runs startup on first request usually
+
+    def tearDown(self):
+        from backend import database
+        database.DATABASE_PATH = self.original_db_path
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
     
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
@@ -170,10 +206,23 @@ class TestErrorHandling(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.temp_dir, 'api_test_error.db')
+
+        from backend import database
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = self.db_path
+
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
     
+    def tearDown(self):
+        from backend import database
+        database.DATABASE_PATH = self.original_db_path
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
     def test_search_without_index(self):
         """Test search returns appropriate error when no index exists."""
         with patch('backend.api.index', None):
