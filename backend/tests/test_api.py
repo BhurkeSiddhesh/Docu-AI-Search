@@ -72,8 +72,8 @@ class TestAPISearch(unittest.TestCase):
 
     @patch('backend.database.add_search_history')
     @patch('backend.database.get_file_by_faiss_index')
-    @patch('backend.llm_integration.cached_generate_ai_answer')
-    @patch('backend.llm_integration.cached_smart_summary')
+    @patch('backend.api.cached_generate_ai_answer')
+    @patch('backend.api.cached_smart_summary')
     @patch('backend.api.load_config')
     @patch('backend.api.search')
     @patch('backend.api.summarize')
