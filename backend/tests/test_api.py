@@ -279,6 +279,12 @@ class TestAPIFileOperations(unittest.TestCase):
     def setUp(self):
         """Set up test client before each test method."""
         self.client = TestClient(app)
+        # Allow open-file in tests which use "testclient" host
+        from backend.api import verify_local_request
+        app.dependency_overrides[verify_local_request] = lambda: None
+
+    def tearDown(self):
+        app.dependency_overrides = {}
 
     @patch('backend.database.get_all_files')
     def test_list_indexed_files(self, mock_get_files):

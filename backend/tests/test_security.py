@@ -2,7 +2,7 @@ import unittest
 import os
 import tempfile
 from fastapi.testclient import TestClient
-from backend.api import app
+from backend.api import app, verify_local_request
 from unittest.mock import patch
 from backend import model_manager
 
@@ -10,7 +10,7 @@ class TestSecurityApi(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
         # Create a temporary file OUTSIDE the models directory
-        self.temp_file = tempfile.NamedTemporaryFile(delete=False)
+        self.temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
         self.temp_file.close()
         self.temp_path = self.temp_file.name
 
@@ -18,6 +18,7 @@ class TestSecurityApi(unittest.TestCase):
         # Clean up if the test didn't delete it
         if os.path.exists(self.temp_path):
             os.remove(self.temp_path)
+        app.dependency_overrides = {}
 
     def test_arbitrary_file_deletion_prevention(self):
         """
@@ -45,10 +46,16 @@ class TestSecurityApi(unittest.TestCase):
         self.assertTrue(file_exists, "File should NOT be deleted")
 
     @patch('backend.database.get_file_by_path')
-    def test_open_file_security(self, mock_get_file):
+    @patch('os.path.exists')
+    def test_open_file_security(self, mock_exists, mock_get_file):
         """
         Verify that opening a non-indexed file is forbidden.
         """
+        # Override verify_local_request to allow testclient access
+        app.dependency_overrides[verify_local_request] = lambda: None
+
+        mock_exists.return_value = True
+
         # 1. Try to open a file NOT in database
         mock_get_file.return_value = None
 
@@ -58,12 +65,12 @@ class TestSecurityApi(unittest.TestCase):
         self.assertIn("Access denied", response.json()['detail'])
 
         # 2. Try to open a file IN database
+        # Ensure extension is allowed (the temp file has .txt suffix)
         mock_get_file.return_value = {'path': self.temp_path}
 
         # We need to mock os.startfile or subprocess to avoid actually opening it
         # os.startfile is Windows only, subprocess.run is for Mac/Linux
-        with patch('os.startfile', create=True) as mock_startfile, \
-             patch('subprocess.run') as mock_run:
+        with patch('os.startfile', create=True) as mock_startfile,              patch('subprocess.run') as mock_run:
                  response = self.client.post("/api/open-file", json={"path": self.temp_path})
                  self.assertEqual(response.status_code, 200, "Should allow indexed file")
 
