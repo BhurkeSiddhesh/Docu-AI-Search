@@ -47,11 +47,28 @@ class TestIndexing(unittest.TestCase):
         self.tp_patcher.start()
         self.ac_patcher.start()
 
+        # Patch database calls to avoid hitting production DB
+        self.db_clear_patcher = patch('backend.indexing.database.clear_all_files')
+        self.db_add_file_patcher = patch('backend.indexing.database.add_file')
+        self.db_add_cluster_patcher = patch('backend.indexing.database.add_cluster')
+        self.db_clear_clusters_patcher = patch('backend.indexing.database.clear_clusters')
+
+        self.mock_clear = self.db_clear_patcher.start()
+        self.mock_add_file = self.db_add_file_patcher.start()
+        self.mock_add_cluster = self.db_add_cluster_patcher.start()
+        self.mock_clear_clusters = self.db_clear_clusters_patcher.start()
+
     def tearDown(self):
         """Clean up after each test method."""
         self.pp_patcher.stop()
         self.tp_patcher.stop()
         self.ac_patcher.stop()
+
+        self.db_clear_patcher.stop()
+        self.db_add_file_patcher.stop()
+        self.db_add_cluster_patcher.stop()
+        self.db_clear_clusters_patcher.stop()
+
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
     
@@ -68,9 +85,7 @@ class TestIndexing(unittest.TestCase):
         mock_get_embeddings.return_value = mock_embeddings_model
         
         # Mock the get_tags and clustering functions
-        with patch('backend.indexing.get_tags', return_value="test, indexing"), \
-             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+        with patch('backend.indexing.get_tags', return_value="test, indexing"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
             res = create_index(self.test_folder, "openai", "fake_api_key")
             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
             
@@ -81,6 +96,11 @@ class TestIndexing(unittest.TestCase):
             self.assertEqual(len(docs), 1)
             # tags is now a list of strings (empty or joined tags)
             self.assertEqual(len(tags), 1)
+
+            # Verify DB calls
+            self.mock_clear.assert_called()
+            self.mock_clear_clusters.assert_called()
+            self.mock_add_file.assert_called()
 
     
     @patch('backend.indexing.get_embeddings')
@@ -95,9 +115,7 @@ class TestIndexing(unittest.TestCase):
         mock_embeddings_model = MagicMock()
         mock_get_embeddings.return_value = mock_embeddings_model
         
-        with patch('backend.indexing.get_tags', return_value=""), \
-             patch('backend.indexing.perform_global_clustering', return_value={}), \
-             patch('backend.indexing.smart_summary', return_value=""):
+        with patch('backend.indexing.get_tags', return_value=""),              patch('backend.indexing.perform_global_clustering', return_value={}),              patch('backend.indexing.smart_summary', return_value=""):
             res = create_index(empty_folder, "openai", "fake_api_key")
             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
 
@@ -106,6 +124,9 @@ class TestIndexing(unittest.TestCase):
             self.assertIsNone(index)
             self.assertIsNone(docs)
             self.assertIsNone(tags)
+
+            # Verify clear was called even for empty
+            self.mock_clear.assert_called()
     
     def test_save_and_load_index(self):
         """Test saving and loading an index."""
@@ -192,6 +213,27 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         with open(os.path.join(self.folder2, "doc2.txt"), 'w') as f:
             f.write("Content from folder 2")
 
+        # Patch database calls
+        self.db_clear_patcher = patch('backend.indexing.database.clear_all_files')
+        self.db_add_file_patcher = patch('backend.indexing.database.add_file')
+        self.db_add_cluster_patcher = patch('backend.indexing.database.add_cluster')
+        self.db_clear_clusters_patcher = patch('backend.indexing.database.clear_clusters')
+
+        self.mock_clear = self.db_clear_patcher.start()
+        self.mock_add_file = self.db_add_file_patcher.start()
+        self.mock_add_cluster = self.db_add_cluster_patcher.start()
+        self.mock_clear_clusters = self.db_clear_clusters_patcher.start()
+
+    def tearDown(self):
+        """Clean up."""
+        self.db_clear_patcher.stop()
+        self.db_add_file_patcher.stop()
+        self.db_add_cluster_patcher.stop()
+        self.db_clear_clusters_patcher.stop()
+
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     def test_create_index_multiple_folders(self, mock_extract_text, mock_get_embeddings):
@@ -202,9 +244,7 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
         mock_get_embeddings.return_value = mock_embeddings_model
         
-        with patch('backend.indexing.get_tags', return_value="test"), \
-             patch('backend.indexing.perform_global_clustering', return_value={0: [0, 1]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0, 1]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
             res = create_index(
                 [self.folder1, self.folder2], 
                 "openai", 
@@ -214,6 +254,7 @@ class TestIndexingMultipleFolders(unittest.TestCase):
             
             self.assertIsNotNone(index)
             self.assertEqual(len(docs), 2)
+            self.mock_add_file.assert_called()
 
 
     @patch('backend.indexing.get_embeddings')
@@ -230,9 +271,7 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         def progress_callback(current, total, filename):
             progress_calls.append((current, total, filename))
         
-        with patch('backend.indexing.get_tags', return_value="test"), \
-             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
             create_index(self.folder1, "openai", "fake_key", progress_callback=progress_callback)
             
             # Verify progress was called
@@ -263,9 +302,7 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3]]
         mock_get_embeddings.return_value = mock_embeddings_model
         
-        with patch('backend.indexing.get_tags', return_value="test"), \
-             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
             # Pass string instead of list
             res = create_index(
                 self.folder1,  # String, not list

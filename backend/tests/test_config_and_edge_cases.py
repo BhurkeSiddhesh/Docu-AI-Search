@@ -79,6 +79,25 @@ class TestModelPathValidation(unittest.TestCase):
 class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
     
+    def setUp(self):
+        """Set up temporary database."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.temp_dir, 'test_metadata.db')
+
+        # Patch the database path
+        self.db_patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.db_patcher.start()
+
+        # Initialize the database
+        from backend import database
+        database.init_database()
+
+    def tearDown(self):
+        """Clean up temporary database."""
+        self.db_patcher.stop()
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
         from backend import database
@@ -115,11 +134,28 @@ class TestAPIResponseFormats(unittest.TestCase):
     """Tests for API response format consistency."""
     
     def setUp(self):
-        """Set up test client."""
+        """Set up test client with temporary database."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.temp_dir, 'test_metadata.db')
+
+        # Patch the database path
+        self.db_patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.db_patcher.start()
+
+        # Initialize the database
+        from backend import database
+        database.init_database()
+
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
     
+    def tearDown(self):
+        """Clean up."""
+        self.db_patcher.stop()
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
         response = self.client.get("/api/config")
