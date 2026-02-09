@@ -10,7 +10,7 @@ import tempfile
 import shutil
 from unittest.mock import patch, MagicMock
 import configparser
-
+from backend import database
 
 class TestConfiguration(unittest.TestCase):
     """Tests for configuration management."""
@@ -78,10 +78,21 @@ class TestModelPathValidation(unittest.TestCase):
 
 class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
+
+    def setUp(self):
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        os.close(self.db_fd)
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        database.init_database()
+
+    def tearDown(self):
+        self.patcher.stop()
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
     
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
-        from backend import database
         
         # Empty query should still be storable
         database.add_search_history("", 0, 0)
@@ -92,7 +103,6 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
     
     def test_very_long_query(self):
         """Test handling of very long search queries."""
-        from backend import database
         
         long_query = "word " * 1000  # 5000+ characters
         
@@ -101,7 +111,6 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
         
     def test_special_characters_in_query(self):
         """Test handling of special characters in queries."""
-        from backend import database
         
         special_query = "test's \"quoted\" <html> & special chars: 日本語"
         
@@ -116,10 +125,22 @@ class TestAPIResponseFormats(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
+        # Initialize isolated DB for API tests
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        os.close(self.db_fd)
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        database.init_database()
+
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
     
+    def tearDown(self):
+        self.patcher.stop()
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
+
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
         response = self.client.get("/api/config")
@@ -170,10 +191,22 @@ class TestErrorHandling(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
+        # Initialize isolated DB for API tests
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        os.close(self.db_fd)
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        database.init_database()
+
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
-    
+
+    def tearDown(self):
+        self.patcher.stop()
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
+
     def test_search_without_index(self):
         """Test search returns appropriate error when no index exists."""
         with patch('backend.api.index', None):
