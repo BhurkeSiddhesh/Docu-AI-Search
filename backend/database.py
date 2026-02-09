@@ -141,6 +141,33 @@ def add_file(path: str, filename: str, extension: str, size_bytes: int,
     conn.close()
     return file_id
 
+def add_files_batch(files: List[Dict]):
+    """Add multiple files to the database."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    data = []
+    for f in files:
+        data.append((
+            f['path'],
+            f['filename'],
+            f.get('extension'),
+            f.get('size_bytes'),
+            f.get('modified_date'),
+            f.get('chunk_count', 0),
+            f.get('faiss_start_idx'),
+            f.get('faiss_end_idx')
+        ))
+
+    cursor.executemany("""
+        INSERT OR REPLACE INTO files
+        (path, filename, extension, size_bytes, modified_date, chunk_count, faiss_start_idx, faiss_end_idx)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, data)
+
+    conn.commit()
+    conn.close()
+
 def get_all_files() -> List[Dict]:
     """Get all indexed files."""
     conn = get_connection()

@@ -126,6 +126,32 @@ class TestDatabase(unittest.TestCase):
             "Database should have get_connection function"
         )
     
+
+    def test_add_files_batch(self):
+        """Test adding multiple files in batch."""
+        from backend import database
+        from datetime import datetime
+
+        files = []
+        for i in range(5):
+            files.append({
+                'path': f'/test/batch_{i}.txt',
+                'filename': f'batch_{i}.txt',
+                'extension': '.txt',
+                'size_bytes': 100,
+                'modified_date': datetime.now(),
+                'chunk_count': 1,
+                'faiss_start_idx': i,
+                'faiss_end_idx': i
+            })
+
+        database.add_files_batch(files)
+
+        # Verify
+        all_files = database.get_all_files()
+        # filter for our batch files
+        batch_files = [f for f in all_files if '/test/batch_' in f['path']]
+        self.assertEqual(len(batch_files), 5)
     def test_add_file_metadata(self):
         """Test adding file metadata to database."""
         from backend import database
