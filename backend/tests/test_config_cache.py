@@ -1,15 +1,33 @@
-import sys; import os; sys.path.append(os.getcwd())
 import unittest
 import os
 import time
 import configparser
 from unittest.mock import patch, MagicMock
+import sys
+import sqlite3
+
+# Mock all dependencies to ensure clean environment
+sys.modules['fastapi'] = MagicMock()
+sys.modules['fastapi.testclient'] = MagicMock()
+sys.modules['fastapi.responses'] = MagicMock()
+sys.modules['fastapi.middleware.cors'] = MagicMock()
+sys.modules['uvicorn'] = MagicMock()
+sys.modules['pydantic'] = MagicMock()
+class BaseModel: pass
+sys.modules['pydantic'].BaseModel = BaseModel
+sys.modules['backend.llm_integration'] = MagicMock()
+sys.modules['backend.search'] = MagicMock()
+sys.modules['backend.indexing'] = MagicMock()
+sys.modules['backend.model_manager'] = MagicMock()
+sys.modules['backend.agent'] = MagicMock()
+sys.modules['backend.database'] = MagicMock()
+
+# Import api
 from backend import api
 
 class TestConfigCache(unittest.TestCase):
     def setUp(self):
         # Reset cache before each test
-        # Accessing private variables for testing purposes
         if hasattr(api, '_config_cache'):
             api._config_cache = None
         if hasattr(api, '_config_mtime'):
