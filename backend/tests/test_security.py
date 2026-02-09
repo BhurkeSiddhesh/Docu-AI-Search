@@ -3,7 +3,7 @@ import os
 import tempfile
 from fastapi.testclient import TestClient
 from backend.api import app
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from backend import model_manager
 
 class TestSecurityApi(unittest.TestCase):
@@ -62,8 +62,7 @@ class TestSecurityApi(unittest.TestCase):
 
         # We need to mock os.startfile or subprocess to avoid actually opening it
         # os.startfile is Windows only, subprocess.run is for Mac/Linux
-        with patch('os.startfile', create=True) as mock_startfile, \
-             patch('subprocess.run') as mock_run:
+        with patch('os.startfile', create=True) as mock_startfile,              patch('subprocess.run') as mock_run:
                  response = self.client.post("/api/open-file", json={"path": self.temp_path})
                  self.assertEqual(response.status_code, 200, "Should allow indexed file")
 
@@ -118,6 +117,35 @@ class TestSecurityUnit(unittest.TestCase):
         finally:
             if os.path.exists(safe_path):
                 os.remove(safe_path)
+
+class TestLogInjection(unittest.TestCase):
+    def setUp(self):
+        self.client = TestClient(app)
+
+    @patch('backend.api.logger')
+    def test_log_injection_sanitization(self, mock_logger):
+        # The payload contains a newline character
+        payload = {
+            "level": "info",
+            "message": "User logged in\n[INFO] Malicious log entry",
+            "source": "Frontend\rBadSource"
+        }
+
+        response = self.client.post("/api/logs", json=payload)
+        self.assertEqual(response.status_code, 200)
+
+        # Verify logger call
+        self.assertTrue(mock_logger.info.called)
+        args, _ = mock_logger.info.call_args
+        log_msg = args[0]
+
+        # Check that newlines are escaped
+        self.assertNotIn("\n", log_msg)
+        self.assertNotIn("\r", log_msg)
+        self.assertIn(r"\n", log_msg)
+        self.assertIn(r"\r", log_msg)
+
+        print(f"Verified log message: {log_msg}")
 
 if __name__ == '__main__':
     unittest.main()
