@@ -61,12 +61,12 @@ const Header = ({ darkMode, toggleDarkMode, openSettings, toggleHistory, isHisto
                                         </div>
                                         <div className="max-h-64 overflow-y-auto space-y-1">
                                             {availableModels.length > 0 ? (
-                                                availableModels.map((model, index) => {
+                                                availableModels.map((model) => {
                                                     const modelName = model.name.replace('.gguf', '');
                                                     const isActive = activeModel === modelName;
                                                     return (
                                                         <button
-                                                            key={index}
+                                                            key={model.name}
                                                             onClick={() => handleModelSelect(modelName)}
                                                             className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all flex items-center justify-between group
                                                                 ${isActive
