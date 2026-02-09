@@ -57,7 +57,12 @@ class TestIndexing(unittest.TestCase):
     
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index(self, mock_extract_text, mock_get_embeddings):
+    @patch('backend.database.add_file')
+    @patch('backend.database.clear_all_files')
+    @patch('backend.database.init_database')
+    @patch('backend.database.clear_clusters')
+    @patch('backend.database.add_cluster')
+    def test_create_index(self, mock_add_cluster, mock_clear_clusters, mock_init, mock_clear, mock_add_file, mock_extract_text, mock_get_embeddings):
         """Test creating an index."""
         # Mock the extract_text function to return test content
         mock_extract_text.return_value = "This is test content for indexing."
@@ -85,7 +90,10 @@ class TestIndexing(unittest.TestCase):
     
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index_empty_folder(self, mock_extract_text, mock_get_embeddings):
+    @patch('backend.database.clear_all_files')
+    @patch('backend.database.init_database')
+    @patch('backend.database.clear_clusters')
+    def test_create_index_empty_folder(self, mock_clear_clusters, mock_init, mock_clear, mock_extract_text, mock_get_embeddings):
         """Test creating an index with empty folder."""
         empty_folder = os.path.join(self.temp_dir, "empty_folder")
         os.makedirs(empty_folder, exist_ok=True)
@@ -194,7 +202,12 @@ class TestIndexingMultipleFolders(unittest.TestCase):
 
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index_multiple_folders(self, mock_extract_text, mock_get_embeddings):
+    @patch('backend.database.add_file')
+    @patch('backend.database.clear_all_files')
+    @patch('backend.database.init_database')
+    @patch('backend.database.clear_clusters')
+    @patch('backend.database.add_cluster')
+    def test_create_index_multiple_folders(self, mock_add_cluster, mock_clear_clusters, mock_init, mock_clear, mock_add_file, mock_extract_text, mock_get_embeddings):
         """Test creating index from multiple folders."""
         mock_extract_text.return_value = "Test content"
         
@@ -218,7 +231,12 @@ class TestIndexingMultipleFolders(unittest.TestCase):
 
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index_with_progress_callback(self, mock_extract_text, mock_get_embeddings):
+    @patch('backend.database.add_file')
+    @patch('backend.database.clear_all_files')
+    @patch('backend.database.init_database')
+    @patch('backend.database.clear_clusters')
+    @patch('backend.database.add_cluster')
+    def test_create_index_with_progress_callback(self, mock_add_cluster, mock_clear_clusters, mock_init, mock_clear, mock_add_file, mock_extract_text, mock_get_embeddings):
         """Test progress callback during indexing."""
         mock_extract_text.return_value = "Test content"
         
@@ -238,7 +256,9 @@ class TestIndexingMultipleFolders(unittest.TestCase):
             # Verify progress was called
             self.assertGreater(len(progress_calls), 0)
 
-    def test_create_index_nonexistent_folder(self):
+    @patch('backend.database.clear_all_files')
+    @patch('backend.database.clear_clusters')
+    def test_create_index_nonexistent_folder(self, mock_clear_clusters, mock_clear):
         """Test creating index with nonexistent folder."""
         with patch('backend.indexing.get_embeddings') as mock_embed:
             mock_embeddings_model = MagicMock()
@@ -255,7 +275,12 @@ class TestIndexingMultipleFolders(unittest.TestCase):
 
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index_string_folder_path(self, mock_extract_text, mock_get_embeddings):
+    @patch('backend.database.add_file')
+    @patch('backend.database.clear_all_files')
+    @patch('backend.database.init_database')
+    @patch('backend.database.clear_clusters')
+    @patch('backend.database.add_cluster')
+    def test_create_index_string_folder_path(self, mock_add_cluster, mock_clear_clusters, mock_init, mock_clear, mock_add_file, mock_extract_text, mock_get_embeddings):
         """Test that string folder path is converted to list."""
         mock_extract_text.return_value = "Test content"
         
