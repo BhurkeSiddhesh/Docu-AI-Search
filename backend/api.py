@@ -122,20 +122,41 @@ async def root():
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok"}
+_config_cache = None
+_config_mtime = 0
 
 def load_config():
+    global _config_cache, _config_mtime
     import configparser
+
     if not os.path.exists(CONFIG_PATH):
         config = configparser.ConfigParser()
-        config['General'] = {'folder': '', 'auto_index': 'False'}
-        config['APIKeys'] = {'openai_api_key': ''}
-        config['LocalLLM'] = {'model_path': '', 'provider': 'openai'}
-        with open(CONFIG_PATH, 'w') as configfile:
-            config.write(configfile)
-    
-    config = configparser.ConfigParser()
-    config.read(CONFIG_PATH)
-    return config
+        config["General"] = {"folder": "", "auto_index": "False"}
+        config["APIKeys"] = {"openai_api_key": ""}
+        config["LocalLLM"] = {"model_path": "", "provider": "openai"}
+        try:
+            with open(CONFIG_PATH, "w") as configfile:
+                config.write(configfile)
+        except Exception as e:
+            logger.error(f"Failed to create default config: {e}")
+            return config
+
+    try:
+        mtime = os.path.getmtime(CONFIG_PATH)
+        if _config_cache is not None and mtime == _config_mtime:
+            return _config_cache
+
+        config = configparser.ConfigParser()
+        config.read(CONFIG_PATH)
+        _config_cache = config
+        _config_mtime = mtime
+        return config
+    except Exception as e:
+        logger.error(f"Error loading config: {e}")
+        # Return cache if available, otherwise empty config
+        if _config_cache is not None:
+            return _config_cache
+        return configparser.ConfigParser()
 
 def save_config_file(config):
     with open(CONFIG_PATH, 'w') as configfile:
