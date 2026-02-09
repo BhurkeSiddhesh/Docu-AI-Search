@@ -10,7 +10,9 @@ import tempfile
 import shutil
 from unittest.mock import patch, MagicMock
 import configparser
-
+from fastapi.testclient import TestClient
+from backend.api import app
+from backend import database
 
 class TestConfiguration(unittest.TestCase):
     """Tests for configuration management."""
@@ -61,6 +63,26 @@ class TestModelPathValidation(unittest.TestCase):
     
     def test_models_directory_structure(self):
         """Test expected models directory structure."""
+        # Calculate models dir relative to this test file
+        # backend/tests/test_config... -> backend/tests -> backend -> root -> models
+        # But this test file is in backend/tests/
+        # so os.path.dirname(__file__) is backend/tests
+        # os.path.dirname(...) is backend
+        # os.path.dirname(...) is root
+        models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'models')
+
+        # The original code used os.path.dirname(os.path.dirname(__file__)) which is backend/
+        # models is likely in root.
+        # Let's stick to what was there if it was working or adjust if needed.
+        # Original: os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models')
+        # __file__ = backend/tests/test.py
+        # dir = backend/tests
+        # dir(dir) = backend
+        # backend/models ? No, models is usually at root.
+        # But let's assume original logic was intended or models is in backend?
+        # Listing files earlier showed backend/model_manager.py but not models dir.
+        # Root has data/.
+        # Let's keep original logic.
         models_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models')
         
         if os.path.exists(models_dir):
@@ -78,11 +100,21 @@ class TestModelPathValidation(unittest.TestCase):
 
 class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
+
+    def setUp(self):
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False)
+        self.temp_db.close()
+        self.patcher = patch("backend.database.DATABASE_PATH", self.temp_db.name)
+        self.patcher.start()
+        database.init_database()
+
+    def tearDown(self):
+        self.patcher.stop()
+        if os.path.exists(self.temp_db.name):
+            os.remove(self.temp_db.name)
     
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
-        from backend import database
-        
         # Empty query should still be storable
         database.add_search_history("", 0, 0)
         
@@ -92,8 +124,6 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
     
     def test_very_long_query(self):
         """Test handling of very long search queries."""
-        from backend import database
-        
         long_query = "word " * 1000  # 5000+ characters
         
         # Should handle long queries
@@ -101,8 +131,6 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
         
     def test_special_characters_in_query(self):
         """Test handling of special characters in queries."""
-        from backend import database
-        
         special_query = "test's \"quoted\" <html> & special chars: 日本語"
         
         database.add_search_history(special_query, 0, 0)
@@ -116,10 +144,21 @@ class TestAPIResponseFormats(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
-        from fastapi.testclient import TestClient
-        from backend.api import app
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False)
+        self.temp_db.close()
+        self.patcher = patch("backend.database.DATABASE_PATH", self.temp_db.name)
+        self.patcher.start()
+
+        # Initialize DB
+        database.init_database()
+
         self.client = TestClient(app)
     
+    def tearDown(self):
+        self.patcher.stop()
+        if os.path.exists(self.temp_db.name):
+            os.remove(self.temp_db.name)
+
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
         response = self.client.get("/api/config")
@@ -170,8 +209,6 @@ class TestErrorHandling(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
-        from fastapi.testclient import TestClient
-        from backend.api import app
         self.client = TestClient(app)
     
     def test_search_without_index(self):
