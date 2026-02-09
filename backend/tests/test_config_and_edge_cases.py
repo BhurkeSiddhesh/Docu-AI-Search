@@ -12,6 +12,52 @@ from unittest.mock import patch, MagicMock
 import configparser
 
 
+# Shared temp database setup for ALL test classes
+_shared_temp_dir = None
+_original_db_path = None
+_original_config_path = None
+
+def setUpModule():
+    """Set up shared temp database for all tests in this module."""
+    global _shared_temp_dir, _original_db_path, _original_config_path
+
+    # Create shared temp directory
+    _shared_temp_dir = tempfile.mkdtemp()
+
+    # Database
+    from backend import database
+    _original_db_path = database.DATABASE_PATH
+    database.DATABASE_PATH = os.path.join(_shared_temp_dir, 'test_metadata.db')
+    database.init_database()
+
+    # Config
+    from backend import api
+    _original_config_path = api.CONFIG_PATH
+    api.CONFIG_PATH = os.path.join(_shared_temp_dir, 'test_config.ini')
+
+def tearDownModule():
+    """Clean up shared temp database."""
+    global _shared_temp_dir, _original_db_path, _original_config_path
+    from backend import database
+    from backend import api
+    import gc
+    import time
+
+    # Restore original path
+    database.DATABASE_PATH = _original_db_path
+    api.CONFIG_PATH = _original_config_path
+
+    # Try to close any lingering connections and clean up
+    gc.collect()
+    time.sleep(0.1)  # Small delay to let OS release file handles
+
+    if _shared_temp_dir and os.path.exists(_shared_temp_dir):
+        try:
+            shutil.rmtree(_shared_temp_dir)
+        except Exception as e:
+            print(f"Warning: Could not clean up test directory {_shared_temp_dir}: {e}")
+
+
 class TestConfiguration(unittest.TestCase):
     """Tests for configuration management."""
     
@@ -63,6 +109,7 @@ class TestModelPathValidation(unittest.TestCase):
         """Test expected models directory structure."""
         models_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models')
         
+        # This test might fail if models folder doesn't exist in CI, so check first
         if os.path.exists(models_dir):
             # Check it's a directory
             self.assertTrue(os.path.isdir(models_dir))
