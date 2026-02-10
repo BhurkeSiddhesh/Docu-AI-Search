@@ -570,3 +570,9 @@ python scripts/verify_golden_set.py
 ```
 
 > **Always read [AGENTS.md](cci:7://file:///c:/Users/siddh/OneDrive/Desktop/Projects/File-Search-Engine-1/AGENTS.md:0:0-0:0) in project root for the latest Change Log before and after making changes.**
+### 2026-02-10
+- **Performance Optimization: Async Database Check**
+  - **perf**: Modified `api.py` to run `database.get_file_by_path` in a separate thread using `asyncio.to_thread`.
+  - **fix**: Resolved blocking event loop issue in `open_file` endpoint during database lookup.
+  - **verification**: Validated with reproduction script `benchmark_blocking.py` showing 0s gap (vs 1.1s baseline).
+  - **Files**: `backend/api.py`

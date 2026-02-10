@@ -634,7 +634,7 @@ async def open_file(request: dict):
     
     # Security: Only allow opening files that are in the index
     # This prevents opening arbitrary files on the system
-    if not database.get_file_by_path(file_path):
+    if not await asyncio.to_thread(database.get_file_by_path, file_path):
         logger.warning(f"Security: Attempt to open non-indexed file: {file_path}")
         raise HTTPException(status_code=403, detail="Access denied: File is not in the index")
 
