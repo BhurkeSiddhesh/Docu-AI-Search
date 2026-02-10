@@ -13,16 +13,18 @@ from unittest.mock import patch, MagicMock
 class TestBenchmarkModels(unittest.TestCase):
     """Tests for benchmark_models module."""
     
-    def setUp(self):
-        # Patch psutil for all tests in this class to avoid side effects
-        self.psutil_patcher = patch.dict(sys.modules, {'psutil': MagicMock()})
-        self.psutil_patcher.start()
-        self.mock_psutil = sys.modules['psutil']
-        # Configure psutil mock to return valid numbers
-        self.mock_psutil.Process.return_value.memory_info.return_value.rss = 104857600
+    @patch('scripts.benchmark_models.psutil')
+    def test_get_memory_usage(self, mock_psutil):
+        """Test memory usage monitoring function."""
+        mock_psutil.Process.return_value.memory_info.return_value.rss = 104857600
 
-    def tearDown(self):
-        self.psutil_patcher.stop()
+        from scripts.benchmark_models import get_memory_usage_mb
+
+        memory = get_memory_usage_mb()
+
+        self.assertIsInstance(memory, (int, float))
+        self.assertGreater(memory, 0, "Memory usage should be positive")
+        self.assertEqual(memory, 100.0)
 
     def test_import_benchmark_module(self):
         """Test that benchmark_models module can be imported."""
@@ -41,16 +43,6 @@ class TestBenchmarkModels(unittest.TestCase):
         self.assertEqual(result.model_name, "test-model")
         self.assertIsNotNone(result.embedding_latency_ms)
         self.assertIsNotNone(result.tokens_per_second)
-    
-    def test_get_memory_usage(self):
-        """Test memory usage monitoring function."""
-        from scripts.benchmark_models import get_memory_usage_mb
-        
-        memory = get_memory_usage_mb()
-        
-        self.assertIsInstance(memory, (int, float))
-        self.assertGreater(memory, 0, "Memory usage should be positive")
-        self.assertEqual(memory, 100.0)
     
     def test_calculate_fact_retention(self):
         """Test fact retention score calculation."""

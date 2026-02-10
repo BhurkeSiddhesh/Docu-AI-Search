@@ -7,24 +7,50 @@ resource checks, and model discovery.
 
 import unittest
 import os
-import sys
 from unittest.mock import patch, MagicMock
 
 class TestModelManager(unittest.TestCase):
     """Tests for model_manager module."""
     
-    def setUp(self):
-        # Patch psutil safely
-        self.psutil_patcher = patch.dict(sys.modules, {'psutil': MagicMock()})
-        self.psutil_patcher.start()
-        self.mock_psutil = sys.modules['psutil']
+    @patch('backend.model_manager.psutil')
+    def test_check_system_resources(self, mock_psutil):
+        """Test system resource checking function."""
+        # Configure mock
+        mock_psutil.virtual_memory.return_value.available = 16 * 1024 * 1024 * 1024
+        mock_psutil.disk_usage.return_value.free = 100 * 1024 * 1024 * 1024
 
-        # Default mock values
-        self.mock_psutil.virtual_memory.return_value.available = 16 * 1024 * 1024 * 1024
-        self.mock_psutil.disk_usage.return_value.free = 100 * 1024 * 1024 * 1024
+        from backend.model_manager import check_system_resources
 
-    def tearDown(self):
-        self.psutil_patcher.stop()
+        test_model = {
+            'id': 'test-model',
+            'size_bytes': 1000000,  # 1MB
+            'ram_required': 1  # 1GB
+        }
+
+        can_download, warnings = check_system_resources(test_model)
+
+        self.assertIsInstance(can_download, bool)
+        self.assertIsInstance(warnings, list)
+        self.assertTrue(can_download)
+
+    @patch('backend.model_manager.psutil')
+    def test_check_system_resources_large_model(self, mock_psutil):
+        """Test resource check rejects models too large for system."""
+        mock_psutil.virtual_memory.return_value.available = 16 * 1024 * 1024 * 1024
+        mock_psutil.disk_usage.return_value.free = 100 * 1024 * 1024 * 1024
+
+        from backend.model_manager import check_system_resources
+
+        test_model = {
+            'id': 'impossible-model',
+            'size_bytes': 1000 * 1024 * 1024 * 1024,  # 1TB
+            'ram_required': 500  # 500GB RAM
+        }
+
+        can_download, warnings = check_system_resources(test_model)
+
+        self.assertFalse(can_download, "Should reject model requiring too much resources")
+        self.assertGreater(len(warnings), 0, "Should have warnings")
 
     def test_get_available_models(self):
         """Test that available models list is returned."""
@@ -77,37 +103,6 @@ class TestModelManager(unittest.TestCase):
             local_models = get_local_models()
 
             self.assertIsInstance(local_models, list)
-    
-    def test_check_system_resources(self):
-        """Test system resource checking function."""
-        from backend.model_manager import check_system_resources
-        
-        test_model = {
-            'id': 'test-model',
-            'size_bytes': 1000000,  # 1MB
-            'ram_required': 1  # 1GB
-        }
-        
-        can_download, warnings = check_system_resources(test_model)
-        
-        self.assertIsInstance(can_download, bool)
-        self.assertIsInstance(warnings, list)
-        self.assertTrue(can_download)
-    
-    def test_check_system_resources_large_model(self):
-        """Test resource check rejects models too large for system."""
-        from backend.model_manager import check_system_resources
-        
-        test_model = {
-            'id': 'impossible-model',
-            'size_bytes': 1000 * 1024 * 1024 * 1024,  # 1TB
-            'ram_required': 500  # 500GB RAM
-        }
-        
-        can_download, warnings = check_system_resources(test_model)
-        
-        self.assertFalse(can_download, "Should reject model requiring too much resources")
-        self.assertGreater(len(warnings), 0, "Should have warnings")
     
     def test_get_download_status(self):
         """Test download status retrieval."""
