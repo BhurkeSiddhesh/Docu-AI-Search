@@ -1,10 +1,19 @@
 import unittest
-import tempfile
+from unittest.mock import MagicMock, patch
 import os
-import numpy as np
 import shutil
-from unittest.mock import patch, MagicMock, call
+import tempfile
+import pickle
+import numpy as np
 from backend.indexing import create_index, save_index, load_index
+from backend import database
+
+from backend import database
+
+from backend import database
+
+from backend import database
+
 
 class MockFuture:
     def __init__(self, result):
@@ -30,6 +39,13 @@ class TestIndexing(unittest.TestCase):
     """Test cases for indexing module"""
 
     def setUp(self):
+
+        # Setup temp DB
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        os.close(self.db_fd)
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        database.init_database()
         """Set up test environment before each test method."""
         self.temp_dir = tempfile.mkdtemp()
         self.test_folder = self.temp_dir
@@ -177,6 +193,13 @@ class TestIndexingMultipleFolders(unittest.TestCase):
     """Test indexing with multiple folders."""
 
     def setUp(self):
+
+        # Setup temp DB
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        os.close(self.db_fd)
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        database.init_database()
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         
@@ -282,6 +305,13 @@ class TestSaveIndex(unittest.TestCase):
     """Dedicated tests for save_index function."""
 
     def setUp(self):
+
+        # Setup temp DB
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        os.close(self.db_fd)
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        database.init_database()
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
 
@@ -308,6 +338,13 @@ class TestLoadIndex(unittest.TestCase):
     """Dedicated tests for load_index function."""
 
     def setUp(self):
+
+        # Setup temp DB
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        os.close(self.db_fd)
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        database.init_database()
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
 
