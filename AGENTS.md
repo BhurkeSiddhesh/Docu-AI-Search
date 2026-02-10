@@ -569,4 +569,9 @@ python scripts/verify_golden_set.py
   - Files: modified files list
 ```
 
-> **Always read [AGENTS.md](cci:7://file:///c:/Users/siddh/OneDrive/Desktop/Projects/File-Search-Engine-1/AGENTS.md:0:0-0:0) in project root for the latest Change Log before and after making changes.**
+### 2026-02-02 (Security)
+- **Fixed Insecure Deserialization Vulnerability**
+  - **fix**: Replaced `pickle` with `json` serialization in `backend/indexing.py` for metadata files.
+  - **fix**: BM25 index is now reconstructed from source text on load to avoid serialization risks.
+  - **test**: Added `backend/tests/test_security_fix_verification.py` to verify JSON usage.
+  - **Files**: `backend/indexing.py`, `backend/tests/test_indexing.py`
