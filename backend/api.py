@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Depends
 from fastapi.responses import StreamingResponse
 import json
 import asyncio
@@ -114,6 +114,18 @@ index_summaries = None
 cluster_summaries = []
 cluster_map = None
 bm25 = None
+
+
+async def verify_local_request(request: Request):
+    client_host = request.client.host
+    if client_host not in ("127.0.0.1", "::1", "testclient"):
+        logger.warning(f"Security: Blocked remote access to sensitive endpoint from {client_host}")
+        raise HTTPException(status_code=403, detail="Access denied")
+
+def mask_key(key: str) -> str:
+    if not key or len(key) < 5:
+        return ""
+    return "********"
 
 @app.get("/")
 async def root():
@@ -336,7 +348,7 @@ class ConfigModel(BaseModel):
     provider: str = "openai"
     tensor_split: Optional[str] = None
 
-@app.get("/api/config")
+@app.get("/api/config", dependencies=[Depends(verify_local_request)])
 async def get_config():
     config = load_config()
     # Handle both old 'folder' and new 'folders' format
@@ -350,27 +362,35 @@ async def get_config():
     return {
         "folders": folders,
         "auto_index": config.getboolean('General', 'auto_index', fallback=False),
-        "openai_api_key": config.get('APIKeys', 'openai_api_key', fallback=''),
-        "gemini_api_key": config.get('APIKeys', 'gemini_api_key', fallback=''),
-        "anthropic_api_key": config.get('APIKeys', 'anthropic_api_key', fallback=''),
-        "grok_api_key": config.get('APIKeys', 'grok_api_key', fallback=''),
+        "openai_api_key": mask_key(config.get('APIKeys', 'openai_api_key', fallback='')),
+        "gemini_api_key": mask_key(config.get('APIKeys', 'gemini_api_key', fallback='')),
+        "anthropic_api_key": mask_key(config.get('APIKeys', 'anthropic_api_key', fallback='')),
+        "grok_api_key": mask_key(config.get('APIKeys', 'grok_api_key', fallback='')),
         "local_model_path": config.get('LocalLLM', 'model_path', fallback=''),
         "provider": config.get('LocalLLM', 'provider', fallback='openai'),
         "tensor_split": config.get('LocalLLM', 'tensor_split', fallback=None)
     }
 
-@app.post("/api/config")
+@app.post("/api/config", dependencies=[Depends(verify_local_request)])
 async def update_config(config_data: ConfigModel):
+    # Load current config to check for masked values
+    current_config = load_config()
+
+    def resolve_key(section, key, new_val):
+        if new_val == "********":
+            return current_config.get(section, key, fallback='')
+        return new_val or ''
+
     config = configparser.ConfigParser()
     config['General'] = {
         'folders': ','.join(config_data.folders),
         'auto_index': str(config_data.auto_index)
     }
     config['APIKeys'] = {
-        'openai_api_key': config_data.openai_api_key or '',
-        'gemini_api_key': config_data.gemini_api_key or '',
-        'anthropic_api_key': config_data.anthropic_api_key or '',
-        'grok_api_key': config_data.grok_api_key or ''
+        'openai_api_key': resolve_key('APIKeys', 'openai_api_key', config_data.openai_api_key),
+        'gemini_api_key': resolve_key('APIKeys', 'gemini_api_key', config_data.gemini_api_key),
+        'anthropic_api_key': resolve_key('APIKeys', 'anthropic_api_key', config_data.anthropic_api_key),
+        'grok_api_key': resolve_key('APIKeys', 'grok_api_key', config_data.grok_api_key)
     }
     config['LocalLLM'] = {
         'model_path': config_data.local_model_path or '', 
@@ -859,4 +879,4 @@ def run_indexing(config, folders):
         indexing_status["error"] = str(e)
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)
