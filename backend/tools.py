@@ -74,7 +74,7 @@ def tool_list_files(query: str = None) -> str:
     """
     List all available files in the index.
     """
-    files = database.get_all_files()
+    files = database.get_all_files(limit=50)
     if not files:
         return "No files indexed."
     return ", ".join([f['filename'] for f in files[:50]]) # Limit to 50

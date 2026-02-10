@@ -141,12 +141,25 @@ def add_file(path: str, filename: str, extension: str, size_bytes: int,
     conn.close()
     return file_id
 
-def get_all_files() -> List[Dict]:
+def get_all_files(limit: Optional[int] = None, offset: int = 0) -> List[Dict]:
     """Get all indexed files."""
     conn = get_connection()
     cursor = conn.cursor()
     
-    cursor.execute("SELECT * FROM files ORDER BY indexed_date DESC")
+    query = "SELECT * FROM files ORDER BY indexed_date DESC, id DESC"
+    params = []
+
+    if limit is not None:
+        query += " LIMIT ?"
+        params.append(limit)
+    elif offset > 0:
+        query += " LIMIT -1"
+
+    if offset > 0:
+        query += " OFFSET ?"
+        params.append(offset)
+
+    cursor.execute(query, tuple(params))
     files = [dict(row) for row in cursor.fetchall()]
     
     conn.close()
