@@ -657,10 +657,10 @@ async def open_file(request: dict):
         raise HTTPException(status_code=500, detail=f"Failed to open file: {str(e)}")
 
 @app.get("/api/files")
-async def list_indexed_files():
+async def list_indexed_files(limit: Optional[int] = None, offset: int = 0):
     """Get all indexed files with metadata."""
     try:
-        files = database.get_all_files()
+        files = database.get_all_files(limit=limit, offset=offset)
         return files
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
