@@ -1,7 +1,7 @@
 import sqlite3
 import os
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 # Path configuration for new folder structure
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -123,6 +123,7 @@ def init_database():
     conn.commit()
     conn.close()
 
+
 def add_file(path: str, filename: str, extension: str, size_bytes: int, 
              modified_date: datetime, chunk_count: int, 
              faiss_start_idx: int, faiss_end_idx: int) -> int:
@@ -139,6 +140,7 @@ def add_file(path: str, filename: str, extension: str, size_bytes: int,
     file_id = cursor.lastrowid
     conn.commit()
     conn.close()
+
     return file_id
 
 def get_all_files() -> List[Dict]:
@@ -150,6 +152,7 @@ def get_all_files() -> List[Dict]:
     files = [dict(row) for row in cursor.fetchall()]
     
     conn.close()
+
     return files
 
 def get_file_by_path(path: str) -> Optional[Dict]:
@@ -161,6 +164,7 @@ def get_file_by_path(path: str) -> Optional[Dict]:
     row = cursor.fetchone()
     
     conn.close()
+
     return dict(row) if row else None
 
 def get_file_by_name(filename: str) -> Optional[Dict]:
@@ -172,6 +176,7 @@ def get_file_by_name(filename: str) -> Optional[Dict]:
     row = cursor.fetchone()
     
     conn.close()
+
     return dict(row) if row else None
 
 def delete_file(file_id: int):
@@ -183,6 +188,7 @@ def delete_file(file_id: int):
     
     conn.commit()
     conn.close()
+
 
 def add_search_history(query: str, result_count: int, execution_time_ms: int):
     """Add a search to history."""
@@ -196,6 +202,7 @@ def add_search_history(query: str, result_count: int, execution_time_ms: int):
     
     conn.commit()
     conn.close()
+
 
 def get_search_history(limit: int = 20) -> List[Dict]:
     """Get recent search history."""
@@ -211,6 +218,7 @@ def get_search_history(limit: int = 20) -> List[Dict]:
     history = [dict(row) for row in cursor.fetchall()]
     
     conn.close()
+
     return history
 
 def clear_all_files():
@@ -223,6 +231,7 @@ def clear_all_files():
     conn.commit()
     conn.close()
 
+
 def get_preference(key: str) -> Optional[str]:
     """Get a preference value."""
     conn = get_connection()
@@ -232,6 +241,7 @@ def get_preference(key: str) -> Optional[str]:
     row = cursor.fetchone()
     
     conn.close()
+
     return row['value'] if row else None
 
 def set_preference(key: str, value: str):
@@ -247,6 +257,7 @@ def set_preference(key: str, value: str):
     conn.commit()
     conn.close()
 
+
 def get_file_by_faiss_index(faiss_idx: int) -> Optional[Dict]:
     """Get the file that contains a specific FAISS chunk index."""
     conn = get_connection()
@@ -259,6 +270,7 @@ def get_file_by_faiss_index(faiss_idx: int) -> Optional[Dict]:
     row = cursor.fetchone()
     
     conn.close()
+
     return dict(row) if row else None
 
 def delete_search_history_item(history_id: int) -> bool:
@@ -271,6 +283,7 @@ def delete_search_history_item(history_id: int) -> bool:
     
     conn.commit()
     conn.close()
+
     return deleted
 
 def delete_all_search_history() -> int:
@@ -285,6 +298,7 @@ def delete_all_search_history() -> int:
     
     conn.commit()
     conn.close()
+
     return count
 
 def add_folder_to_history(path: str):
@@ -307,6 +321,7 @@ def add_folder_to_history(path: str):
     conn.commit()
     conn.close()
 
+
 def get_folder_history(limit: int = 20, indexed_only: bool = False) -> List[Dict]:
     """Get recent folder history."""
     conn = get_connection()
@@ -320,6 +335,7 @@ def get_folder_history(limit: int = 20, indexed_only: bool = False) -> List[Dict
     history = [dict(row) for row in cursor.fetchall()]
     
     conn.close()
+
     return history
 
 def mark_folder_indexed(path: str):
@@ -341,6 +357,7 @@ def mark_folder_indexed(path: str):
     conn.commit()
     conn.close()
 
+
 def delete_folder_history_item(path: str) -> bool:
     """Delete a single folder from history. Returns True if deleted."""
     conn = get_connection()
@@ -351,6 +368,7 @@ def delete_folder_history_item(path: str) -> bool:
     
     conn.commit()
     conn.close()
+
     return deleted
 
 def clear_folder_history() -> int:
@@ -365,6 +383,7 @@ def clear_folder_history() -> int:
     
     conn.commit()
     conn.close()
+
     return count
 
 # Database initialization moved to api.py startup_event
@@ -405,6 +424,7 @@ def get_cached_response(query_hash: str, context_hash: str, model_id: str, respo
     finally:
         conn.close()
 
+
 def cache_response(query_hash: str, context_hash: str, model_id: str, response_type: str, response_text: str):
     """
     Store a new response in the persistent cache.
@@ -423,6 +443,7 @@ def cache_response(query_hash: str, context_hash: str, model_id: str, response_t
     finally:
         conn.close()
 
+
 def clear_response_cache():
     """Clear all cached AI responses."""
     conn = get_connection()
@@ -437,6 +458,7 @@ def clear_response_cache():
         return 0
     finally:
         conn.close()
+
 
 def get_cache_stats():
     """Get statistics about the response cache."""
@@ -455,6 +477,7 @@ def get_cache_stats():
     finally:
         conn.close()
 
+
 # -----------------------------------------------------------------------------
 # Cluster Functions (RAPTOR)
 # -----------------------------------------------------------------------------
@@ -472,7 +495,19 @@ def add_cluster(summary: str, level: int) -> int:
     cluster_id = cursor.lastrowid
     conn.commit()
     conn.close()
+
     return cluster_id
+
+
+def add_clusters_batch(data: List[Tuple[str, int]]):
+    """Add multiple clusters to the database in a single transaction."""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.executemany("INSERT INTO clusters (summary, level) VALUES (?, ?)", data)
+
+    conn.commit()
+    conn.close()
 
 def get_clusters_by_level(level: int) -> List[Dict]:
     """Get all clusters at a specific level."""
@@ -483,6 +518,7 @@ def get_clusters_by_level(level: int) -> List[Dict]:
     clusters = [dict(row) for row in cursor.fetchall()]
     
     conn.close()
+
     return clusters
 
 def clear_clusters():
@@ -494,6 +530,7 @@ def clear_clusters():
     
     conn.commit()
     conn.close()
+
 
 
 def cleanup_test_data() -> Dict[str, int]:
@@ -537,6 +574,7 @@ def cleanup_test_data() -> Dict[str, int]:
     
     conn.commit()
     conn.close()
+
     
     total = sum(counts.values())
     if total > 0:

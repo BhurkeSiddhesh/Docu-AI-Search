@@ -228,11 +228,12 @@ def create_index(folder_paths, provider, api_key=None, model_path=None, progress
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         future_to_cid = {executor.submit(process_cluster, cid, idxs): cid for cid, idxs in cluster_map.items()}
         
+        clusters_batch_data = []
         for future in concurrent.futures.as_completed(future_to_cid):
             cid, summary = future.result()
             if summary:
-                # Add to DB
-                database.add_cluster(summary, level=1)
+                # Collect for batch insert
+                clusters_batch_data.append((summary, 1))
                 
                 # The index in this list will be the FAISS index
                 current_summary_idx = len(cluster_summaries)
@@ -246,6 +247,10 @@ def create_index(folder_paths, provider, api_key=None, model_path=None, progress
                 # Map 0-total_clusters to 75-95% (range of 20)
                 percent = 75 + int((processed_clusters / total_clusters) * 20)
                 progress_callback(percent, 100, f"Summarizing cluster {processed_clusters}/{total_clusters}")
+
+        # Batch insert clusters
+        if clusters_batch_data:
+            database.add_clusters_batch(clusters_batch_data)
     
     # 8. Create FAISS Indices - 95% to 99%
     if progress_callback: progress_callback(97, 100, "Finalizing Indices...")
