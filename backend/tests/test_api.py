@@ -12,6 +12,7 @@ from backend.api import app
 
 # We will use class-level or method-level patches instead of global ones to avoid inter-test pollution
 
+sys.modules['fastapi.responses'] = MagicMock()
 
 class TestAPIConfig(unittest.TestCase):
     """Test cases for configuration endpoints."""

@@ -156,8 +156,8 @@ def search(query: str, index, docs: List[Dict], tags: List[str], embeddings_mode
     
     for rank, idx in enumerate(top_indices):
         doc_info = docs[idx]
-        doc_text = doc_info.get('text', "") if isinstance(doc_info, dict) else str(doc_info)
-        file_path = doc_info.get('filepath', "") if isinstance(doc_info, dict) else None
+        doc_text = doc_info.get("text", "") if isinstance(doc_info, dict) else str(doc_info)
+        file_path = doc_info.get("filepath", "") if isinstance(doc_info, dict) else None
         
         # Content hash for near-duplicate detection (first 200 chars)
         content_hash = hash(doc_text[:200].lower().strip())

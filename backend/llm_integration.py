@@ -212,29 +212,49 @@ def get_llm_client(provider, api_key=None, model_path=None):
         _llm_client_cache[cache_key] = client
     return client
 
-def generate_ai_answer(context, question, provider, api_key=None, model_path=None, tensor_split=None):
+def generate_ai_answer(context, question, provider, api_key=None, model_path=None, tensor_split=None,
+                       raw=False, system_instruction=None, stop=None, max_tokens=512, temperature=0.2):
     """
     Generate a natural language answer using the selected provider.
+
+    Args:
+        context: Context text (documents). Ignored if raw=True unless manually included in question.
+        question: User query. If raw=True, this is treated as the full user prompt content.
+        provider: 'openai', 'gemini', 'anthropic', 'local', etc.
+        raw: If True, bypasses standard prompt wrapping. 'question' becomes the main prompt.
+        system_instruction: Optional system prompt to override default.
+        stop: Optional list of stop sequences.
+        max_tokens: Max tokens to generate.
+        temperature: Sampling temperature.
     """
     # Get client
     client = get_llm_client(provider, api_key, model_path)
     if not client:
         return "Error: Could not initialize AI model. Check settings and API keys."
 
-    prompt_text = f"""You are a document search assistant. Answer the question using ONLY facts from the provided documents.
-    
-    IMPORTANT: 
-    1. Check Names: If the question is about a specific person (e.g., 'Siddhesh'), ensure you ONLY use documents describing that exact person. Do NOT confuse them with similar names like 'Siddharth'.
-    2. Quote specific content, data, numbers, or key details from the documents. 
-    3. Reference which file the information comes from when possible. 
-    4. If the documents do not contain information for the specific person requested, state that clearly.
+    # Default logic for non-raw (RAG) mode
+    if not raw:
+        system_prompt = system_instruction or """You are a precise document search assistant.
+                CRITICAL: You must distinguish between similar names. If the question asks about 'Siddhesh', do NOT provide info about 'Siddharth'.
+                Only answer based on the provided documents. Quote facts and reference file names."""
 
-    Documents:
-    {context}
-    
-    Question: {question}
-    
-    Answer (cite specific details from the documents):"""
+        # Prepare context
+        # Truncate context to fit within model's context window (roughly)
+        MAX_CONTEXT_CHARS = 10000
+        if len(context) > MAX_CONTEXT_CHARS:
+            context = context[:MAX_CONTEXT_CHARS] + "... [Truncated to fit context window]"
+
+        user_content = f"Documents:\n{context}\n\nQuestion: {question}\n\nAnswer (cite specific details from the documents):"
+
+        # Stops for RAG
+        stop_seqs = stop or ["System:", "Question:", "Context:", "Documents:"]
+
+    else:
+        # RAW mode
+        # 'question' is treated as the main content/prompt
+        system_prompt = system_instruction # Can be None
+        user_content = question
+        stop_seqs = stop # Can be None
 
     try:
         # Handle Local LLM (LlamaCpp)
@@ -244,20 +264,19 @@ def generate_ai_answer(context, question, provider, api_key=None, model_path=Non
             if not llm:
                 return "Error: Local model failed to load."
 
-            # Truncate context to fit within model's context window
-            # Most local models have 4096 token context. ~4 chars/token.
-            # 10,000 chars is ~2,500 tokens, leaving ample room for prompt (300) and output (512).
-            MAX_CONTEXT_CHARS = 10000
-            if len(context) > MAX_CONTEXT_CHARS:
-                context = context[:MAX_CONTEXT_CHARS] + "... [Truncated to fit context window]"
+            # Construct full prompt string for completion
+            if system_prompt:
+                full_prompt = f"{system_prompt}\n\n{user_content}"
+            else:
+                full_prompt = user_content
 
             with _local_llm_lock:
                 output = llm.create_completion(
-                    prompt_text,
-                    max_tokens=512,
-                    stop=["System:", "Question:", "Context:", "Documents:"],
+                    full_prompt,
+                    max_tokens=max_tokens,
+                    stop=stop_seqs,
                     echo=False,
-                    temperature=0.2, # Lower temperature = faster/more stable
+                    temperature=temperature,
                     repeat_penalty=1.1
                 )
             return output['choices'][0]['text'].strip()
@@ -266,14 +285,22 @@ def generate_ai_answer(context, question, provider, api_key=None, model_path=Non
         else:
             from langchain_core.messages import HumanMessage, SystemMessage
 
-            messages = [
-                SystemMessage(content="""You are a precise document search assistant. 
-                CRITICAL: You must distinguish between similar names. If the question asks about 'Siddhesh', do NOT provide info about 'Siddharth'. 
-                Only answer based on the provided documents. Quote facts and reference file names."""),
-                HumanMessage(content=f"Documents:\n{context}\n\nQuestion: {question}\n\nAnswer:")
-            ]
+            messages = []
+            if system_prompt:
+                messages.append(SystemMessage(content=system_prompt))
 
-            response = client.invoke(messages)
+            messages.append(HumanMessage(content=user_content))
+
+            # Use bind for stop sequences if supported, otherwise just invoke
+            if stop_seqs:
+                 try:
+                    response = client.bind(stop=stop_seqs).invoke(messages)
+                 except Exception:
+                    # Fallback if bind not supported
+                    response = client.invoke(messages)
+            else:
+                 response = client.invoke(messages)
+
             return response.content.strip()
 
     except Exception as e:
