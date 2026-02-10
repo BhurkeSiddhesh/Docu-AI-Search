@@ -12,6 +12,7 @@ class MockFuture:
     def result(self, timeout=None):
         return self._result
 
+sys.modules['langchain_text_splitters'] = MagicMock()
 class MockExecutor:
     """A synchronous executor for testing."""
     def __init__(self, *args, **kwargs):
