@@ -78,6 +78,25 @@ class TestModelPathValidation(unittest.TestCase):
 
 class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
+
+    def setUp(self):
+        """Initialize temporary database for tests."""
+        import tempfile
+        import os
+        from unittest.mock import patch
+        from backend import database
+
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False)
+        self.temp_db.close()
+        self.patcher = patch('backend.database.DATABASE_PATH', self.temp_db.name)
+        self.patcher.start()
+        database.init_database()
+
+    def tearDown(self):
+        """Clean up temporary database."""
+        self.patcher.stop()
+        if os.path.exists(self.temp_db.name):
+            os.unlink(self.temp_db.name)
     
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
