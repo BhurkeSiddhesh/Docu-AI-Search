@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import threading
 from datetime import datetime
 from typing import List, Dict, Optional
 
@@ -9,11 +10,107 @@ DATA_DIR = os.path.join(BASE_DIR, 'data')
 os.makedirs(DATA_DIR, exist_ok=True)
 DATABASE_PATH = os.path.join(DATA_DIR, 'metadata.db')
 
+# Thread-local storage for database connections
+_local_storage = threading.local()
+
+class PooledConnection:
+    """
+    A wrapper around sqlite3.Connection to support thread-local pooling.
+    Intercepts close() to keep the connection open and resets state on close.
+    """
+    def __init__(self, connection):
+        self._connection = connection
+
+    def close(self):
+        """
+        Don't actually close the connection. Just rollback any uncommitted transaction.
+        This resets the connection state for the next user.
+        """
+        try:
+            self._connection.rollback()
+        except sqlite3.ProgrammingError:
+            # Connection might be closed or failed
+            pass
+
+    def commit(self):
+        self._connection.commit()
+
+    def rollback(self):
+        self._connection.rollback()
+
+    def cursor(self, *args, **kwargs):
+        return self._connection.cursor(*args, **kwargs)
+
+    def execute(self, *args, **kwargs):
+        return self._connection.execute(*args, **kwargs)
+
+    def executemany(self, *args, **kwargs):
+        return self._connection.executemany(*args, **kwargs)
+
+    def executescript(self, *args, **kwargs):
+        return self._connection.executescript(*args, **kwargs)
+
+    def create_function(self, *args, **kwargs):
+        return self._connection.create_function(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._connection, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            self._connection.rollback()
+        else:
+            self._connection.commit()
+        # Do not close the underlying connection
+
 def get_connection():
-    """Create and return a database connection."""
-    conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Create and return a thread-local database connection."""
+    global _local_storage
+
+    current_pid = os.getpid()
+
+    # Check if we have a connection for this thread
+    if not hasattr(_local_storage, "connection"):
+        _local_storage.connection = None
+        _local_storage.db_path = None
+        _local_storage.pid = None
+
+    # Check if the connection is valid and points to the correct database path
+    # AND is owned by the current process (handling forks)
+    if (_local_storage.connection is None or
+        _local_storage.db_path != DATABASE_PATH or
+        getattr(_local_storage, 'pid', None) != current_pid):
+
+        # Close old connection if it exists AND belongs to this process
+        if _local_storage.connection and getattr(_local_storage, 'pid', None) == current_pid:
+            try:
+                _local_storage.connection.close()
+            except Exception:
+                pass
+
+        # Create new connection
+        _local_storage.connection = sqlite3.connect(DATABASE_PATH)
+        _local_storage.db_path = DATABASE_PATH
+        _local_storage.pid = current_pid
+
+    # Ensure clean transaction state
+    # If a previous user didn't close properly, the connection might be in a transaction.
+    try:
+        if _local_storage.connection.in_transaction:
+            _local_storage.connection.rollback()
+    except Exception:
+        # If checking failed (e.g. connection closed externally), recreate
+        _local_storage.connection = sqlite3.connect(DATABASE_PATH)
+        _local_storage.db_path = DATABASE_PATH
+        _local_storage.pid = current_pid
+
+    # Always ensure row_factory is set correctly
+    _local_storage.connection.row_factory = sqlite3.Row
+
+    return PooledConnection(_local_storage.connection)
 
 def init_database():
     """Initialize the database schema."""
@@ -514,11 +611,11 @@ def cleanup_test_data() -> Dict[str, int]:
     # Patterns that indicate test data
     test_patterns = [
         '%/test/%',
-        '%\\test\\%',
-        '%\\Temp\\%',
+        r'%\test\%',
+        r'%\Temp\%',
         '%/tmp/%',
         '%/var/folders/%',  # macOS temp
-        '%AppData\\Local\\Temp%',  # Windows temp
+        r'%AppData\Local\Temp%',  # Windows temp
     ]
     
     # Clean files table
