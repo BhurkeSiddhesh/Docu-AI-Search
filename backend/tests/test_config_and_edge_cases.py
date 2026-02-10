@@ -10,7 +10,7 @@ import tempfile
 import shutil
 from unittest.mock import patch, MagicMock
 import configparser
-
+from backend import database
 
 class TestConfiguration(unittest.TestCase):
     """Tests for configuration management."""
@@ -78,11 +78,20 @@ class TestModelPathValidation(unittest.TestCase):
 
 class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
+
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.test_dir, 'test_metadata.db')
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        database.init_database()
+
+    def tearDown(self):
+        self.patcher.stop()
+        shutil.rmtree(self.test_dir)
     
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
-        from backend import database
-        
         # Empty query should still be storable
         database.add_search_history("", 0, 0)
         
@@ -92,8 +101,6 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
     
     def test_very_long_query(self):
         """Test handling of very long search queries."""
-        from backend import database
-        
         long_query = "word " * 1000  # 5000+ characters
         
         # Should handle long queries
@@ -101,8 +108,6 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
         
     def test_special_characters_in_query(self):
         """Test handling of special characters in queries."""
-        from backend import database
-        
         special_query = "test's \"quoted\" <html> & special chars: 日本語"
         
         database.add_search_history(special_query, 0, 0)
@@ -116,9 +121,19 @@ class TestAPIResponseFormats(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
+        self.test_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.test_dir, 'test_metadata.db')
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        database.init_database()
+
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
+
+    def tearDown(self):
+        self.patcher.stop()
+        shutil.rmtree(self.test_dir)
     
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
@@ -148,12 +163,13 @@ class TestAPIResponseFormats(unittest.TestCase):
     
     def test_models_local_response_format(self):
         """Test /api/models/local returns correct format."""
-        response = self.client.get("/api/models/local")
+        with patch('backend.model_manager.get_local_models', return_value=[]):
+            response = self.client.get("/api/models/local")
         
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        
-        self.assertIsInstance(data, list)
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+
+            self.assertIsInstance(data, list)
     
     def test_search_history_response_format(self):
         """Test /api/search/history returns correct format."""
@@ -194,10 +210,12 @@ class TestErrorHandling(unittest.TestCase):
     
     def test_download_invalid_model(self):
         """Test downloading non-existent model returns error."""
-        response = self.client.post("/api/models/download/nonexistent-model-id-12345")
-        
-        # Should return error
-        self.assertIn(response.status_code, [404, 400, 200])
+        # Patch requests to avoid actual network call if any
+        with patch('backend.model_manager.start_download', return_value=(False, "Model not found")):
+            response = self.client.post("/api/models/download/nonexistent-model-id-12345")
+
+            # Should return error
+            self.assertIn(response.status_code, [404, 400, 200])
 
 
 if __name__ == '__main__':
