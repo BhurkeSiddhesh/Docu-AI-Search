@@ -110,21 +110,19 @@ class TestIndexing(unittest.TestCase):
         mock_get_embeddings.return_value = mock_embeddings_model
         
         # Mock the get_tags and clustering functions
-        with (
-            patch('backend.indexing.get_tags', return_value="test, indexing"),
-            patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),
-            patch('backend.indexing.smart_summary', return_value="Summary")
-        ):
-            res = create_index(self.test_folder, "openai", "fake_api_key")
-            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
-            
-            # Verify the index was created
-            self.assertIsNotNone(index)
-            self.assertIsNotNone(docs)
-            self.assertIsNotNone(tags)
-            self.assertEqual(len(docs), 1)
-            # tags is now a list of strings (empty or joined tags)
-            self.assertEqual(len(tags), 1)
+        with patch('backend.indexing.get_tags', return_value="test, indexing"):
+            with patch('backend.indexing.perform_global_clustering', return_value={0: [0]}):
+                with patch('backend.indexing.smart_summary', return_value="Summary"):
+                    res = create_index(self.test_folder, "openai", "fake_api_key")
+                    index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+                    
+                    # Verify the index was created
+                    self.assertIsNotNone(index)
+                    self.assertIsNotNone(docs)
+                    self.assertIsNotNone(tags)
+                    self.assertEqual(len(docs), 1)
+                    # tags is now a list of strings (empty or joined tags)
+                    self.assertEqual(len(tags), 1)
 
     
     @patch('backend.indexing.CharacterTextSplitter')
