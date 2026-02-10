@@ -1,0 +1,304 @@
+# CodeRabbit Configuration for Docu-AI-Search
+# AI-powered code review configuration for semantic document search engine
+
+# Language configuration
+language: en-US
+
+# Early access features
+early_access: true
+
+# Enable automated reviews on PRs
+reviews:
+  # Enable high-level summary
+  high_level_summary: true
+  
+  # Enable poem-style summary
+  poem: true
+  
+  # Enable detailed review comments
+  review_status: true
+  
+  # Collapse walkthrough details by default
+  collapse_walkthrough: false
+  
+  # Request changes on critical issues
+  request_changes_workflow: true
+  
+  # Auto-approve simple changes (documentation, tests)
+  auto_review:
+    enabled: true
+    # Auto-approve if only documentation or test changes
+    # drafts: false
+    base_branches:
+      - main
+      - master
+
+# Path-specific instructions for reviewers
+path_instructions:
+  # Backend Python code - Focus on performance, security, async patterns
+  - path: "backend/**/*.py"
+    instructions: |
+      Review for:
+      - Python 3.8+ compatibility (no features requiring 3.10+ like parenthesized context managers)
+      - Async/await patterns in FastAPI endpoints
+      - SQL injection vulnerabilities in database.py
+      - Path traversal attacks in file operations
+      - Proper error handling and logging
+      - Memory leaks in FAISS index operations
+      - Thread safety in LLM integration
+      - Proper cleanup in context managers and tearDown methods
+  
+  # Backend tests - Focus on coverage and isolation
+  - path: "backend/tests/**/*.py"
+    instructions: |
+      Review for:
+      - Test isolation (proper setUp/tearDown)
+      - Mock usage for LLM calls (avoid API costs)
+      - Temp file cleanup with tempfile.mkdtemp() and shutil.rmtree()
+      - Coverage of edge cases
+      - Use of self.skipTest() for precondition failures
+      - if __name__ == '__main__': unittest.main() at end of file
+  
+  # Frontend React components - Focus on performance and accessibility
+  - path: "frontend/src/components/**/*.jsx"
+    instructions: |
+      Review for:
+      - Proper React hooks usage (useState, useEffect dependencies)
+      - Accessibility (ARIA labels, keyboard navigation)
+      - Performance (unnecessary re-renders, memo usage)
+      - Error handling in async operations
+      - Consistent TailwindCSS usage
+      - Framer Motion animation performance
+  
+  # Frontend tests - Focus on coverage with Vitest
+  - path: "frontend/src/test/**/*.test.jsx"
+    instructions: |
+      Review for:
+      - Import from 'vitest' not 'jest'
+      - Use of @testing-library/react for interactions
+      - Proper mock setup with vi.fn()
+      - Coverage of user interactions
+      - Async test handling
+  
+  # API endpoints - Focus on security and validation
+  - path: "backend/api.py"
+    instructions: |
+      Review for:
+      - Input validation with Pydantic models
+      - Authentication/authorization checks
+      - Rate limiting considerations
+      - CORS configuration security
+      - Background task usage for long operations
+      - Proper HTTP status codes
+  
+  # Database operations - Focus on data integrity
+  - path: "backend/database.py"
+    instructions: |
+      Review for:
+      - SQL injection prevention (parameterized queries)
+      - Proper connection cleanup (conn.close())
+      - Transaction handling (commit/rollback)
+      - Index usage for performance
+      - Data validation before insert/update
+  
+  # LLM integration - Focus on cost and reliability
+  - path: "backend/llm_integration.py"
+    instructions: |
+      Review for:
+      - Caching to avoid duplicate API calls
+      - Token limit handling
+      - Fallback mechanisms for failures
+      - Thread safety for local models
+      - Memory management for large models
+      - Context truncation for long inputs
+  
+  # Configuration files - Focus on security
+  - path: "**/*.ini"
+    instructions: |
+      Review for:
+      - No hardcoded secrets or API keys
+      - Proper default values
+      - Clear documentation of required fields
+  
+  # Scripts - Focus on reliability
+  - path: "scripts/**/*.{py,js}"
+    instructions: |
+      Review for:
+      - Error handling for network/filesystem operations
+      - Proper cleanup on failure
+      - Clear progress/status messages
+      - Cross-platform compatibility (Windows/Linux/Mac)
+  
+  # GitHub workflows - Focus on efficiency
+  - path: ".github/workflows/**/*.yml"
+    instructions: |
+      Review for:
+      - Efficient caching strategies
+      - Proper secret handling
+      - Minimal job dependencies
+      - Clear failure messages
+
+# File patterns to ignore in reviews
+reviews:
+  ignore_patterns:
+    - "**/*.md"  # Documentation will still be reviewed but with lower priority
+    - "data/**/*"  # Generated data files
+    - "models/**/*"  # Downloaded model binaries
+    - "**/*.pkl"  # Pickle files
+    - "**/*.faiss"  # FAISS index files
+    - "**/*.db"  # SQLite databases
+    - "**/*.log"  # Log files
+    - "**/node_modules/**"  # Node dependencies
+    - "**/__pycache__/**"  # Python cache
+    - "**/venv*/**"  # Virtual environments
+    - "**/.pytest_cache/**"  # Test cache
+    - "**/*.pyc"  # Python bytecode
+    - "package-lock.json"  # Lock files
+    - "npm-debug.log"  # Debug logs
+    - ".gitignore"  # Git config
+    - "*.png"  # Images
+    - "*.jpg"  # Images
+    - "*.jpeg"  # Images
+
+# Chat settings
+chat:
+  # Enable chat for quick questions
+  auto_reply: true
+
+# Knowledge base - Project-specific context
+knowledge_base:
+  # Core technologies and patterns
+  learnings:
+    - "This project uses FastAPI for backend API with async/await patterns"
+    - "Frontend uses React 19 with Vite and Vitest for testing (NOT Jest)"
+    - "Python code must be compatible with Python 3.8+ (no 3.10+ features)"
+    - "Local LLM inference uses llama-cpp-python with thread safety concerns"
+    - "FAISS is used for vector similarity search with FlatL2 index type"
+    - "All LLM calls in tests must be mocked to avoid API costs"
+    - "Backend tests use unittest framework, frontend uses Vitest"
+    - "File processing supports PDF, DOCX, XLSX, PPTX, TXT formats"
+    - "SQLite stores metadata with B-tree indices for performance"
+    - "Security: Path traversal prevention is critical in file operations"
+    - "Tests must clean up temp files with shutil.rmtree() in tearDown()"
+    - "Context managers should use comma-separated syntax, not parentheses (Python 3.8 compat)"
+
+# Tone and style
+tone_instructions: |
+  Use a professional but friendly tone. Focus on:
+  - Security vulnerabilities (highest priority)
+  - Performance issues (memory leaks, slow operations)
+  - Python 3.8+ compatibility issues
+  - Test coverage gaps
+  - Code maintainability
+  
+  Be specific with suggestions and provide code examples when possible.
+  Acknowledge good patterns when you see them.
+  Group related issues together for clarity.
+
+# Review effort level
+review:
+  # Request more detailed reviews
+  effort: thorough
+  
+  # Focus areas
+  focus:
+    - security
+    - performance
+    - testing
+    - documentation
+    - accessibility
+    - error_handling
+    - compatibility
+
+# Tools configuration
+tools:
+  # Enable all available tools
+  github-checks: true
+  
+  # Additional checks
+  similarity_analysis: true
+  
+  # Conciseness level (1-5, higher = more concise)
+  conciseness_level: 3
+
+# Labeling
+labels:
+  # Auto-label PRs based on changes
+  - name: "security"
+    patterns:
+      - "backend/model_manager.py"
+      - "backend/database.py"
+      - "**/*security*"
+  
+  - name: "backend"
+    patterns:
+      - "backend/**/*.py"
+  
+  - name: "frontend"
+    patterns:
+      - "frontend/**/*"
+  
+  - name: "tests"
+    patterns:
+      - "**/tests/**"
+      - "**/*.test.{js,jsx,py}"
+  
+  - name: "dependencies"
+    patterns:
+      - "requirements.txt"
+      - "package.json"
+      - "**/package.json"
+  
+  - name: "ci/cd"
+    patterns:
+      - ".github/workflows/**"
+  
+  - name: "documentation"
+    patterns:
+      - "**/*.md"
+      - "AGENTS.md"
+      - "README.md"
+  
+  - name: "performance"
+    patterns:
+      - "backend/search.py"
+      - "backend/indexing.py"
+      - "backend/llm_integration.py"
+
+# Custom prompts for specific checks
+custom_prompts:
+  - name: "Python 3.8 Compatibility Check"
+    prompt: "Verify no Python 3.10+ syntax is used (e.g., parenthesized context managers, match statements, | for unions)"
+    apply_to:
+      - "backend/**/*.py"
+  
+  - name: "Security Audit"
+    prompt: "Check for path traversal, SQL injection, XSS, and unsafe deserialization vulnerabilities"
+    apply_to:
+      - "backend/api.py"
+      - "backend/database.py"
+      - "backend/model_manager.py"
+  
+  - name: "Test Coverage"
+    prompt: "Ensure new code has corresponding test coverage and all test files follow project conventions"
+    apply_to:
+      - "backend/**/*.py"
+      - "frontend/src/components/**/*.jsx"
+  
+  - name: "Vitest Not Jest"
+    prompt: "Verify all test imports use 'vitest' package, not 'jest'. Check for vi.fn() instead of jest.fn()"
+    apply_to:
+      - "frontend/src/test/**/*.test.jsx"
+
+# Excluded reviewers (bots, automated accounts)
+exclude_reviewers:
+  - "dependabot[bot]"
+  - "github-actions[bot]"
+
+# Summary settings
+summary:
+  # Include file-level changes
+  include_file_changes: true
+  
+  # Include high-level architecture impact
+  include_architecture_changes: true
