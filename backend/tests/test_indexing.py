@@ -228,9 +228,6 @@ class TestIndexing(unittest.TestCase):
         self.assertEqual(loaded_docs, ["Test document"])
         self.assertEqual(loaded_tags, [["test", "tag"]])
 
-if __name__ == '__main__':
-    unittest.main()
-
 
 class TestIndexingMultipleFolders(unittest.TestCase):
     """Test indexing with multiple folders."""
@@ -438,3 +435,8 @@ class TestLoadIndex(unittest.TestCase):
         self.assertEqual(loaded_index, original_index)
         self.assertEqual(loaded_docs, original_docs)
         self.assertEqual(loaded_tags, original_tags)
+
+
+if __name__ == '__main__':
+    unittest.main()
+
