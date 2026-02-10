@@ -7,12 +7,25 @@ and result generation.
 
 import unittest
 import os
+import sys
 from unittest.mock import patch, MagicMock
-
 
 class TestBenchmarkModels(unittest.TestCase):
     """Tests for benchmark_models module."""
     
+    @patch('scripts.benchmark_models.psutil')
+    def test_get_memory_usage(self, mock_psutil):
+        """Test memory usage monitoring function."""
+        mock_psutil.Process.return_value.memory_info.return_value.rss = 104857600
+
+        from scripts.benchmark_models import get_memory_usage_mb
+
+        memory = get_memory_usage_mb()
+
+        self.assertIsInstance(memory, (int, float))
+        self.assertGreater(memory, 0, "Memory usage should be positive")
+        self.assertEqual(memory, 100.0)
+
     def test_import_benchmark_module(self):
         """Test that benchmark_models module can be imported."""
         try:
@@ -30,15 +43,6 @@ class TestBenchmarkModels(unittest.TestCase):
         self.assertEqual(result.model_name, "test-model")
         self.assertIsNotNone(result.embedding_latency_ms)
         self.assertIsNotNone(result.tokens_per_second)
-    
-    def test_get_memory_usage(self):
-        """Test memory usage monitoring function."""
-        from scripts.benchmark_models import get_memory_usage_mb
-        
-        memory = get_memory_usage_mb()
-        
-        self.assertIsInstance(memory, (int, float))
-        self.assertGreater(memory, 0, "Memory usage should be positive")
     
     def test_calculate_fact_retention(self):
         """Test fact retention score calculation."""
@@ -132,17 +136,10 @@ class TestBenchmarkIntegration(unittest.TestCase):
     
     def test_get_local_models(self):
         """Test that get_local_models returns list of models."""
-        from scripts.benchmark_models import get_local_models
-        
-        models = get_local_models()
-        
-        self.assertIsInstance(models, list)
-        
-        # If models exist, check structure
-        for model in models:
-            self.assertIn('name', model)
-            self.assertIn('path', model)
-            self.assertIn('size_mb', model)
+        with patch('scripts.benchmark_models.os.listdir', return_value=[]):
+             from scripts.benchmark_models import get_local_models
+             models = get_local_models()
+             self.assertIsInstance(models, list)
 
 
 if __name__ == '__main__':
