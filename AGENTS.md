@@ -305,6 +305,10 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-02-10
+- **Added Copilot onboarding instructions** - Created centralized guide for agents covering setup, testing, layout, and pitfalls.
+  - Files: `.github/copilot-instructions.md`, `AGENTS.md`
+
 ### 2026-01-30 (Security)
 - **Fixed Arbitrary File Deletion Vulnerability**
   - **fix**: Implemented `is_safe_model_path` validation in `model_manager.py` to prevent path traversal in model deletion.
