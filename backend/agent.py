@@ -51,49 +51,29 @@ CRITICAL:
             prompt = system_prompt + "\n\n" + "\n".join(history) + "\n\nThought:"
             
             # Generate LLM response
-            # We use a custom generation wrapper that just completes text
-            # We shouldn't use 'generate_ai_answer' because it wraps the prompt.
-            # We need a direct completion.
-            # hack: use smart_summary's client access or specific method.
-            # Re-using llm_integration.generate_ai_answer with a "raw" flag would be ideal.
-            # For now, let's reuse generate_ai_answer but pass the whole prompt as 'context' and empty 'question'? 
-            # No, prompt injection issues.
-            # Better: calling client directly.
-            
-            client = llm_integration.get_llm_client(self.provider, self.api_key, self.model_path)
-            
-            response_text = ""
             try:
-                if isinstance(client, str) and client.startswith("LOCAL:"):
-                    # Local Llama
-                    llm = llm_integration.get_local_llm(client.split("LOCAL:")[1])
-                    output = llm.create_completion(
-                        prompt, 
-                        max_tokens=256, 
-                        stop=["Observation:", "Definition:", "Thought:"], 
-                        echo=False,
-                        temperature=0.1,
-                        repeat_penalty=1.1
-                    )
-                    response_text = output['choices'][0]['text']
-                else:
-                    # LangChain
-                    from langchain_core.messages import HumanMessage, SystemMessage
-                    # LangChain chat models expect messages
-                    # We send one big human message for the ReAct state?
-                    # Or System + Human chain.
-                    msgs = [
-                       SystemMessage(content=system_prompt),
-                       HumanMessage(content="\n".join(history) + "\n\nThought:")
-                    ]
-                    resp = client.invoke(msgs)
-                    response_text = resp.content
+                # Construct the user-facing part of the prompt (history + trigger)
+                user_content = "\n".join(history) + "\n\nThought:"
+
+                response_text = llm_integration.generate_ai_answer(
+                    context="", # Ignored in raw mode
+                    question=user_content,
+                    provider=self.provider,
+                    api_key=self.api_key,
+                    model_path=self.model_path,
+                    raw=True,
+                    system_instruction=system_prompt,
+                    stop=["Observation:", "Definition:", "Thought:"],
+                    max_tokens=256,
+                    temperature=0.1
+                )
+
+                if response_text.startswith("Error"):
+                     raise Exception(response_text)
+
             except Exception as e:
                 yield {"type": "error", "content": f"LLM Error: {e}"}
                 return
-
-            # Clean response
-            response_text = response_text.strip()
             
             # Print for server console debug
             print(f"\n[AGENT THOUGHT] {response_text}\n")
