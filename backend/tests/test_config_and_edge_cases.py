@@ -7,6 +7,13 @@ Tests for config.ini handling, settings persistence, and validation.
 import unittest
 import os
 import tempfile
+try:
+    import fastapi
+except ImportError:
+try:
+    import fastapi
+except ImportError:
+    sys.modules["fastapi"] = MagicMock()
 import shutil
 from unittest.mock import patch, MagicMock
 import configparser
@@ -77,7 +84,9 @@ class TestModelPathValidation(unittest.TestCase):
 
 
 class TestSearchHistoryEdgeCases(unittest.TestCase):
-    """Edge case tests for search history."""
+    def setUp(self):
+        from backend.database import init_database
+        init_database()
     
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""

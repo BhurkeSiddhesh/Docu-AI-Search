@@ -25,14 +25,13 @@ mock_langchain_core = MagicMock()
 sys.modules['langchain_core'] = mock_langchain_core
 sys.modules['langchain_core.messages'] = mock_langchain_core
 
-# Define dummy classes for messages
-class SystemMessage:
+# Define dummy classes for messages that actually store content
+class MockMessage:
     def __init__(self, content):
         self.content = content
 
-class HumanMessage:
-    def __init__(self, content):
-        self.content = content
+class SystemMessage(MockMessage): pass
+class HumanMessage(MockMessage): pass
 
 # Attach to mock so import works inside llm_integration
 mock_langchain_core.SystemMessage = SystemMessage

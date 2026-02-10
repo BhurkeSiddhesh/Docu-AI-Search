@@ -37,23 +37,22 @@ class TestSearch(unittest.TestCase):
         """Test basic search functionality."""
         query = "test query"
         index = MagicMock()
-        docs = ["doc1", "doc2"]
+        docs = [{"text": "doc1", "filepath": "path1"}, {"text": "doc2", "filepath": "path2"}]
         tags = ["tag1", "tag2"]
 
-        # Mock faiss index search result via executor
-        # distances, indices
-        # search() function logic likely processes this.
-        # It typically gets 2D arrays.
+        # The search function processes dists_c and idxs_c.
+        # idxs_c needs to contain valid indices (0, 1) to retrieve docs.
+
         dists = np.array([[0.1, 0.2]])
         idxs = np.array([[0, 1]])
         self.mock_future.result.return_value = (dists, idxs)
 
-        # Assuming search signature is search(query, index, docs, tags, embedding_model)
-        # and it returns (results, context_string)
         results, context = search(query, index, docs, tags, self.mock_embeddings_model)
 
         self.assertEqual(len(results), 2)
+        # Context is a list of strings
         self.assertIn("doc1", context)
+        self.assertIn("doc2", context)
 
     def test_search_empty_index(self):
         """Test search with an empty index."""
@@ -62,13 +61,13 @@ class TestSearch(unittest.TestCase):
         docs = []
         tags = []
         
-        # Empty result
-        self.mock_future.result.return_value = (np.empty((1, 0)), np.empty((1, 0)))
+        # Empty result - indices will be empty or invalid (-1)
+        self.mock_future.result.return_value = (np.array([[-1]]), np.array([[-1]]))
 
         results, context = search(query, index, docs, tags, self.mock_embeddings_model)
         
         self.assertEqual(len(results), 0)
-        self.assertEqual(context, "")
+        self.assertEqual(context, [])
 
 if __name__ == '__main__':
     unittest.main()
