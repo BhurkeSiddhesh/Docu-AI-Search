@@ -390,7 +390,7 @@ async def update_config(config_data: ConfigModel):
     return {"status": "success", "message": "Configuration saved"}
 
 @app.post("/api/search")
-async def search_files(request: SearchRequest):
+async def search_files(request: SearchRequest, background_tasks: BackgroundTasks):
     global index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25
     
     if not index:
@@ -497,7 +497,7 @@ async def search_files(request: SearchRequest):
         
         # Save to search history
         execution_time_ms = int((time.time() - start_time) * 1000)
-        database.add_search_history(request.query, len(processed_results), execution_time_ms)
+        background_tasks.add_task(database.add_search_history, request.query, len(processed_results), execution_time_ms)
             
         return SearchResponse(
             results=processed_results,
