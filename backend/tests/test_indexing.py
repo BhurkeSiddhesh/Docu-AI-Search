@@ -5,6 +5,7 @@ import numpy as np
 import shutil
 from unittest.mock import patch, MagicMock, call
 from backend.indexing import create_index, save_index, load_index
+from backend import database
 
 class MockFuture:
     def __init__(self, result):
@@ -32,7 +33,12 @@ class TestIndexing(unittest.TestCase):
     def setUp(self):
         """Set up test environment before each test method."""
         self.temp_dir = tempfile.mkdtemp()
-        self.test_folder = self.temp_dir
+        self.test_folder = os.path.join(self.temp_dir, "content")
+        os.makedirs(self.test_folder, exist_ok=True)
+
+        # Initialize database for tests - OUTSIDE the indexed folder
+        database.DATABASE_PATH = os.path.join(self.temp_dir, 'test.db')
+        database.init_database()
         
         # Create a dummy file
         self.test_file = os.path.join(self.test_folder, "test.txt")
@@ -148,6 +154,7 @@ class TestIndexing(unittest.TestCase):
         mock_read_index.return_value = mock_faiss_index
         
         # Mock os.path.exists: True for main file, False for others
+        index_path = "fake_index.faiss"
         mock_exists.side_effect = lambda path: path == index_path
         
         # Mock pickle loading
@@ -156,7 +163,6 @@ class TestIndexing(unittest.TestCase):
             [["test", "tag"]]
         ]
         
-        index_path = "fake_index.faiss"
         res = load_index(index_path)
         loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res
         
@@ -180,6 +186,10 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         
+        # Initialize database for tests
+        database.DATABASE_PATH = os.path.join(self.temp_dir, 'test.db')
+        database.init_database()
+
         # Create two test folders
         self.folder1 = os.path.join(self.temp_dir, "folder1")
         self.folder2 = os.path.join(self.temp_dir, "folder2")
@@ -191,6 +201,10 @@ class TestIndexingMultipleFolders(unittest.TestCase):
             f.write("Content from folder 1")
         with open(os.path.join(self.folder2, "doc2.txt"), 'w') as f:
             f.write("Content from folder 2")
+
+    def tearDown(self):
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
 
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
@@ -285,6 +299,10 @@ class TestSaveIndex(unittest.TestCase):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
 
+    def tearDown(self):
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
     def test_save_index_creates_all_files(self):
         """Test that save_index creates .faiss, _docs.pkl, and _tags.pkl files."""
         import faiss
@@ -310,6 +328,10 @@ class TestLoadIndex(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
 
     def test_load_index_preserves_data(self):
         """Test that load_index correctly restores saved data."""

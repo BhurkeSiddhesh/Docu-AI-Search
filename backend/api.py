@@ -441,6 +441,16 @@ async def search_files(request: SearchRequest):
             index_summaries, cluster_summaries, cluster_map, bm25
         )
         
+        # Optimization: Batch database lookups for missing file info
+        indices_to_lookup = []
+        for result in results:
+            if not result.get('file_path') and result.get('faiss_idx') is not None:
+                indices_to_lookup.append(result['faiss_idx'])
+
+        file_lookup_map = {}
+        if indices_to_lookup:
+            file_lookup_map = database.get_files_by_faiss_indices(indices_to_lookup)
+
         processed_results = []
         
         # Helper to get full file path
@@ -459,7 +469,8 @@ async def search_files(request: SearchRequest):
             
             # If not in search result, try database lookup (for backward compatibility)
             if not file_path and faiss_idx is not None:
-                file_info = database.get_file_by_faiss_index(faiss_idx)
+                # Use batched lookup result
+                file_info = file_lookup_map.get(faiss_idx)
                 if file_info:
                     file_path = file_info.get('path')
                     file_name = file_info.get('filename')
