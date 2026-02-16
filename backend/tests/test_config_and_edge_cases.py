@@ -10,6 +10,7 @@ import tempfile
 import shutil
 from unittest.mock import patch, MagicMock
 import configparser
+from backend import database
 
 
 class TestConfiguration(unittest.TestCase):
@@ -78,6 +79,16 @@ class TestModelPathValidation(unittest.TestCase):
 
 class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = os.path.join(self.temp_dir, 'test_metadata.db')
+        database.init_database()
+
+    def tearDown(self):
+        database.DATABASE_PATH = self.original_db_path
+        shutil.rmtree(self.temp_dir)
     
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
@@ -116,9 +127,19 @@ class TestAPIResponseFormats(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
+        # Setup temp database for API tests
+        self.temp_dir = tempfile.mkdtemp()
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = os.path.join(self.temp_dir, 'test_metadata.db')
+        database.init_database()
+
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
+
+    def tearDown(self):
+        database.DATABASE_PATH = self.original_db_path
+        shutil.rmtree(self.temp_dir)
     
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
@@ -170,9 +191,19 @@ class TestErrorHandling(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
+        # Setup temp database for API tests
+        self.temp_dir = tempfile.mkdtemp()
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = os.path.join(self.temp_dir, 'test_metadata.db')
+        database.init_database()
+
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
+
+    def tearDown(self):
+        database.DATABASE_PATH = self.original_db_path
+        shutil.rmtree(self.temp_dir)
     
     def test_search_without_index(self):
         """Test search returns appropriate error when no index exists."""
