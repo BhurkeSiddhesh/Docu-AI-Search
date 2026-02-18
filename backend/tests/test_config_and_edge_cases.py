@@ -135,6 +135,9 @@ class TestAPIResponseFormats(unittest.TestCase):
         self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
         self.patcher.start()
 
+        from backend import database
+        database.init_database()
+
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
