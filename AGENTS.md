@@ -526,6 +526,13 @@ python scripts/verify_golden_set.py
   - `data/golden_dataset/`: Target directory for test files.
   - Added documentation to `AGENTS.md`.
 
+### 2026-02-13 (Performance)
+- **Optimized Search Performance (N+1 Query Fix)**
+  - **perf**: Implemented `get_files_by_faiss_indices` in `database.py` for batch lookup of file metadata.
+  - **perf**: Updated `search_files` and `stream_answer_endpoint` in `api.py` to use batch lookups, eliminating N+1 database queries.
+  - **Result**: Achieved ~6.5x speedup for metadata retrieval in search results (benchmarked with 10 lookups).
+  - **Files**: `backend/database.py`, `backend/api.py`, `backend/tests/test_database.py`, `backend/tests/benchmark_n1_query.py`
+
 ### 2026-01-30
 - **Optimized Startup** - Reduced polling interval to 500ms and enabled early browser launch
   - Files: `scripts/start_all.js`
