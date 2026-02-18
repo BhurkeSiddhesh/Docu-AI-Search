@@ -189,6 +189,22 @@ class TestIndexingMultipleFolders(unittest.TestCase):
             f.write("Content from folder 1")
         with open(os.path.join(self.folder2, "doc2.txt"), 'w') as f:
             f.write("Content from folder 2")
+        
+        # Global patches for executors to make tests synchronous and mock-friendly
+        self.pp_patcher = patch('concurrent.futures.ProcessPoolExecutor', side_effect=MockExecutor)
+        self.tp_patcher = patch('concurrent.futures.ThreadPoolExecutor', side_effect=MockExecutor)
+        self.ac_patcher = patch('concurrent.futures.as_completed', side_effect=lambda fs: fs)
+        self.pp_patcher.start()
+        self.tp_patcher.start()
+        self.ac_patcher.start()
+    
+    def tearDown(self):
+        """Clean up after each test method."""
+        self.pp_patcher.stop()
+        self.tp_patcher.stop()
+        self.ac_patcher.stop()
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
 
     @patch('backend.indexing.database')
     @patch('backend.indexing.get_embeddings')
@@ -289,7 +305,11 @@ class TestSaveIndex(unittest.TestCase):
         embeddings = np.array([[1.0, 2.0, 3.0]], dtype='float32')
         index.add(embeddings)
         
-        docs = ["Document 1", "Document 2"]
+        # Use dict-based structure matching current implementation
+        docs = [
+            {'text': 'Document 1', 'filepath': '/path/to/doc1.txt', 'faiss_idx': 0},
+            {'text': 'Document 2', 'filepath': '/path/to/doc2.txt', 'faiss_idx': 1}
+        ]
         tags = [["tag1"], ["tag2"]]
         
         index_path = os.path.join(self.temp_dir, "index.faiss")
