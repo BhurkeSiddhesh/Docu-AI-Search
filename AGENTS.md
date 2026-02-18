@@ -570,3 +570,23 @@ python scripts/verify_golden_set.py
 ```
 
 > **Always read [AGENTS.md](cci:7://file:///c:/Users/siddh/OneDrive/Desktop/Projects/File-Search-Engine-1/AGENTS.md:0:0-0:0) in project root for the latest Change Log before and after making changes.**
+### 2026-02-09 (Security & CI)
+- **Security & CI Improvements**
+  - **fix**: Restricted CORS policy in  to whitelisted methods and headers (preventing wildcard  vulnerabilities).
+  - **fix**: Isolated database state in backend tests (, ) using /tmp/fileOZ8bmR and mocks to resolve CI failures.
+  - **test**: Added  to enforce security policy.
+  - **Files**: , , ,
+
+### 2026-02-09 (Security & CI)
+- **Security & CI Improvements**
+  - **fix**: Restricted CORS policy in  to whitelisted methods and headers (preventing wildcard  vulnerabilities).
+  - **fix**: Isolated database state in backend tests (, ) using /tmp/fileOA3zpW and mocks to resolve CI failures.
+  - **test**: Added  to enforce security policy.
+  - **Files**: , , ,
+
+### 2026-02-09 (Security & CI)
+- **Security & CI Improvements**
+  - **fix**: Restricted CORS policy in backend/api.py to whitelisted methods and headers.
+  - **fix**: Isolated database state in backend tests (test_config_and_edge_cases.py, test_indexing.py) using tempfile and mocks to resolve CI failures.
+  - **test**: Added backend/tests/test_cors_config.py to enforce security policy.
+  - **Files**: backend/api.py, backend/tests/test_cors_config.py, backend/tests/test_config_and_edge_cases.py, backend/tests/test_indexing.py
