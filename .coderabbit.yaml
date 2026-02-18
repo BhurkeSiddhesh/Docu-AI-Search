@@ -234,21 +234,6 @@ tone_instructions: |
   Acknowledge good patterns when you see them.
   Group related issues together for clarity.
 
-# Review effort level
-review:
-  # Request more detailed reviews
-  effort: thorough
-  
-  # Focus areas
-  focus:
-    - security
-    - performance
-    - testing
-    - documentation
-    - accessibility
-    - error_handling
-    - compatibility
-
 # Tools configuration
 tools:
   # Enable all available tools
