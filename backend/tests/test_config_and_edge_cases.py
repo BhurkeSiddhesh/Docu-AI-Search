@@ -132,7 +132,21 @@ class TestAPIResponseFormats(unittest.TestCase):
     def setUp(self):
         """Set up test client."""
         self.db_fd, self.db_path = tempfile.mkstemp()
-        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+
+        # Initialize the database file
+        import sqlite3
+        conn = sqlite3.connect(self.db_path)
+        # Create tables manually or via init_database using this path
+        # We can't easily use init_database if we don't patch PATH first,
+        # but we want to patch get_connection.
+
+        # Let's use the patch on get_connection to be sure
+        def mock_get_connection():
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            return conn
+
+        self.patcher = patch('backend.database.get_connection', side_effect=mock_get_connection)
         self.patcher.start()
 
         from backend import database
@@ -145,7 +159,8 @@ class TestAPIResponseFormats(unittest.TestCase):
     def tearDown(self):
         self.patcher.stop()
         os.close(self.db_fd)
-        os.remove(self.db_path)
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
     
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
