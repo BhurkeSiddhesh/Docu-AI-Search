@@ -79,6 +79,21 @@ class TestModelPathValidation(unittest.TestCase):
 class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
     
+    def setUp(self):
+        """Set up temporary database."""
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+
+        from backend import database
+        database.init_database()
+
+    def tearDown(self):
+        """Clean up temporary database."""
+        self.patcher.stop()
+        os.close(self.db_fd)
+        os.remove(self.db_path)
+
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
         from backend import database
@@ -116,9 +131,18 @@ class TestAPIResponseFormats(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
+
+    def tearDown(self):
+        self.patcher.stop()
+        os.close(self.db_fd)
+        os.remove(self.db_path)
     
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
