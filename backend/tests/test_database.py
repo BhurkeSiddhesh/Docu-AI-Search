@@ -334,6 +334,42 @@ class TestDatabaseFileOperations(unittest.TestCase):
         file_info = database.get_file_by_faiss_index(888888)
         self.assertIsNone(file_info)
 
+    def test_get_files_by_faiss_indices(self):
+        """Test batch retrieving files by FAISS indices."""
+        from backend import database
+        from datetime import datetime
+
+        # Add two files
+        database.add_file(
+            path='/test/batch/1.txt',
+            filename='1.txt',
+            extension='.txt',
+            size_bytes=100,
+            modified_date=datetime.now(),
+            chunk_count=5,
+            faiss_start_idx=1000,
+            faiss_end_idx=1004
+        )
+        database.add_file(
+            path='/test/batch/2.txt',
+            filename='2.txt',
+            extension='.txt',
+            size_bytes=100,
+            modified_date=datetime.now(),
+            chunk_count=5,
+            faiss_start_idx=1005,
+            faiss_end_idx=1009
+        )
+
+        # Test batch retrieval
+        indices = [1002, 1007, 9999]
+        results = database.get_files_by_faiss_indices(indices)
+
+        self.assertEqual(len(results), 3)
+        self.assertEqual(results[1002]['filename'], '1.txt')
+        self.assertEqual(results[1007]['filename'], '2.txt')
+        self.assertIsNone(results[9999])
+
 
 class TestDatabasePreferences(unittest.TestCase):
     """Tests for preferences storage."""

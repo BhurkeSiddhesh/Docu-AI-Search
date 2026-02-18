@@ -11,6 +11,11 @@ import shutil
 from unittest.mock import patch, MagicMock
 import configparser
 
+def setUpModule():
+    """Set up shared temp database for all tests in this module."""
+    from backend import database
+    database.init_database()
+
 
 class TestConfiguration(unittest.TestCase):
     """Tests for configuration management."""

@@ -163,6 +163,40 @@ def get_file_by_path(path: str) -> Optional[Dict]:
     conn.close()
     return dict(row) if row else None
 
+def get_files_by_faiss_indices(faiss_indices: List[int]) -> Dict[int, Optional[Dict]]:
+    """Get the files that contain specific FAISS chunk indices in batch."""
+    if not faiss_indices:
+        return {}
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Use OR clauses for a small number of indices (standard search results size)
+    clauses = []
+    params = []
+    for idx in faiss_indices:
+        clauses.append("(faiss_start_idx <= ? AND faiss_end_idx >= ?)")
+        params.extend([idx, idx])
+
+    query = f"SELECT * FROM files WHERE {' OR '.join(clauses)}"
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+
+    # Map them back to the requested indices
+    results_map = {}
+    files_list = [dict(row) for row in rows]
+
+    for idx in faiss_indices:
+        found_file = None
+        for f in files_list:
+            if f['faiss_start_idx'] <= idx <= f['faiss_end_idx']:
+                found_file = f
+                break
+        results_map[idx] = found_file
+
+    conn.close()
+    return results_map
+
 def get_file_by_name(filename: str) -> Optional[Dict]:
     """Get a file by its name."""
     conn = get_connection()

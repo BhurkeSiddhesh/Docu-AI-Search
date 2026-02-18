@@ -443,23 +443,26 @@ async def search_files(request: SearchRequest):
         
         processed_results = []
         
-        # Helper to get full file path
-        # Note: search() now returns a list of result dicts directly
-        # We need to adapt the caching logic below
+        # OPTIMIZATION: Batch fetch missing file info to avoid N+1 queries
+        missing_faiss_idxs = [
+            r.get('faiss_idx') for r in results
+            if not r.get('file_path') and r.get('faiss_idx') is not None
+        ]
+
+        file_info_map = {}
+        if missing_faiss_idxs:
+            file_info_map = database.get_files_by_faiss_indices(missing_faiss_idxs)
         
-        # Wait, the previous logic was:
-        # results = search(...) -> returns list of dicts
         for idx, result in enumerate(results):
             faiss_idx = result.get('faiss_idx')
             
             # Use file info from search result first (it comes from FAISS doc metadata)
-            # Only fall back to database lookup if not available
             file_path = result.get('file_path')
             file_name = result.get('file_name')
             
-            # If not in search result, try database lookup (for backward compatibility)
+            # If not in search result, use batch-fetched database info
             if not file_path and faiss_idx is not None:
-                file_info = database.get_file_by_faiss_index(faiss_idx)
+                file_info = file_info_map.get(faiss_idx)
                 if file_info:
                     file_path = file_info.get('path')
                     file_name = file_info.get('filename')
@@ -547,12 +550,31 @@ async def stream_answer_endpoint(request: SearchRequest):
         index_summaries, cluster_summaries, cluster_map, bm25
     )
 
+    # OPTIMIZATION: Batch fetch missing file info to avoid N+1 queries and improve context quality
+    missing_faiss_idxs = [
+        r.get('faiss_idx') for r in results
+        if not r.get('file_name') and r.get('faiss_idx') is not None
+    ]
+
+    file_info_map = {}
+    if missing_faiss_idxs:
+        file_info_map = database.get_files_by_faiss_indices(missing_faiss_idxs)
+
     # Prepare context
     final_context_snippets = []
     for idx, result in enumerate(results):
          # Use fast fallback summary for streaming context (no new LLM calls)
          summary = summarize(result['document'], provider, api_key, model_path, question=request.query)
-         file_name = result.get('file_name', '')
+
+         faiss_idx = result.get('faiss_idx')
+         file_name = result.get('file_name')
+
+         # Fallback to database lookup if missing
+         if not file_name and faiss_idx is not None:
+             file_info = file_info_map.get(faiss_idx)
+             if file_info:
+                 file_name = file_info.get('filename')
+
          file_prefix = f"[From: {file_name}] " if file_name else ""
          if summary and len(summary) > 20:
              final_context_snippets.append(f"{file_prefix}{summary}")
