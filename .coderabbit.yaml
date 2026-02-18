@@ -137,6 +137,45 @@ path_instructions:
       - Proper secret handling
       - Minimal job dependencies
       - Clear failure messages
+  
+  # Python 3.8 Compatibility Check - All backend Python files
+  - path: "backend/**/*.py"
+    instructions: |
+      Python 3.8 Compatibility Check:
+      Verify no Python 3.10+ syntax is used (e.g., parenthesized context managers, match statements, | for unions)
+  
+  # Security Audit - Critical backend files
+  - path: "backend/api.py"
+    instructions: |
+      Security Audit:
+      Check for path traversal, SQL injection, XSS, and unsafe deserialization vulnerabilities
+  
+  - path: "backend/database.py"
+    instructions: |
+      Security Audit:
+      Check for path traversal, SQL injection, XSS, and unsafe deserialization vulnerabilities
+  
+  - path: "backend/model_manager.py"
+    instructions: |
+      Security Audit:
+      Check for path traversal, SQL injection, XSS, and unsafe deserialization vulnerabilities
+  
+  # Test Coverage - Backend and frontend components
+  - path: "backend/**/*.py"
+    instructions: |
+      Test Coverage:
+      Ensure new code has corresponding test coverage and all test files follow project conventions
+  
+  - path: "frontend/src/components/**/*.jsx"
+    instructions: |
+      Test Coverage:
+      Ensure new code has corresponding test coverage and all test files follow project conventions
+  
+  # Vitest Not Jest - Frontend test files
+  - path: "frontend/src/test/**/*.test.jsx"
+    instructions: |
+      Vitest Not Jest:
+      Verify all test imports use 'vitest' package, not 'jest'. Check for vi.fn() instead of jest.fn()
 
 # File patterns to ignore in reviews
 reviews:
@@ -264,31 +303,6 @@ labels:
       - "backend/search.py"
       - "backend/indexing.py"
       - "backend/llm_integration.py"
-
-# Custom prompts for specific checks
-custom_prompts:
-  - name: "Python 3.8 Compatibility Check"
-    prompt: "Verify no Python 3.10+ syntax is used (e.g., parenthesized context managers, match statements, | for unions)"
-    apply_to:
-      - "backend/**/*.py"
-  
-  - name: "Security Audit"
-    prompt: "Check for path traversal, SQL injection, XSS, and unsafe deserialization vulnerabilities"
-    apply_to:
-      - "backend/api.py"
-      - "backend/database.py"
-      - "backend/model_manager.py"
-  
-  - name: "Test Coverage"
-    prompt: "Ensure new code has corresponding test coverage and all test files follow project conventions"
-    apply_to:
-      - "backend/**/*.py"
-      - "frontend/src/components/**/*.jsx"
-  
-  - name: "Vitest Not Jest"
-    prompt: "Verify all test imports use 'vitest' package, not 'jest'. Check for vi.fn() instead of jest.fn()"
-    apply_to:
-      - "frontend/src/test/**/*.test.jsx"
 
 # Excluded reviewers (bots, automated accounts)
 exclude_reviewers:
