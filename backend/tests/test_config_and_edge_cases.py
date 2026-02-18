@@ -82,17 +82,30 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
     def setUp(self):
         """Set up temporary database."""
         self.db_fd, self.db_path = tempfile.mkstemp()
-        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+
+        # Patch get_connection to ensure we use the temp DB regardless of import order
+        import sqlite3
+        def mock_get_connection():
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            return conn
+
+        self.patcher = patch('backend.database.get_connection', side_effect=mock_get_connection)
         self.patcher.start()
 
         from backend import database
         database.init_database()
 
+        from fastapi.testclient import TestClient
+        from backend.api import app
+        self.client = TestClient(app)
+
     def tearDown(self):
         """Clean up temporary database."""
         self.patcher.stop()
         os.close(self.db_fd)
-        os.remove(self.db_path)
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
 
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
