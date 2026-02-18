@@ -1,19 +1,19 @@
 import time
-import sys
 import os
-import unittest
-from unittest.mock import MagicMock, patch
-
-# Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import tempfile
+import shutil
 
 from backend import database
 
 def setup_mock_db():
-    # Initialize a temporary database
-    database.DATABASE_PATH = "test_metadata.db"
-    if os.path.exists(database.DATABASE_PATH):
-        os.remove(database.DATABASE_PATH)
+    """Initialize a temporary database and return cleanup function."""
+    # Save original DATABASE_PATH
+    original_path = database.DATABASE_PATH
+    
+    # Create temporary database in temp directory
+    temp_dir = tempfile.mkdtemp()
+    temp_db_path = os.path.join(temp_dir, "test_metadata.db")
+    database.DATABASE_PATH = temp_db_path
     database.init_database()
 
     # Add some dummy files
@@ -28,6 +28,13 @@ def setup_mock_db():
             faiss_start_idx=i*10,
             faiss_end_idx=i*10 + 9
         )
+    
+    def cleanup():
+        """Restore original DATABASE_PATH and remove temp directory."""
+        database.DATABASE_PATH = original_path
+        shutil.rmtree(temp_dir)
+    
+    return cleanup
 
 def measure_n1(indices):
     start = time.time()
@@ -38,35 +45,6 @@ def measure_n1(indices):
     end = time.time()
     return end - start, results
 
-def get_files_by_faiss_indices_optimized(faiss_indices):
-    if not faiss_indices:
-        return {}
-
-    conn = database.get_connection()
-    cursor = conn.cursor()
-
-    # Simple batch query approach: find all files that cover any of these indices.
-    # We can use OR clauses for a small number of indices.
-    clauses = ["(faiss_start_idx <= ? AND faiss_end_idx >= ?)" for _ in faiss_indices]
-    params = []
-    for idx in faiss_indices:
-        params.extend([idx, idx])
-
-    query = f"SELECT * FROM files WHERE {' OR '.join(clauses)}"
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-
-    # Map them back
-    file_map = {}
-    for row in rows:
-        row_dict = dict(row)
-        # A file can cover multiple indices in our list
-        for idx in faiss_indices:
-            if row_dict['faiss_start_idx'] <= idx <= row_dict['faiss_end_idx']:
-                file_map[idx] = row_dict
-
-    return file_map
-
 def measure_batch(indices):
     start = time.time()
     results_map = database.get_files_by_faiss_indices(indices)
@@ -75,24 +53,24 @@ def measure_batch(indices):
     return end - start, results
 
 if __name__ == "__main__":
-    setup_mock_db()
+    cleanup = setup_mock_db()
+    
+    try:
+        # Typical search results size
+        test_indices = [5, 15, 25, 35, 45, 55, 65, 75, 85, 95]
 
-    # Typical search results size
-    test_indices = [5, 15, 25, 35, 45, 55, 65, 75, 85, 95]
+        print(f"Measuring performance for {len(test_indices)} lookups...")
 
-    print(f"Measuring performance for {len(test_indices)} lookups...")
+        # Warm up
+        measure_n1(test_indices)
+        measure_batch(test_indices)
 
-    # Warm up
-    measure_n1(test_indices)
-    measure_batch(test_indices)
+        n1_time, _ = measure_n1(test_indices)
+        batch_time, _ = measure_batch(test_indices)
 
-    n1_time, _ = measure_n1(test_indices)
-    batch_time, _ = measure_batch(test_indices)
-
-    print(f"N+1 time: {n1_time:.6f}s")
-    print(f"Batch time: {batch_time:.6f}s")
-    print(f"Improvement: {(n1_time / batch_time):.2f}x")
-
-    # Cleanup
-    if os.path.exists(database.DATABASE_PATH):
-        os.remove(database.DATABASE_PATH)
+        print(f"N+1 time: {n1_time:.6f}s")
+        print(f"Batch time: {batch_time:.6f}s")
+        print(f"Improvement: {(n1_time / batch_time):.2f}x")
+    finally:
+        # Cleanup temp database and restore original path
+        cleanup()
