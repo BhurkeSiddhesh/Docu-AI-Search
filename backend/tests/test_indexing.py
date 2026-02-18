@@ -85,7 +85,9 @@ class TestIndexing(unittest.TestCase):
         mock_get_embeddings.return_value = mock_embeddings_model
         
         # Mock the get_tags and clustering functions
-        with patch('backend.indexing.get_tags', return_value="test, indexing"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
+        with patch('backend.indexing.get_tags', return_value="test, indexing"), \
+             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
+             patch('backend.indexing.smart_summary', return_value="Summary"):
             res = create_index(self.test_folder, "openai", "fake_api_key")
             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
             
@@ -115,7 +117,9 @@ class TestIndexing(unittest.TestCase):
         mock_embeddings_model = MagicMock()
         mock_get_embeddings.return_value = mock_embeddings_model
         
-        with patch('backend.indexing.get_tags', return_value=""),              patch('backend.indexing.perform_global_clustering', return_value={}),              patch('backend.indexing.smart_summary', return_value=""):
+        with patch('backend.indexing.get_tags', return_value=""), \
+             patch('backend.indexing.perform_global_clustering', return_value={}), \
+             patch('backend.indexing.smart_summary', return_value=""):
             res = create_index(empty_folder, "openai", "fake_api_key")
             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
 
@@ -244,7 +248,9 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
         mock_get_embeddings.return_value = mock_embeddings_model
         
-        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0, 1]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
+        with patch('backend.indexing.get_tags', return_value="test"), \
+             patch('backend.indexing.perform_global_clustering', return_value={0: [0, 1]}), \
+             patch('backend.indexing.smart_summary', return_value="Summary"):
             res = create_index(
                 [self.folder1, self.folder2], 
                 "openai", 
@@ -271,7 +277,9 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         def progress_callback(current, total, filename):
             progress_calls.append((current, total, filename))
         
-        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
+        with patch('backend.indexing.get_tags', return_value="test"), \
+             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
+             patch('backend.indexing.smart_summary', return_value="Summary"):
             create_index(self.folder1, "openai", "fake_key", progress_callback=progress_callback)
             
             # Verify progress was called
@@ -302,7 +310,9 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3]]
         mock_get_embeddings.return_value = mock_embeddings_model
         
-        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
+        with patch('backend.indexing.get_tags', return_value="test"), \
+             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
+             patch('backend.indexing.smart_summary', return_value="Summary"):
             # Pass string instead of list
             res = create_index(
                 self.folder1,  # String, not list
