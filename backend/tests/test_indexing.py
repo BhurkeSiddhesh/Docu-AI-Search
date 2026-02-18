@@ -110,17 +110,19 @@ class TestIndexing(unittest.TestCase):
         mock_get_embeddings.return_value = mock_embeddings_model
         
         # Mock the get_tags and clustering functions
-        with patch('backend.indexing.get_tags', return_value="test, indexing"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
-            res = create_index(self.test_folder, "openai", "fake_api_key")
-            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
-            
-            # Verify the index was created
-            self.assertIsNotNone(index)
-            self.assertIsNotNone(docs)
-            self.assertIsNotNone(tags)
-            self.assertEqual(len(docs), 1)
-            # tags is now a list of strings (empty or joined tags)
-            self.assertEqual(len(tags), 1)
+        with patch('backend.indexing.get_tags', return_value="test, indexing"):
+            with patch('backend.indexing.perform_global_clustering', return_value={0: [0]}):
+                with patch('backend.indexing.smart_summary', return_value="Summary"):
+                    res = create_index(self.test_folder, "openai", "fake_api_key")
+                    index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+                    
+                    # Verify the index was created
+                    self.assertIsNotNone(index)
+                    self.assertIsNotNone(docs)
+                    self.assertIsNotNone(tags)
+                    self.assertEqual(len(docs), 1)
+                    # tags is now a list of strings (empty or joined tags)
+                    self.assertEqual(len(tags), 1)
 
     
     @patch('backend.indexing.CharacterTextSplitter')
@@ -160,11 +162,10 @@ class TestIndexing(unittest.TestCase):
                 f.write("dummy")
         mock_write_index.side_effect = side_effect_write
 
-        # Create a mock FAISS index and documents
+        # Create a real FAISS index and documents (only write_index is mocked)
         import faiss
         dimension = 3
         index = faiss.IndexFlatL2(dimension)
-        # We need a real numpy array for the mock call if we were using real faiss, but here faiss is mocked
         embeddings = np.array([[1.0, 2.0, 3.0]], dtype='float32')
         index.add(embeddings)
         
@@ -225,9 +226,6 @@ class TestIndexing(unittest.TestCase):
         self.assertEqual(loaded_docs, ["Test document"])
         self.assertEqual(loaded_tags, [["test", "tag"]])
 
-if __name__ == '__main__':
-    unittest.main()
-
 
 class TestIndexingMultipleFolders(unittest.TestCase):
     """Test indexing with multiple folders."""
@@ -247,6 +245,11 @@ class TestIndexingMultipleFolders(unittest.TestCase):
             f.write("Content from folder 1")
         with open(os.path.join(self.folder2, "doc2.txt"), 'w') as f:
             f.write("Content from folder 2")
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
 
     @patch('backend.indexing.CharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
@@ -350,6 +353,11 @@ class TestSaveIndex(unittest.TestCase):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
 
+    def tearDown(self):
+        """Clean up test fixtures."""
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
     @patch('backend.indexing.faiss.write_index')
     def test_save_index_creates_all_files(self, mock_write_index):
         """Test that save_index creates .faiss, _docs.pkl, and _tags.pkl files."""
@@ -382,6 +390,11 @@ class TestLoadIndex(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
 
     @patch('backend.indexing.faiss.write_index')
     @patch('backend.indexing.faiss.read_index')
@@ -420,3 +433,8 @@ class TestLoadIndex(unittest.TestCase):
         self.assertEqual(loaded_index, original_index)
         self.assertEqual(loaded_docs, original_docs)
         self.assertEqual(loaded_tags, original_tags)
+
+
+if __name__ == '__main__':
+    unittest.main()
+

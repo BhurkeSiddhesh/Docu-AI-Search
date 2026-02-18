@@ -109,18 +109,20 @@ class TestModelPathValidation(unittest.TestCase):
         """Test expected models directory structure."""
         models_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models')
         
-        # This test might fail if models folder doesn't exist in CI, so check first
-        if os.path.exists(models_dir):
-            # Check it's a directory
-            self.assertTrue(os.path.isdir(models_dir))
-            
-            # Check all files are .gguf
-            for f in os.listdir(models_dir):
-                if os.path.isfile(os.path.join(models_dir, f)):
-                    self.assertTrue(
-                        f.endswith('.gguf') or f.startswith('.'),
-                        f"Unexpected file in models dir: {f}"
-                    )
+        # Skip test if models folder doesn't exist in CI
+        if not os.path.exists(models_dir):
+            self.skipTest(f"Models directory {models_dir} does not exist")
+        
+        # Check it's a directory
+        self.assertTrue(os.path.isdir(models_dir))
+        
+        # Check all files are .gguf
+        for f in os.listdir(models_dir):
+            if os.path.isfile(os.path.join(models_dir, f)):
+                self.assertTrue(
+                    f.endswith('.gguf') or f.startswith('.'),
+                    f"Unexpected file in models dir: {f}"
+                )
 
 
 class TestSearchHistoryEdgeCases(unittest.TestCase):
