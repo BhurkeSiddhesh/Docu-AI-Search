@@ -69,6 +69,17 @@ class TestIndexing(unittest.TestCase):
     def setUp(self):
         """Set up test environment before each test method."""
         self.temp_dir = tempfile.mkdtemp()
+        self.db_dir = tempfile.mkdtemp() # Separate dir for DB to avoid indexing it
+        self.addCleanup(shutil.rmtree, self.db_dir)
+
+        # Setup temp database
+        self.db_path = os.path.join(self.db_dir, 'test_indexing.db')
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        from backend import database
+        database.init_database()
+
+
         self.test_folder = self.temp_dir
         
         # Create a dummy file
@@ -85,6 +96,7 @@ class TestIndexing(unittest.TestCase):
         self.ac_patcher.start()
 
     def tearDown(self):
+        self.patcher.stop()
         """Clean up after each test method."""
         self.pp_patcher.stop()
         self.tp_patcher.stop()
@@ -233,6 +245,18 @@ class TestIndexingMultipleFolders(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
+        self.db_dir = tempfile.mkdtemp() # Separate dir for DB
+        self.addCleanup(shutil.rmtree, self.db_dir)
+
+        # Setup temp database
+        self.db_path = os.path.join(self.db_dir, 'test_indexing.db')
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        from backend import database
+        database.init_database()
+        self.addCleanup(self.patcher.stop)
+
+
         
         # Create two test folders
         self.folder1 = os.path.join(self.temp_dir, "folder1")
@@ -352,6 +376,18 @@ class TestSaveIndex(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
+        self.db_dir = tempfile.mkdtemp() # Separate dir for DB
+        self.addCleanup(shutil.rmtree, self.db_dir)
+
+        # Setup temp database
+        self.db_path = os.path.join(self.db_dir, 'test_indexing.db')
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        from backend import database
+        database.init_database()
+        self.addCleanup(self.patcher.stop)
+
+
 
     def tearDown(self):
         """Clean up test fixtures."""
@@ -390,6 +426,18 @@ class TestLoadIndex(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
+        self.db_dir = tempfile.mkdtemp() # Separate dir for DB
+        self.addCleanup(shutil.rmtree, self.db_dir)
+
+        # Setup temp database
+        self.db_path = os.path.join(self.db_dir, 'test_indexing.db')
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        from backend import database
+        database.init_database()
+        self.addCleanup(self.patcher.stop)
+
+
 
     def tearDown(self):
         """Clean up test fixtures."""
