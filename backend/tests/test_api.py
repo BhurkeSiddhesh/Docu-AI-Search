@@ -71,7 +71,7 @@ class TestAPISearch(unittest.TestCase):
         self.client = TestClient(app)
 
     @patch('backend.database.add_search_history')
-    @patch('backend.database.get_file_by_faiss_index')
+    @patch('backend.database.get_files_by_faiss_indices')
     @patch('backend.llm_integration.cached_generate_ai_answer')
     @patch('backend.llm_integration.cached_smart_summary')
     @patch('backend.api.load_config')
@@ -79,13 +79,13 @@ class TestAPISearch(unittest.TestCase):
     @patch('backend.api.summarize')
     @patch('backend.api.get_embeddings')
     def test_search_endpoint(self, mock_get_embeddings, mock_summarize, mock_search, mock_load_config, 
-                              mock_smart_summary, mock_generate_ai, mock_get_file, mock_add_history):
+                              mock_smart_summary, mock_generate_ai, mock_get_files, mock_add_history):
         """Test the search endpoint."""
         mock_config = MagicMock()
         mock_config.get.return_value = 'openai'
         mock_load_config.return_value = mock_config
         
-        mock_get_file.return_value = {'filename': 'test.pdf', 'path': '/test/test.pdf'}
+        mock_get_files.return_value = {0: {'filename': 'test.pdf', 'path': '/test/test.pdf'}}
         mock_smart_summary.return_value = "Smart Summary"
         mock_generate_ai.return_value = "AI Answer"
         

@@ -448,6 +448,8 @@ async def search_files(request: SearchRequest):
             r.get('faiss_idx') for r in results
             if not r.get('file_path') and r.get('faiss_idx') is not None
         ]
+        # De-duplicate indices to avoid inflating SQL query
+        missing_faiss_idxs = list(dict.fromkeys(missing_faiss_idxs))
 
         file_info_map = {}
         if missing_faiss_idxs:
@@ -555,6 +557,8 @@ async def stream_answer_endpoint(request: SearchRequest):
         r.get('faiss_idx') for r in results
         if not r.get('file_name') and r.get('faiss_idx') is not None
     ]
+    # De-duplicate indices to avoid inflating SQL query
+    missing_faiss_idxs = list(dict.fromkeys(missing_faiss_idxs))
 
     file_info_map = {}
     if missing_faiss_idxs:
