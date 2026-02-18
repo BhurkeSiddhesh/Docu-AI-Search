@@ -8,7 +8,7 @@ import tempfile
 import shutil
 import time
 import sqlite3
-import pickle
+import json
 from datetime import datetime
 
 # Set encoding for Windows console
@@ -242,6 +242,9 @@ class StressTest:
         # Test database initialization
         result.add_detail("Testing database operations...")
         
+        # Initialize database
+        database.init_database()
+
         # Clear existing data
         database.clear_all_files()
         
@@ -301,7 +304,7 @@ class StressTest:
             
         try:
             # Test config loading
-            from api import load_config, save_config_file
+            from backend.api import load_config, save_config_file
             
             config = load_config()
             result.add_detail("Config loaded successfully")
@@ -366,7 +369,7 @@ class StressTest:
     def test_api_import(self, result):
         """Test that the API module can be imported without errors"""
         try:
-            import api
+            from backend import api
             result.add_detail("API module imported successfully")
             
             # Check that key endpoints exist
@@ -420,7 +423,7 @@ class StressTest:
         index.add(vectors)
         
         # Create test docs and tags
-        docs = [f"Test document {i}" for i in range(n_vectors)]
+        docs = [{"text": f"Test document {i}", "filepath": f"doc{i}.txt", "faiss_idx": i} for i in range(n_vectors)]
         tags = [[f"tag{i}"] for i in range(n_vectors)]
         
         result.add_detail(f"Created test index with {n_vectors} vectors")
@@ -433,21 +436,21 @@ class StressTest:
             result.set_error("Index file not created")
             return
             
-        docs_path = test_index_path.replace('.faiss', '_docs.pkl')
-        tags_path = test_index_path.replace('.faiss', '_tags.pkl')
+        docs_path = test_index_path.replace('.faiss', '_docs.json')
+        tags_path = test_index_path.replace('.faiss', '_tags.json')
         
         if not os.path.exists(docs_path):
-            result.set_error("Docs pickle file not created")
+            result.set_error("Docs json file not created")
             return
             
         if not os.path.exists(tags_path):
-            result.set_error("Tags pickle file not created")
+            result.set_error("Tags json file not created")
             return
             
         result.add_detail("Index files created successfully")
         
         # Load index
-        loaded_index, loaded_docs, loaded_tags = load_index(test_index_path)
+        loaded_index, loaded_docs, loaded_tags, index_sum, cluster_sum, cluster_map, bm25 = load_index(test_index_path)
         
         # Verify loaded data
         if loaded_index.ntotal != n_vectors:
@@ -490,7 +493,7 @@ class StressTest:
         
         # Test search
         embeddings_model = MockEmbeddings()
-        results = search("test query", index, docs, tags, embeddings_model)
+        results, context_snippets = search("test query", index, docs, tags, embeddings_model)
         
         if len(results) > 0:
             result.add_detail(f"Search returned {len(results)} results")
@@ -589,6 +592,9 @@ class StressTest:
                 with lock:
                     errors.append(str(e))
                     
+        # Initialize database
+        database.init_database()
+
         # Clear database first
         database.clear_all_files()
         
