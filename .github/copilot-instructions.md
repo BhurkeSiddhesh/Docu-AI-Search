@@ -61,7 +61,11 @@ models/                 # Downloaded GGUF models
 ⚠️ **CRITICAL**: Follow these rules strictly:
 
 1. **Backend Code**: ALL Python source files go in `backend/` or `backend/tests/`
-   - NO `.py` files in project root (except config scripts)
+   - NO `.py` files in project root (except for explicitly documented utility/config scripts)
+   - Current allowed exceptions (do not add more without updating this list):
+     - `debug_search.py` – debug/analysis helper
+     - `verify_search_results.py` – verification script
+     - `conftest.py` – pytest configuration (used only for local experimentation; backend tests use `unittest`)
 2. **Scripts**: Build, maintenance scripts go in `scripts/`
 3. **Data**: Generated files (`.db`, `.faiss`, `.log`, `.json`) go in `data/`
 4. **Tests**:
@@ -98,7 +102,7 @@ response = client.invoke("Your prompt")
 ### FastAPI Endpoints (`api.py`)
 ```python
 @app.post("/api/endpoint")
-def endpoint(request: RequestModel, background_tasks: BackgroundTasks):
+async def endpoint(request: RequestModel, background_tasks: BackgroundTasks):
     # For long operations, use background_tasks.add_task(func, args)
     return {"status": "success", "data": result}
 ```
