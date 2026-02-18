@@ -12,6 +12,44 @@ from unittest.mock import patch, MagicMock
 import configparser
 
 
+# Shared temp database setup for test classes that need it
+_shared_temp_dir = None
+_original_db_path = None
+
+
+def setUpModule():
+    """Set up shared temp database for tests that need database access."""
+    global _shared_temp_dir, _original_db_path
+    from backend import database
+    
+    # Create shared temp directory
+    _shared_temp_dir = tempfile.mkdtemp()
+    _original_db_path = database.DATABASE_PATH
+    database.DATABASE_PATH = os.path.join(_shared_temp_dir, 'test_metadata.db')
+    database.init_database()
+
+
+def tearDownModule():
+    """Clean up shared temp database."""
+    global _shared_temp_dir, _original_db_path
+    from backend import database
+    import gc
+    import time
+    
+    # Restore original path
+    database.DATABASE_PATH = _original_db_path
+    
+    # Try to close any lingering connections and clean up
+    gc.collect()
+    time.sleep(0.1)  # Small delay to let OS release file handles
+    
+    if _shared_temp_dir and os.path.exists(_shared_temp_dir):
+        try:
+            shutil.rmtree(_shared_temp_dir)
+        except Exception as e:
+            print(f"Warning: Could not clean up test directory {_shared_temp_dir}: {e}")
+
+
 class TestConfiguration(unittest.TestCase):
     """Tests for configuration management."""
     
@@ -81,8 +119,7 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
 
     def setUp(self):
         from backend import database
-        database.init_database()
-        # Clear search history table before test
+        # Clear search history table before test (database already initialized in module setup)
         conn = database.get_connection()
         conn.execute("DELETE FROM search_history")
         conn.commit()
@@ -127,8 +164,7 @@ class TestAPIResponseFormats(unittest.TestCase):
         """Set up test client."""
         from fastapi.testclient import TestClient
         from backend.api import app
-        from backend import database
-        database.init_database()
+        # Database already initialized in module setup
         self.client = TestClient(app)
     
     def test_config_response_format(self):

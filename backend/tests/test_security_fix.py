@@ -2,7 +2,7 @@ import unittest
 import os
 import tempfile
 import shutil
-from backend.model_manager import delete_model, is_safe_path
+from backend.model_manager import delete_model, is_safe_model_path as is_safe_path
 
 # Mocking MODELS_DIR for the module would be tricky with unittest parallel execution.
 # However, delete_model and is_safe_path take explicit paths or use global MODELS_DIR.
@@ -23,19 +23,19 @@ class TestSecurityFix(unittest.TestCase):
 
     def test_is_safe_path_valid(self):
         file_path = os.path.join(self.temp_dir, "file.txt")
-        # Ensure base dir exists
-        self.assertTrue(is_safe_path(self.temp_dir, file_path))
+        # MODELS_DIR is mocked to self.temp_dir, so this should be safe
+        self.assertTrue(is_safe_path(file_path))
 
     def test_is_safe_path_traversal(self):
         # Create a sibling directory
         sibling_dir = self.temp_dir + "_sibling"
         os.makedirs(sibling_dir, exist_ok=True)
         try:
-            # Using .. to go out of base_dir
+            # Using .. to go out of MODELS_DIR (mocked to self.temp_dir)
             traversal_path = os.path.join(self.temp_dir, "..", os.path.basename(sibling_dir), "secret.txt")
 
-            # Should be False because it resolves to sibling_dir which is not under base_dir
-            self.assertFalse(is_safe_path(self.temp_dir, traversal_path))
+            # Should be False because it resolves to sibling_dir which is not under MODELS_DIR
+            self.assertFalse(is_safe_path(traversal_path))
         finally:
             if os.path.exists(sibling_dir):
                 shutil.rmtree(sibling_dir)

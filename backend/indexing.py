@@ -344,7 +344,23 @@ def load_index(filepath):
     # Reconstruct BM25 from all_chunks text
     if all_chunks:
         print("Reconstructing BM25 index...")
-        chunk_strings = [chunk.get('text', '') for chunk in all_chunks]
+        # Normalize various possible shapes of all_chunks and safely extract text
+        if isinstance(all_chunks, dict):
+            iterable_chunks = all_chunks.values()
+        else:
+            iterable_chunks = all_chunks
+
+        chunk_strings = []
+        for chunk in iterable_chunks:
+            if isinstance(chunk, dict):
+                text = chunk.get('text', '')
+            elif chunk is None:
+                text = ''
+            else:
+                # Treat non-dict payloads (e.g., plain strings) as text
+                text = str(chunk)
+            chunk_strings.append(text)
+        
         tokenized_corpus = [tokenize(doc) for doc in chunk_strings]
         bm25 = BM25Okapi(tokenized_corpus)
             
