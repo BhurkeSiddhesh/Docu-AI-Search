@@ -370,6 +370,20 @@ class TestDatabaseFileOperations(unittest.TestCase):
         self.assertEqual(results[1007]['filename'], '2.txt')
         self.assertIsNone(results[9999])
 
+    def test_get_files_by_faiss_indices_exceeds_max(self):
+        """Test that ValueError is raised when exceeding MAX_INDICES limit."""
+        from backend import database
+        
+        # Create a list of 101 indices (exceeds MAX_INDICES=100)
+        indices = list(range(101))
+        
+        # Should raise ValueError
+        with self.assertRaises(ValueError) as context:
+            database.get_files_by_faiss_indices(indices)
+        
+        self.assertIn("Cannot query more than 100 FAISS indices", str(context.exception))
+        self.assertIn("Got 101", str(context.exception))
+
 
 class TestDatabasePreferences(unittest.TestCase):
     """Tests for preferences storage."""

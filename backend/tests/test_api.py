@@ -122,6 +122,59 @@ class TestAPISearch(unittest.TestCase):
             })
             self.assertEqual(response.status_code, 400)
 
+    @patch('backend.database.add_search_history')
+    @patch('backend.database.get_files_by_faiss_indices')
+    @patch('backend.llm_integration.cached_generate_ai_answer')
+    @patch('backend.llm_integration.cached_smart_summary')
+    @patch('backend.api.load_config')
+    @patch('backend.api.search')
+    @patch('backend.api.summarize')
+    @patch('backend.api.get_embeddings')
+    def test_search_deduplication(self, mock_get_embeddings, mock_summarize, mock_search, mock_load_config,
+                                   mock_smart_summary, mock_generate_ai, mock_get_files, mock_add_history):
+        """Test that search deduplicates FAISS indices before batch query."""
+        mock_config = MagicMock()
+        mock_config.get.return_value = 'openai'
+        mock_load_config.return_value = mock_config
+        
+        # Mock returns dict with deduplicated indices
+        mock_get_files.return_value = {
+            5: {'filename': 'test1.pdf', 'path': '/test/test1.pdf'},
+            10: {'filename': 'test2.pdf', 'path': '/test/test2.pdf'}
+        }
+        mock_smart_summary.return_value = "Smart Summary"
+        mock_generate_ai.return_value = "AI Answer"
+        
+        with (patch('backend.api.index', MagicMock()),
+              patch('backend.api.docs', []),
+              patch('backend.api.tags', [])):
+            
+            # Return search results with duplicate faiss_idx values (5 appears twice, 10 appears twice)
+            mock_search.return_value = (
+                [
+                    {'document': 'content1', 'tags': ['tag1'], 'faiss_idx': 5},
+                    {'document': 'content2', 'tags': ['tag2'], 'faiss_idx': 10},
+                    {'document': 'content3', 'tags': ['tag3'], 'faiss_idx': 5},  # duplicate
+                    {'document': 'content4', 'tags': ['tag4'], 'faiss_idx': 10}  # duplicate
+                ],
+                ['context snippet']
+            )
+            
+            mock_summarize.return_value = "Summary"
+            
+            response = self.client.post("/api/search", json={
+                "query": "test query"
+            })
+            
+            self.assertEqual(response.status_code, 200)
+            
+            # Verify get_files_by_faiss_indices was called with deduplicated indices
+            # Should be [5, 10] not [5, 10, 5, 10]
+            mock_get_files.assert_called_once()
+            call_args = mock_get_files.call_args[0][0]
+            self.assertEqual(call_args, [5, 10], 
+                           "FAISS indices should be deduplicated before batch query")
+
 
 class TestAPIModels(unittest.TestCase):
     """Test cases for model management endpoints."""
