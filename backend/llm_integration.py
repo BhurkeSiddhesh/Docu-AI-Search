@@ -212,6 +212,76 @@ def get_llm_client(provider, api_key=None, model_path=None):
         _llm_client_cache[cache_key] = client
     return client
 
+def generate_raw_completion(input_data, provider, api_key=None, model_path=None, **kwargs):
+    """
+    Unified function for generating text completion from local or cloud LLMs.
+
+    Args:
+        input_data: String prompt or list of LangChain Message objects.
+        provider: 'local', 'openai', 'anthropic', etc.
+        api_key: API key for cloud providers.
+        model_path: Path for local model.
+        **kwargs: Additional arguments passed to the generation method (e.g. max_tokens, stop, temperature).
+
+    Returns:
+        str: The generated text.
+
+    Raises:
+        Exception: If client creation fails or generation fails.
+    """
+    client = get_llm_client(provider, api_key, model_path)
+    if not client:
+        raise ValueError(f"Could not initialize LLM client for provider: {provider}")
+
+    # Handle Local LLM
+    if isinstance(client, str) and client.startswith("LOCAL:"):
+        real_model_path = client.split("LOCAL:")[1]
+        # Pass tensor_split if it's in kwargs, otherwise None (default behavior)
+        # Note: get_llm_client usually caches the model, so tensor_split might be ignored if already loaded.
+        llm = get_local_llm(real_model_path)
+        if not llm:
+            raise ValueError("Local model failed to load.")
+
+        # Convert input to string if it is a list (e.g. messages)
+        prompt_text = input_data
+        if isinstance(input_data, list):
+            # Simple concatenation for now, matching ReActAgent's previous behavior
+            # Assuming list of objects with 'content' attribute
+            # We use duck typing to avoid importing LangChain types here
+            prompt_text = "\n\n".join([m.content for m in input_data if hasattr(m, 'content')])
+
+        # Prepare arguments for create_completion
+        # Default defaults
+        gen_kwargs = {
+            "max_tokens": 256,
+            "echo": False,
+            "temperature": 0.1,
+            "repeat_penalty": 1.1,
+            "stop": []
+        }
+        # Filter kwargs to only those accepted by create_completion?
+        # Llama.create_completion accepts many args. We'll trust kwargs.
+        gen_kwargs.update(kwargs)
+
+        with _local_llm_lock:
+            output = llm.create_completion(
+                prompt_text,
+                **gen_kwargs
+            )
+        return output['choices'][0]['text'].strip()
+
+    # Handle Cloud (LangChain)
+    else:
+        # LangChain expects input_data to be prompt (str) or messages (list)
+
+        invocation_kwargs = {}
+        if "stop" in kwargs:
+            invocation_kwargs["stop"] = kwargs["stop"]
+
+        # Attempt to invoke
+        response = client.invoke(input_data, **invocation_kwargs)
+        return response.content.strip()
+
 def generate_ai_answer(context, question, provider, api_key=None, model_path=None, tensor_split=None):
     """
     Generate a natural language answer using the selected provider.
@@ -458,28 +528,15 @@ Document:
 Key findings:"""
 
     try:
-        # Handle Local LLM
-        if isinstance(client, str) and client.startswith("LOCAL:"):
-            real_model_path = client.split("LOCAL:")[1]
-            llm = get_local_llm(real_model_path)
-            if not llm:
-                return summarize(text, provider, api_key, model_path, query)
-
-            with _local_llm_lock:
-                output = llm.create_completion(
-                    prompt_text,
-                    max_tokens=128,
-                    stop=["Document Excerpt:", "Summary:"],
-                    echo=False,
-                    temperature=0.1
-                )
-            result = output['choices'][0]['text'].strip()
-
-        # Handle LangChain Clients
-        else:
-            from langchain_core.messages import HumanMessage
-            response = client.invoke([HumanMessage(content=prompt_text)])
-            result = response.content.strip()
+        result = generate_raw_completion(
+            prompt_text,
+            provider,
+            api_key,
+            model_path,
+            max_tokens=128,
+            stop=["Document Excerpt:", "Summary:"],
+            temperature=0.1
+        )
 
         if "No relevant info" in result or len(result) < 5:
             return summarize(text, provider, api_key, model_path, query) # Fallback
