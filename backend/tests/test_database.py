@@ -377,6 +377,43 @@ class TestDatabasePreferences(unittest.TestCase):
         self.assertEqual(value, special_value)
 
 
+class TestGetFilesByFaissIndices(unittest.TestCase):
+    """Tests for get_files_by_faiss_indices batch lookup function."""
+
+    def test_empty_list_returns_empty_dict(self):
+        """Empty input returns an empty dict without touching the DB."""
+        from backend import database
+        result = database.get_files_by_faiss_indices([])
+        self.assertEqual(result, {})
+
+    def test_exceeding_max_indices_raises_value_error(self):
+        """More than MAX_INDICES unique indices raises ValueError."""
+        from backend import database
+        indices = list(range(database.MAX_INDICES + 1))
+        with self.assertRaises(ValueError) as ctx:
+            database.get_files_by_faiss_indices(indices)
+        error_msg = str(ctx.exception)
+        self.assertIn(str(database.MAX_INDICES), error_msg)
+        self.assertIn(str(len(indices)), error_msg)
+
+    def test_exactly_max_indices_does_not_raise(self):
+        """Exactly MAX_INDICES unique indices does not raise."""
+        from backend import database
+        # Only unique_indices count matters; use all-same to get 1 unique
+        indices = list(range(database.MAX_INDICES))
+        # Should not raise (result may be empty if no matching rows)
+        result = database.get_files_by_faiss_indices(indices)
+        self.assertIsInstance(result, dict)
+
+    def test_duplicates_do_not_inflate_unique_count(self):
+        """Duplicate indices are deduplicated before checking the limit."""
+        from backend import database
+        # 101 items but all the same value → only 1 unique → no ValueError
+        indices = [42] * (database.MAX_INDICES + 1)
+        result = database.get_files_by_faiss_indices(indices)
+        self.assertIsInstance(result, dict)
+
+
 class TestDatabaseConnection(unittest.TestCase):
     """Tests for database connection handling."""
     
