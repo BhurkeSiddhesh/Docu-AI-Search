@@ -113,8 +113,8 @@ const ModelComparison = () => {
                     onChange={(e) => setModel1(e.target.value)}
                     className="p-2 text-sm rounded-lg border border-border bg-background"
                 >
-                    {localModels.map((m, idx) => (
-                        <option key={idx} value={m.path}>{m.name}</option>
+                    {localModels.map((m) => (
+                        <option key={m.path} value={m.path}>{m.name}</option>
                     ))}
                 </select>
                 <select
@@ -122,8 +122,8 @@ const ModelComparison = () => {
                     onChange={(e) => setModel2(e.target.value)}
                     className="p-2 text-sm rounded-lg border border-border bg-background"
                 >
-                    {localModels.map((m, idx) => (
-                        <option key={idx} value={m.path}>{m.name}</option>
+                    {localModels.map((m) => (
+                        <option key={m.path} value={m.path}>{m.name}</option>
                     ))}
                 </select>
             </div>
