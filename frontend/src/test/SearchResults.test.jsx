@@ -15,7 +15,7 @@ vi.mock('axios')
 describe('SearchResults Component', () => {
     const mockResults = [
         {
-            id: 'doc1',
+            id: 'doc1', faiss_idx: 101,
             document: 'This is the content of document 1',
             summary: 'Summary of document 1',
             file_path: '/path/to/doc1.pdf',
@@ -23,7 +23,7 @@ describe('SearchResults Component', () => {
             tags: ['AI', 'ML']
         },
         {
-            id: 'doc2',
+            id: 'doc2', faiss_idx: 102,
             document: 'Content of document 2',
             summary: 'Summary of document 2',
             file_path: '/path/to/doc2.txt',
