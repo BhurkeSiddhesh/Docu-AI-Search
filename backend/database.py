@@ -297,6 +297,56 @@ def set_preference(key: str, value: str):
     conn.commit()
     conn.close()
 
+MAX_INDICES = 100
+
+def get_files_by_faiss_indices(faiss_indices: List[int]) -> Dict[int, Dict]:
+    """Get files for multiple FAISS indices in a single batch query.
+
+    Callers should deduplicate input indices before calling. Raises ValueError
+    if more than MAX_INDICES unique indices are provided to prevent SQLite
+    parameter overflow.
+    """
+    if not faiss_indices:
+        return {}
+
+    unique_indices = list(dict.fromkeys(faiss_indices))
+    if len(unique_indices) > MAX_INDICES:
+        raise ValueError(
+            f"Too many indices: {len(unique_indices)} exceeds MAX_INDICES={MAX_INDICES}"
+        )
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Construct query with OR clauses
+    # SELECT ... FROM files WHERE (start <= i1 AND end >= i1) OR (start <= i2 AND end >= i2) ...
+    conditions = []
+    params = []
+    for idx in unique_indices:
+        conditions.append("(faiss_start_idx <= ? AND faiss_end_idx >= ?)")
+        params.extend([idx, idx])
+
+    query = (
+        "SELECT id, filename, path, faiss_start_idx, faiss_end_idx "
+        "FROM files WHERE " + " OR ".join(conditions)
+    )
+
+    try:
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        files = [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+    # Map back to indices
+    result = {}
+    for idx in faiss_indices:
+        for f in files:
+            if f["faiss_start_idx"] <= idx <= f["faiss_end_idx"]:
+                result[idx] = f
+                break
+    return result
+
 def get_file_by_faiss_index(faiss_idx: int) -> Optional[Dict]:
     """Get the file that contains a specific FAISS chunk index."""
     conn = get_connection()
