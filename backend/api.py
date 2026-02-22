@@ -699,7 +699,7 @@ async def open_file(request: dict):
 async def list_indexed_files():
     """Get all indexed files with metadata."""
     try:
-        files = database.get_all_files()
+        files = await asyncio.to_thread(database.get_all_files)
         return files
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
