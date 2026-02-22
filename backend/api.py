@@ -614,7 +614,7 @@ async def stream_answer_endpoint(request: SearchRequest):
 async def get_search_history():
     """Get recent search history."""
     try:
-        history = database.get_search_history(limit=50)
+        history = await asyncio.to_thread(database.get_search_history, limit=50)
         return history
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
