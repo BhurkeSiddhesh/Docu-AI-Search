@@ -127,6 +127,15 @@ class TestModelPathValidation(unittest.TestCase):
 
 class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
+
+    def setUp(self):
+        from backend import database
+        database.init_database()
+        # Clear search history table before test
+        conn = database.get_connection()
+        conn.execute("DELETE FROM search_history")
+        conn.commit()
+        conn.close()
     
     def setUp(self):
         """Set up temporary database."""
@@ -216,6 +225,8 @@ class TestAPIResponseFormats(unittest.TestCase):
 
         from fastapi.testclient import TestClient
         from backend.api import app
+        from backend import database
+        database.init_database()
         self.client = TestClient(app)
 
     def tearDown(self):
@@ -276,6 +287,8 @@ class TestErrorHandling(unittest.TestCase):
         """Set up test client."""
         from fastapi.testclient import TestClient
         from backend.api import app
+        from backend import database
+        database.init_database()
         self.client = TestClient(app)
     
     def test_search_without_index(self):

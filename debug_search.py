@@ -1,17 +1,16 @@
-
 import sys
 import os
-import pickle
+import json
 import re
 
 # Add project root to path
 sys.path.append(os.getcwd())
 
 def analyze_resume_chunks():
-    print("Loading index_docs.pkl...")
+    print("Loading index_docs.json...")
     try:
-        with open('data/index_docs.pkl', 'rb') as f:
-            docs = pickle.load(f)
+        with open('data/index_docs.json', 'r') as f:
+            docs = json.load(f)
         
         print(f"Loaded {len(docs)} documents.")
         
