@@ -96,6 +96,8 @@ def create_index(folder_paths, provider, api_key=None, model_path=None, progress
     
     current_faiss_idx = 0
     
+    files_to_insert = []
+
     for filepath, text in valid_docs:
         chunks = text_splitter.split_text(text)
         if not chunks:
@@ -112,11 +114,10 @@ def create_index(folder_paths, provider, api_key=None, model_path=None, progress
             'faiss_end_idx': current_faiss_idx + len(chunks) - 1
         }
         
-        # Add to DB immediately
-        database.add_file(
-            path=filepath,
-            **file_info
-        )
+        # Queue for batch insert
+        file_data = file_info.copy()
+        file_data['path'] = filepath
+        files_to_insert.append(file_data)
         
         for chunk in chunks:
             all_chunks.append({
@@ -128,6 +129,11 @@ def create_index(folder_paths, provider, api_key=None, model_path=None, progress
             chunk_strings.append(chunk)
             current_faiss_idx += 1
             
+    # Batch insert all files
+    if files_to_insert:
+        database.batch_add_files(files_to_insert)
+        print(f"Batch inserted {len(files_to_insert)} files metadata.")
+
     print(f"Generated {len(chunk_strings)} total chunks.")
 
     # 5. Parallel Embedding (I/O Bound) - 25% to 65%
