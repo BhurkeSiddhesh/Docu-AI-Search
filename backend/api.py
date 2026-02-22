@@ -396,7 +396,7 @@ async def search_files(request: SearchRequest):
     if not index:
         raise HTTPException(status_code=400, detail="Index not loaded. Please configure and index a folder first.")
 
-    print(f"\n[API] POST /api/search - Query: '{request.query}'")
+    print(f"\n[API] POST /api/search - Query: <redacted>")
 
     try:
         start_time = time.time()

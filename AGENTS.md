@@ -577,3 +577,9 @@ python scripts/verify_golden_set.py
 ```
 
 > **Always read [AGENTS.md](cci:7://file:///c:/Users/siddh/OneDrive/Desktop/Projects/File-Search-Engine-1/AGENTS.md:0:0-0:0) in project root for the latest Change Log before and after making changes.**
+### 2026-02-06 (Security Fix)
+- **Redacted Sensitive Search Queries** - Prevent PII leak in logs
+  - **fix**: Redacted `request.query` in `backend/api.py`.
+  - **fix**: Redacted sensitive info in `backend/llm_integration.py` and `backend/search.py`.
+  - **test**: Added `backend/tests/test_security_logging.py`.
+  - **Files**: `backend/api.py`, `backend/llm_integration.py`, `backend/search.py`, `backend/tests/test_security_logging.py`

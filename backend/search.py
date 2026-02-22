@@ -69,7 +69,7 @@ def search(query: str, index, docs: List[Dict], tags: List[str], embeddings_mode
             # Expand query for Keyword Search to hit document sections (e.g. "Work" -> "Experience")
             expanded_query_str = expand_query(query)
             tokenized_query = tokenize(expanded_query_str)
-            print(f"[SEARCH] Expanded query terms: {tokenized_query}")
+            print(f"[SEARCH] Expanded query terms: <redacted>")
             future_bm25 = executor.submit(bm25.get_scores, tokenized_query)
             
         # Process Chunk Results
@@ -105,7 +105,7 @@ def search(query: str, index, docs: List[Dict], tags: List[str], embeddings_mode
     k = 60
     final_scores = {} # idx -> rrf_score
 
-    print(f"\n[SEARCH] Query: '{query}'")
+    print(f"\n[SEARCH] Query: <redacted>")
     print(f"[SEARCH] Found {len(vector_candidates)} semantic and {len(keyword_candidates)} keyword candidates.")
     
     # Rank Vector Results (Lower distance is better)
@@ -128,7 +128,7 @@ def search(query: str, index, docs: List[Dict], tags: List[str], embeddings_mode
     
     boost_count = 0
     if proper_nouns:
-        print(f"[SEARCH] Boosting proper nouns: {proper_nouns}")
+        print(f"[SEARCH] Boosting proper nouns: <redacted>")
         for idx in final_scores:
             doc_info = docs[idx]
             doc_text = doc_info.get('text', "") if isinstance(doc_info, dict) else str(doc_info)
