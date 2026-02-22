@@ -46,20 +46,28 @@ def tool_read_file(file_path: str) -> str:
     if not file_path:
         return "Error: No file path provided."
         
-    resolved_path = file_path
-    if not os.path.exists(file_path):
-        # Clean the input (remove quotes if any)
-        clean_name = file_path.strip("'\" ")
-        # Try to find by filename in DB
+    # Resolve the path to absolute
+    resolved_path = os.path.abspath(file_path)
+
+    # Security Check: Verify file is in the knowledge base (DB)
+    # We check by exact path match first
+    file_info = database.get_file_by_path(resolved_path)
+
+    if not file_info:
+        # If not found by path, try by filename
+        clean_name = os.path.basename(file_path).strip("'\" ")
         file_info = database.get_file_by_name(clean_name)
+
         if file_info:
             resolved_path = file_info['path']
-        else:
-             # Try search in CWD just in case
-             if os.path.exists(clean_name):
-                 resolved_path = clean_name
-             else:
-                 return f"Error: File '{file_path}' not found. Use 'list_files' to see available files."
+
+    # If still not found (or not in DB), deny access
+    if not file_info:
+        return f"Error: Access denied. File '{file_path}' is not in the knowledge base."
+
+    # Final check to ensure it exists on disk
+    if not os.path.exists(resolved_path):
+        return f"Error: File '{file_path}' found in index but does not exist on disk."
 
     try:
         from backend.file_processing import extract_text
