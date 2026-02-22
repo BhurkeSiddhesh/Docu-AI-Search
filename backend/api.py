@@ -1,4 +1,8 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from fastapi.responses import StreamingResponse
 import json
 import asyncio
@@ -95,7 +99,11 @@ from backend import database
 
 
 
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 app = FastAPI()
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Enable CORS for frontend
 app.add_middleware(
@@ -116,11 +124,11 @@ cluster_map = None
 bm25 = None
 
 @app.get("/")
-async def root():
+async def root(request: Request):
     return {"status": "online", "message": "Docu AI Search API is running"}
 
 @app.get("/api/health")
-async def health_check():
+async def health_check(request: Request):
     return {"status": "ok"}
 
 def load_config():
@@ -169,7 +177,7 @@ async def load_initial_index():
             bm25 = None
 
 @app.get("/api/browse")
-async def browse_folder():
+async def browse_folder(request: Request):
     """Open a folder browser dialog and return the selected path."""
     import tkinter as tk
     from tkinter import filedialog
@@ -190,26 +198,26 @@ async def browse_folder():
         raise HTTPException(status_code=500, detail=f"Failed to open folder dialog: {str(e)}")
 
 @app.get("/api/models/available")
-async def list_available_models():
+async def list_available_models(request: Request):
     return get_available_models()
 
 @app.get("/api/models/local")
-async def list_local_models():
+async def list_local_models(request: Request):
     return get_local_models()
 
 @app.post("/api/models/download/{model_id}")
-async def download_model_endpoint(model_id: str):
+async def download_model_endpoint(model_id: str, request: Request):
     success, message = start_download(model_id)
     if not success:
         raise HTTPException(status_code=400, detail=message)
     return {"status": "success", "message": message}
 
 @app.get("/api/models/status")
-async def download_status_endpoint():
+async def download_status_endpoint(request: Request):
     return get_download_status()
 
 @app.delete("/api/models/delete")
-async def delete_model(request: dict):
+async def delete_model(request: dict, req: Request):
     """Delete a downloaded model file."""
     model_path = request.get('path', '')
     if not model_path:
@@ -274,7 +282,7 @@ def run_benchmark_task():
         benchmark_status["error"] = str(e)
 
 @app.post("/api/benchmarks/run")
-async def run_benchmarks(background_tasks: BackgroundTasks):
+async def run_benchmarks(background_tasks: BackgroundTasks, request: Request):
     """Start benchmark suite in background."""
     global benchmark_status
     
@@ -285,12 +293,12 @@ async def run_benchmarks(background_tasks: BackgroundTasks):
     return {"status": "started", "message": "Benchmark started in background"}
 
 @app.get("/api/benchmarks/status")
-async def get_benchmark_status():
+async def get_benchmark_status(request: Request):
     """Get current benchmark status."""
     return benchmark_status
 
 @app.get("/api/benchmarks/results")
-async def get_benchmark_results():
+async def get_benchmark_results(request: Request):
     """Get latest benchmark results."""
     global benchmark_results
     
@@ -337,7 +345,7 @@ class ConfigModel(BaseModel):
     tensor_split: Optional[str] = None
 
 @app.get("/api/config")
-async def get_config():
+async def get_config(request: Request):
     config = load_config()
     # Handle both old 'folder' and new 'folders' format
     folder = config.get('General', 'folder', fallback='')
@@ -360,7 +368,7 @@ async def get_config():
     }
 
 @app.post("/api/config")
-async def update_config(config_data: ConfigModel):
+async def update_config(config_data: ConfigModel, request: Request):
     config = configparser.ConfigParser()
     config['General'] = {
         'folders': ','.join(config_data.folders),
@@ -390,7 +398,7 @@ async def update_config(config_data: ConfigModel):
     return {"status": "success", "message": "Configuration saved"}
 
 @app.post("/api/search")
-async def search_files(request: SearchRequest):
+async def search_files(request: SearchRequest, req: Request):
     global index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25
     
     if not index:
@@ -522,7 +530,7 @@ async def search_files(request: SearchRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/stream-answer")
-async def stream_answer_endpoint(request: SearchRequest):
+async def stream_answer_endpoint(request: SearchRequest, req: Request):
     """
     Stream the AI answer for a given query.
     Re-runs the search to get context (fast) and then streams tokens.
@@ -611,7 +619,7 @@ async def stream_answer_endpoint(request: SearchRequest):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 @app.get("/api/search/history")
-async def get_search_history():
+async def get_search_history(request: Request):
     """Get recent search history."""
     try:
         history = await asyncio.to_thread(database.get_search_history, limit=50)
@@ -620,7 +628,7 @@ async def get_search_history():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/search/history/{history_id}")
-async def delete_search_history_item(history_id: int):
+async def delete_search_history_item(history_id: int, request: Request):
     """Delete a single search history item."""
     try:
         success = database.delete_search_history_item(history_id)
@@ -631,7 +639,7 @@ async def delete_search_history_item(history_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/search/history")
-async def delete_all_search_history():
+async def delete_all_search_history(request: Request):
     """Delete all search history."""
     try:
         count = database.delete_all_search_history()
@@ -647,7 +655,7 @@ class LogRequest(BaseModel):
     stack: Optional[str] = None
 
 @app.post("/api/logs")
-async def receive_log(log: LogRequest):
+async def receive_log(log: LogRequest, request: Request):
     """endpoint to receive logs from frontend"""
     log_msg = f"[{log.source}] {log.message}"
     if log.stack:
@@ -662,7 +670,7 @@ async def receive_log(log: LogRequest):
     return {"status": "logged"}
 
 @app.post("/api/open-file")
-async def open_file(request: dict):
+async def open_file(request: dict, req: Request):
     """Open a file in the default system application."""
     file_path = request.get('path', '')
     if not file_path:
@@ -696,7 +704,7 @@ async def open_file(request: dict):
         raise HTTPException(status_code=500, detail=f"Failed to open file: {str(e)}")
 
 @app.get("/api/files")
-async def list_indexed_files():
+async def list_indexed_files(request: Request):
     """Get all indexed files with metadata."""
     try:
         files = await asyncio.to_thread(database.get_all_files)
@@ -705,7 +713,7 @@ async def list_indexed_files():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/folders/history")
-async def get_folder_history():
+async def get_folder_history(request: Request):
     """Get previously used folders."""
     try:
         # User requested: ONLY show 100% indexed folders in history
@@ -715,7 +723,7 @@ async def get_folder_history():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/folders/history")
-async def clear_folder_history():
+async def clear_folder_history(request: Request):
     """Clear all folder history."""
     try:
         count = database.clear_folder_history()
@@ -724,7 +732,7 @@ async def clear_folder_history():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/folders/history/item")
-async def delete_folder_history_item(request: dict):
+async def delete_folder_history_item(request: dict, req: Request):
     """Delete a single folder from history."""
     path = request.get('path', '')
     if not path:
@@ -741,7 +749,7 @@ async def delete_folder_history_item(request: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/validate-path")
-async def validate_path(request: dict):
+async def validate_path(request: dict, req: Request):
     """Validate a folder path and count indexable files."""
     path = request.get('path', '')
     if not path:
@@ -765,12 +773,12 @@ async def validate_path(request: dict):
     return {"valid": True, "file_count": file_count}
 
 @app.get("/api/index/status")
-async def get_indexing_status():
+async def get_indexing_status(request: Request):
     """Get current indexing status."""
     return indexing_status
 
 @app.post("/api/index")
-async def trigger_indexing(background_tasks: BackgroundTasks):
+async def trigger_indexing(background_tasks: BackgroundTasks, request: Request):
     global indexing_status
     if indexing_status["running"]:
         raise HTTPException(status_code=400, detail="Indexing already in progress")
@@ -821,7 +829,7 @@ def indexing_progress_callback(current, total, message=None):
         logger.info(f"Indexing Progress: {indexing_status['progress']}% - {indexing_status['current_file']}")
 
 @app.get("/api/agent/chat")
-async def agent_chat(query: str):
+async def agent_chat(query: str, request: Request):
     """
     Stream agent thoughts and final answer.
     """
