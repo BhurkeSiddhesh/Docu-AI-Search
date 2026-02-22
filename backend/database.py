@@ -163,6 +163,56 @@ def get_file_by_path(path: str) -> Optional[Dict]:
     conn.close()
     return dict(row) if row else None
 
+def get_files_by_faiss_indices(faiss_indices: List[int]) -> Dict[int, Optional[Dict]]:
+    """Get the files that contain specific FAISS chunk indices in batch.
+    
+    Args:
+        faiss_indices: List of FAISS indices to look up (should be deduplicated by caller)
+        
+    Returns:
+        Dict mapping each index to its file metadata (or None if not found)
+        
+    Note:
+        Enforces a maximum of 100 indices to avoid SQLite parameter limits.
+    """
+    if not faiss_indices:
+        return {}
+    
+    # Enforce max size to avoid SQLite limits (SQLITE_MAX_VARIABLE_NUMBER default is 999)
+    MAX_INDICES = 100
+    if len(faiss_indices) > MAX_INDICES:
+        raise ValueError(f"Cannot query more than {MAX_INDICES} FAISS indices at once. Got {len(faiss_indices)}.")
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Use OR clauses for a small number of indices (standard search results size)
+    # Select only necessary columns to reduce I/O
+    clauses = []
+    params = []
+    for idx in faiss_indices:
+        clauses.append("(faiss_start_idx <= ? AND faiss_end_idx >= ?)")
+        params.extend([idx, idx])
+
+    query = f"SELECT path, filename, faiss_start_idx, faiss_end_idx FROM files WHERE {' OR '.join(clauses)}"
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+
+    # Map them back to the requested indices
+    results_map = {}
+    files_list = [dict(row) for row in rows]
+
+    for idx in faiss_indices:
+        found_file = None
+        for f in files_list:
+            if f['faiss_start_idx'] <= idx <= f['faiss_end_idx']:
+                found_file = f
+                break
+        results_map[idx] = found_file
+
+    conn.close()
+    return results_map
+
 def get_file_by_name(filename: str) -> Optional[Dict]:
     """Get a file by its name."""
     conn = get_connection()
