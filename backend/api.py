@@ -441,28 +441,39 @@ async def search_files(request: SearchRequest):
             index_summaries, cluster_summaries, cluster_map, bm25
         )
         
+        # Optimization: Batch database lookups for missing file info
+        indices_to_lookup = list(dict.fromkeys(
+            result['faiss_idx']
+            for result in results
+            if not result.get('file_path') and result.get('faiss_idx') is not None
+        ))
+
+        file_lookup_map = {}
+        if indices_to_lookup:
+            try:
+                file_lookup_map = database.get_files_by_faiss_indices(indices_to_lookup)
+            except ValueError as ve:
+                logger.warning(f"Batch lookup failed, falling back to sequential: {ve}")
+                # Fallback: manually lookup one by one if batch size exceeded
+                for f_idx in indices_to_lookup:
+                    info = database.get_file_by_faiss_index(f_idx)
+                    if info:
+                        file_lookup_map[f_idx] = info
+
         processed_results = []
         
-        # Helper to get full file path
-        # Note: search() now returns a list of result dicts directly
-        # We need to adapt the caching logic below
-        
-        # Wait, the previous logic was:
-        # results = search(...) -> returns list of dicts
         for idx, result in enumerate(results):
             faiss_idx = result.get('faiss_idx')
             
             # Use file info from search result first (it comes from FAISS doc metadata)
-            # Only fall back to database lookup if not available
             file_path = result.get('file_path')
             file_name = result.get('file_name')
             
-            # If not in search result, try database lookup (for backward compatibility)
-            if not file_path and faiss_idx is not None:
-                file_info = database.get_file_by_faiss_index(faiss_idx)
-                if file_info:
-                    file_path = file_info.get('path')
-                    file_name = file_info.get('filename')
+            # Fall back to our batched lookup map
+            if not file_path and faiss_idx in file_lookup_map:
+                file_info = file_lookup_map[faiss_idx]
+                file_path = file_info.get('path')
+                file_name = file_info.get('filename')
             
             # OPTIMIZATION: Use fast summary for all results to avoid blocking
             summary = summarize(result['document'], provider, api_key, model_path, question=request.query)
