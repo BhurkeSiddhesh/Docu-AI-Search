@@ -442,10 +442,11 @@ async def search_files(request: SearchRequest):
         )
         
         # Optimization: Batch database lookups for missing file info
-        indices_to_lookup = []
-        for result in results:
-            if not result.get('file_path') and result.get('faiss_idx') is not None:
-                indices_to_lookup.append(result['faiss_idx'])
+        indices_to_lookup = list(dict.fromkeys(
+            result['faiss_idx']
+            for result in results
+            if not result.get('file_path') and result.get('faiss_idx') is not None
+        ))
 
         file_lookup_map = {}
         if indices_to_lookup:
