@@ -128,6 +128,34 @@ class TestModelPathValidation(unittest.TestCase):
 class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
     
+    def setUp(self):
+        """Set up temporary database."""
+        self.db_fd, self.db_path = tempfile.mkstemp()
+
+        # Patch get_connection to ensure we use the temp DB regardless of import order
+        import sqlite3
+        def mock_get_connection():
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            return conn
+
+        self.patcher = patch('backend.database.get_connection', side_effect=mock_get_connection)
+        self.patcher.start()
+
+        from backend import database
+        database.init_database()
+
+        from fastapi.testclient import TestClient
+        from backend.api import app
+        self.client = TestClient(app)
+
+    def tearDown(self):
+        """Clean up temporary database."""
+        self.patcher.stop()
+        os.close(self.db_fd)
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
+
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
         from backend import database
@@ -165,9 +193,36 @@ class TestAPIResponseFormats(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
+        self.db_fd, self.db_path = tempfile.mkstemp()
+
+        # Initialize the database file
+        import sqlite3
+        conn = sqlite3.connect(self.db_path)
+        # Create tables manually or via init_database using this path
+        # We can't easily use init_database if we don't patch PATH first,
+        # but we want to patch get_connection.
+
+        # Let's use the patch on get_connection to be sure
+        def mock_get_connection():
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            return conn
+
+        self.patcher = patch('backend.database.get_connection', side_effect=mock_get_connection)
+        self.patcher.start()
+
+        from backend import database
+        database.init_database()
+
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
+
+    def tearDown(self):
+        self.patcher.stop()
+        os.close(self.db_fd)
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
     
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
