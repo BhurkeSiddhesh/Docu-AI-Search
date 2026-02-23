@@ -435,7 +435,8 @@ async def search_files(request: SearchRequest, background_tasks: BackgroundTasks
                 pass
 
         # Run Search
-        results, context_snippets = search(
+        results, context_snippets = await asyncio.to_thread(
+            search,
             request.query, index, docs, tags, 
             get_embeddings(provider, api_key, model_path),
             index_summaries, cluster_summaries, cluster_map, bm25
