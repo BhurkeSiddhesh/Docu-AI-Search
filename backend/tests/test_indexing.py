@@ -6,43 +6,6 @@ import shutil
 from unittest.mock import patch, MagicMock, call
 from backend.indexing import create_index, save_index, load_index
 
-# Shared temp database setup for ALL test classes
-_shared_temp_dir = None
-_original_db_path = None
-
-def setUpModule():
-    """Set up shared temp database for all tests in this module."""
-    global _shared_temp_dir, _original_db_path
-
-    # Create shared temp directory
-    _shared_temp_dir = tempfile.mkdtemp()
-
-    # Database
-    from backend import database
-    _original_db_path = database.DATABASE_PATH
-    database.DATABASE_PATH = os.path.join(_shared_temp_dir, 'test_indexing_metadata.db')
-    database.init_database()
-
-def tearDownModule():
-    """Clean up shared temp database."""
-    global _shared_temp_dir, _original_db_path
-    from backend import database
-    import gc
-    import time
-
-    # Restore original path
-    database.DATABASE_PATH = _original_db_path
-
-    # Try to close any lingering connections and clean up
-    gc.collect()
-    time.sleep(0.1)
-
-    if _shared_temp_dir and os.path.exists(_shared_temp_dir):
-        try:
-            shutil.rmtree(_shared_temp_dir)
-        except Exception as e:
-            print(f"Warning: Could not clean up test directory {_shared_temp_dir}: {e}")
-
 class MockFuture:
     def __init__(self, result):
         self._result = result
@@ -67,21 +30,16 @@ class TestIndexing(unittest.TestCase):
     """Test cases for indexing module"""
 
     def setUp(self):
-        from backend import database
-        database.init_database()
         """Set up test environment before each test method."""
-        self.temp_dir = tempfile.mkdtemp()
-        self.db_dir = tempfile.mkdtemp() # Separate dir for DB to avoid indexing it
-        self.addCleanup(shutil.rmtree, self.db_dir)
-
-        # Setup temp database
-        self.db_path = os.path.join(self.db_dir, 'test_indexing.db')
-        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
-        self.patcher.start()
+        # Database setup
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False)
+        self.temp_db.close()
+        self.db_patcher = patch("backend.database.DATABASE_PATH", self.temp_db.name)
+        self.db_patcher.start()
         from backend import database
         database.init_database()
 
-
+        self.temp_dir = tempfile.mkdtemp()
         self.test_folder = self.temp_dir
         
         # Create a dummy file
@@ -98,23 +56,22 @@ class TestIndexing(unittest.TestCase):
         self.ac_patcher.start()
 
     def tearDown(self):
-        self.patcher.stop()
         """Clean up after each test method."""
         self.pp_patcher.stop()
         self.tp_patcher.stop()
         self.ac_patcher.stop()
+
+        self.db_patcher.stop()
+        if os.path.exists(self.temp_db.name):
+            os.remove(self.temp_db.name)
+
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
     
-    @patch('backend.indexing.CharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
+    def test_create_index(self, mock_extract_text, mock_get_embeddings):
         """Test creating an index."""
-        # Mock text splitting
-        mock_splitter_instance = mock_splitter_cls.return_value
-        mock_splitter_instance.split_text.return_value = ["chunk1"]
-
         # Mock the extract_text function to return test content
         mock_extract_text.return_value = "This is test content for indexing."
         
@@ -124,30 +81,23 @@ class TestIndexing(unittest.TestCase):
         mock_get_embeddings.return_value = mock_embeddings_model
         
         # Mock the get_tags and clustering functions
-        with patch('backend.indexing.get_tags', return_value="test, indexing"):
-            with patch('backend.indexing.perform_global_clustering', return_value={0: [0]}):
-                with patch('backend.indexing.smart_summary', return_value="Summary"):
-                    res = create_index(self.test_folder, "openai", "fake_api_key")
-                    index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
-                    
-                    # Verify the index was created
-                    self.assertIsNotNone(index)
-                    self.assertIsNotNone(docs)
-                    self.assertIsNotNone(tags)
-                    self.assertEqual(len(docs), 1)
-                    # tags is now a list of strings (empty or joined tags)
-                    self.assertEqual(len(tags), 1)
+        with patch('backend.indexing.get_tags', return_value="test, indexing"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
+            res = create_index(self.test_folder, "openai", "fake_api_key")
+            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+            
+            # Verify the index was created
+            self.assertIsNotNone(index)
+            self.assertIsNotNone(docs)
+            self.assertIsNotNone(tags)
+            self.assertEqual(len(docs), 1)
+            # tags is now a list of strings (empty or joined tags)
+            self.assertEqual(len(tags), 1)
 
     
-    @patch('backend.indexing.CharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index_empty_folder(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
+    def test_create_index_empty_folder(self, mock_extract_text, mock_get_embeddings):
         """Test creating an index with empty folder."""
-        # Mock text splitting
-        mock_splitter_instance = mock_splitter_cls.return_value
-        mock_splitter_instance.split_text.return_value = []
-
         empty_folder = os.path.join(self.temp_dir, "empty_folder")
         os.makedirs(empty_folder, exist_ok=True)
         
@@ -156,7 +106,7 @@ class TestIndexing(unittest.TestCase):
         mock_embeddings_model = MagicMock()
         mock_get_embeddings.return_value = mock_embeddings_model
         
-        with patch('backend.indexing.get_tags', return_value=""),              patch('backend.indexing.perform_global_clustering', return_value={}),              patch('backend.indexing.smart_summary', return_value=""):
+        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={}),              patch('backend.indexing.smart_summary', return_value=""):
             res = create_index(empty_folder, "openai", "fake_api_key")
             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
 
@@ -166,17 +116,9 @@ class TestIndexing(unittest.TestCase):
             self.assertIsNone(docs)
             self.assertIsNone(tags)
     
-    @patch('backend.indexing.faiss.write_index')
-    @patch('backend.indexing.faiss.read_index')
-    def test_save_and_load_index(self, mock_read_index, mock_write_index):
+    def test_save_and_load_index(self):
         """Test saving and loading an index."""
-        # Mock write_index to create a dummy file so os.path.exists passes
-        def side_effect_write(index, filepath):
-            with open(filepath, 'w') as f:
-                f.write("dummy")
-        mock_write_index.side_effect = side_effect_write
-
-        # Create a real FAISS index and documents (only write_index is mocked)
+        # Create a mock FAISS index and documents
         import faiss
         dimension = 3
         index = faiss.IndexFlatL2(dimension)
@@ -195,9 +137,6 @@ class TestIndexing(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "test_index_docs.pkl")))
         self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "test_index_tags.pkl")))
         
-        # Setup mock for load_index
-        mock_read_index.return_value = index # Return the mock index
-
         # Load the index
         res = load_index(index_path)
         loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res
@@ -211,23 +150,21 @@ class TestIndexing(unittest.TestCase):
     @patch('os.path.exists')
     @patch('builtins.open')
     @patch('pickle.load')
-    def test_load_index_preserves_data(self, mock_pickle_load, mock_open, mock_exists, mock_read_index):
+    def test_load_index(self, mock_pickle_load, mock_open, mock_exists, mock_read_index):
         """Test loading an index."""
         # Mock the index reading
         mock_faiss_index = MagicMock()
         mock_read_index.return_value = mock_faiss_index
         
-        index_path = "fake_index.faiss"
-
-        # Mock os.path.exists: True for main file
-        mock_exists.side_effect = lambda path: path == index_path
+        # Mock os.path.exists: True for main file, False for others
+        mock_exists.side_effect = lambda path: path == "fake_index.faiss"
         
         # Mock pickle loading
         mock_pickle_load.side_effect = [
             ["Test document"],
             [["test", "tag"]]
         ]
-        
+        index_path = "fake_index.faiss"
         res = load_index(index_path)
         loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res
         
@@ -241,26 +178,20 @@ class TestIndexing(unittest.TestCase):
         self.assertEqual(loaded_tags, [["test", "tag"]])
 
 
+
 class TestIndexingMultipleFolders(unittest.TestCase):
     """Test indexing with multiple folders."""
 
     def setUp(self):
-        from backend import database
-        database.init_database()
         """Set up test fixtures."""
-        self.temp_dir = tempfile.mkdtemp()
-        self.db_dir = tempfile.mkdtemp() # Separate dir for DB
-        self.addCleanup(shutil.rmtree, self.db_dir)
-
-        # Setup temp database
-        self.db_path = os.path.join(self.db_dir, 'test_indexing.db')
-        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
-        self.patcher.start()
+        self.temp_db = tempfile.NamedTemporaryFile(delete=False)
+        self.temp_db.close()
+        self.db_patcher = patch("backend.database.DATABASE_PATH", self.temp_db.name)
+        self.db_patcher.start()
         from backend import database
         database.init_database()
-        self.addCleanup(self.patcher.stop)
 
-
+        self.temp_dir = tempfile.mkdtemp()
         
         # Create two test folders
         self.folder1 = os.path.join(self.temp_dir, "folder1")
@@ -274,20 +205,28 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         with open(os.path.join(self.folder2, "doc2.txt"), 'w') as f:
             f.write("Content from folder 2")
 
-    def tearDown(self):
-        """Clean up test fixtures."""
-        if os.path.exists(self.temp_dir):
-            shutil.rmtree(self.temp_dir)
+        # Global patches for executors
+        self.pp_patcher = patch('concurrent.futures.ProcessPoolExecutor', side_effect=MockExecutor)
+        self.tp_patcher = patch('concurrent.futures.ThreadPoolExecutor', side_effect=MockExecutor)
+        self.ac_patcher = patch('concurrent.futures.as_completed', side_effect=lambda fs: fs)
+        self.pp_patcher.start()
+        self.tp_patcher.start()
+        self.ac_patcher.start()
 
-    @patch('backend.indexing.CharacterTextSplitter')
+    def tearDown(self):
+        self.pp_patcher.stop()
+        self.tp_patcher.stop()
+        self.ac_patcher.stop()
+
+        self.db_patcher.stop()
+        if os.path.exists(self.temp_db.name):
+            os.remove(self.temp_db.name)
+        shutil.rmtree(self.temp_dir)
+
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index_multiple_folders(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
+    def test_create_index_multiple_folders(self, mock_extract_text, mock_get_embeddings):
         """Test creating index from multiple folders."""
-        # Mock text splitting
-        mock_splitter_instance = mock_splitter_cls.return_value
-        mock_splitter_instance.split_text.return_value = ["chunk1"]
-
         mock_extract_text.return_value = "Test content"
         
         mock_embeddings_model = MagicMock()
@@ -306,15 +245,10 @@ class TestIndexingMultipleFolders(unittest.TestCase):
             self.assertEqual(len(docs), 2)
 
 
-    @patch('backend.indexing.CharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index_with_progress_callback(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
+    def test_create_index_with_progress_callback(self, mock_extract_text, mock_get_embeddings):
         """Test progress callback during indexing."""
-        # Mock text splitting
-        mock_splitter_instance = mock_splitter_cls.return_value
-        mock_splitter_instance.split_text.return_value = ["chunk1"]
-
         mock_extract_text.return_value = "Test content"
         
         mock_embeddings_model = MagicMock()
@@ -322,7 +256,7 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         mock_get_embeddings.return_value = mock_embeddings_model
         
         progress_calls = []
-        def progress_callback(current, total, filename=None):
+        def progress_callback(current, total, filename):
             progress_calls.append((current, total, filename))
         
         with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
@@ -346,15 +280,10 @@ class TestIndexingMultipleFolders(unittest.TestCase):
             
             self.assertIsNone(index)
 
-    @patch('backend.indexing.CharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index_string_folder_path(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
+    def test_create_index_string_folder_path(self, mock_extract_text, mock_get_embeddings):
         """Test that string folder path is converted to list."""
-        # Mock text splitting
-        mock_splitter_instance = mock_splitter_cls.return_value
-        mock_splitter_instance.split_text.return_value = ["chunk1"]
-
         mock_extract_text.return_value = "Test content"
         
         mock_embeddings_model = MagicMock()
@@ -378,37 +307,11 @@ class TestSaveIndex(unittest.TestCase):
     """Dedicated tests for save_index function."""
 
     def setUp(self):
-        from backend import database
-        database.init_database()
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
-        self.db_dir = tempfile.mkdtemp() # Separate dir for DB
-        self.addCleanup(shutil.rmtree, self.db_dir)
 
-        # Setup temp database
-        self.db_path = os.path.join(self.db_dir, 'test_indexing.db')
-        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
-        self.patcher.start()
-        from backend import database
-        database.init_database()
-        self.addCleanup(self.patcher.stop)
-
-
-
-    def tearDown(self):
-        """Clean up test fixtures."""
-        if os.path.exists(self.temp_dir):
-            shutil.rmtree(self.temp_dir)
-
-    @patch('backend.indexing.faiss.write_index')
-    def test_save_index_creates_all_files(self, mock_write_index):
+    def test_save_index_creates_all_files(self):
         """Test that save_index creates .faiss, _docs.pkl, and _tags.pkl files."""
-        # Mock write_index side effect
-        def side_effect_write(index, filepath):
-            with open(filepath, 'w') as f:
-                f.write("dummy")
-        mock_write_index.side_effect = side_effect_write
-
         import faiss
         
         index = faiss.IndexFlatL2(3)
@@ -430,38 +333,11 @@ class TestLoadIndex(unittest.TestCase):
     """Dedicated tests for load_index function."""
 
     def setUp(self):
-        from backend import database
-        database.init_database()
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
-        self.db_dir = tempfile.mkdtemp() # Separate dir for DB
-        self.addCleanup(shutil.rmtree, self.db_dir)
 
-        # Setup temp database
-        self.db_path = os.path.join(self.db_dir, 'test_indexing.db')
-        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
-        self.patcher.start()
-        from backend import database
-        database.init_database()
-        self.addCleanup(self.patcher.stop)
-
-
-
-    def tearDown(self):
-        """Clean up test fixtures."""
-        if os.path.exists(self.temp_dir):
-            shutil.rmtree(self.temp_dir)
-
-    @patch('backend.indexing.faiss.write_index')
-    @patch('backend.indexing.faiss.read_index')
-    def test_load_index_preserves_data(self, mock_read_index, mock_write_index):
+    def test_load_index_preserves_data(self):
         """Test that load_index correctly restores saved data."""
-        # Mock write_index
-        def side_effect_write(index, filepath):
-            with open(filepath, 'w') as f:
-                f.write("dummy")
-        mock_write_index.side_effect = side_effect_write
-
         import faiss
         
         # Create and save
@@ -475,22 +351,12 @@ class TestLoadIndex(unittest.TestCase):
         index_path = os.path.join(self.temp_dir, "test.faiss")
         save_index(original_index, original_docs, original_tags, index_path)
         
-        # Mock load_index return
-        mock_read_index.return_value = original_index
-
         # Load and verify
         res = load_index(index_path)
         loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res
         
-        # We can't check ntotal on a mock object unless we set it.
-        # But if we use the same mock object "original_index", it should have whatever we set on it.
-        # However, faiss.IndexFlatL2 is a mock.
-        # We can just check it's the same object.
-        self.assertEqual(loaded_index, original_index)
+        self.assertEqual(loaded_index.ntotal, 2)
         self.assertEqual(loaded_docs, original_docs)
         self.assertEqual(loaded_tags, original_tags)
-
-
 if __name__ == '__main__':
     unittest.main()
-

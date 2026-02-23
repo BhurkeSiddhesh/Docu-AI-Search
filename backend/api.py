@@ -654,21 +654,37 @@ class LogRequest(BaseModel):
     source: Optional[str] = "Frontend"
     stack: Optional[str] = None
 
+
+def sanitize_log_entry(text: Optional[str]) -> str:
+    if not text:
+        return ""
+    return text.replace("\n", "\\n").replace("\r", "\\r")
 @app.post("/api/logs")
 async def receive_log(log: LogRequest, request: Request):
     """endpoint to receive logs from frontend"""
-    log_msg = f"[{log.source}] {log.message}"
+    safe_source = sanitize_log_entry(log.source)
+    safe_message = sanitize_log_entry(log.message)
+
+    log_msg = f"[{safe_source}] {safe_message}"
     if log.stack:
-        log_msg += f"\nStack: {log.stack}"
+        safe_stack = sanitize_log_entry(log.stack)
+        log_msg += f"\nStack: {safe_stack}"
     
-    if log.level.lower() == 'error':
+    if log.level.lower() == "error":
         logger.error(log_msg)
-    elif log.level.lower() == 'warn' or log.level.lower() == 'warning':
+    elif log.level.lower() == "warn" or log.level.lower() == "warning":
         logger.warning(log_msg)
     else:
         logger.info(log_msg)
     return {"status": "logged"}
 
+    if log.level.lower() == "error":
+        logger.error(log_msg)
+    elif log.level.lower() == "warn" or log.level.lower() == "warning":
+        logger.warning(log_msg)
+    else:
+        logger.info(log_msg)
+    return {"status": "logged"}
 @app.post("/api/open-file")
 async def open_file(request: dict, req: Request):
     """Open a file in the default system application."""

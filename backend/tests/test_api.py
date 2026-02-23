@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 from backend.api import app
+import backend.model_manager
 
 # We will use class-level or method-level patches instead of global ones to avoid inter-test pollution
 
