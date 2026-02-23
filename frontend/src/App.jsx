@@ -145,11 +145,18 @@ function App() {
             if (results.length > 0) {
                 setAiAnswer("Thinking...");
 
+                // Construct context from search results
+                const context = results.map(r => {
+                    const text = (r.summary && r.summary.length > 20) ? r.summary : (r.document ? r.document.slice(0, 500) : "");
+                    const fileName = r.file_name || "";
+                    return fileName ?  : text;
+                }).filter(t => t.length > 0);
+
                 try {
                     const streamResponse = await fetch('http://localhost:8000/api/stream-answer', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ query })
+                        body: JSON.stringify({ query, context })
                     });
 
                     if (streamResponse.body) {

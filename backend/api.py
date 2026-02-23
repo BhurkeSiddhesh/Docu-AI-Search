@@ -319,6 +319,7 @@ async def get_benchmark_results(request: Request):
 
 class SearchRequest(BaseModel):
     query: str
+    context: Optional[List[str]] = None
 
 class SearchResult(BaseModel):
     document: str
@@ -559,52 +560,58 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request):
         except:
             pass
 
-    # Re-run search to get context
-    results, context_snippets = search(
-        request.query, index, docs, tags,
-        get_embeddings(provider, api_key, model_path),
-        index_summaries, cluster_summaries, cluster_map, bm25
-    )
 
-    # OPTIMIZATION: Batch fetch missing file info to avoid N+1 queries and improve context quality
-    missing_faiss_idxs = [
-        r.get('faiss_idx') for r in results
-        if not r.get('file_name') and r.get('faiss_idx') is not None
-    ]
-    # De-duplicate indices to avoid inflating SQL query
-    missing_faiss_idxs = list(dict.fromkeys(missing_faiss_idxs))
-
-    file_info_map = {}
-    if missing_faiss_idxs:
-        try:
-            file_info_map = database.get_files_by_faiss_indices(missing_faiss_idxs)
-        except ValueError as ve:
-             logger.warning(f"Batch lookup failed in stream-answer, falling back: {ve}")
-             for f_idx in missing_faiss_idxs:
-                 info = database.get_file_by_faiss_index(f_idx)
-                 if info:
-                     file_info_map[f_idx] = info
-
-    # Prepare context
     final_context_snippets = []
-    for idx, result in enumerate(results):
-         # Use fast fallback summary for streaming context (no new LLM calls)
-         summary = summarize(result['document'], provider, api_key, model_path, question=request.query)
 
-         faiss_idx = result.get('faiss_idx')
-         file_name = result.get('file_name')
+    if request.context:
+        print(f"[API] Using provided context ({len(request.context)} snippets) for streaming answer")
+        final_context_snippets = request.context
+    else:
+        # Re-run search to get context
+        results, context_snippets = search(
+            request.query, index, docs, tags,
+            get_embeddings(provider, api_key, model_path),
+            index_summaries, cluster_summaries, cluster_map, bm25
+        )
 
-         # Fallback to database lookup if missing
-         if not file_name and faiss_idx is not None:
-             file_info = file_info_map.get(faiss_idx)
-             if file_info:
-                 file_name = file_info.get('filename')
+        # OPTIMIZATION: Batch fetch missing file info to avoid N+1 queries and improve context quality
+        missing_faiss_idxs = [
+            r.get('faiss_idx') for r in results
+            if not r.get('file_name') and r.get('faiss_idx') is not None
+        ]
+        # De-duplicate indices to avoid inflating SQL query
+        missing_faiss_idxs = list(dict.fromkeys(missing_faiss_idxs))
 
-         file_prefix = f"[From: {file_name}] " if file_name else ""
-         if summary and len(summary) > 20:
-             final_context_snippets.append(f"{file_prefix}{summary}")
-         else:
-             final_context_snippets.append(f"{file_prefix}{result['document'][:500]}")
+        file_info_map = {}
+        if missing_faiss_idxs:
+            try:
+                file_info_map = database.get_files_by_faiss_indices(missing_faiss_idxs)
+            except ValueError as ve:
+                 logger.warning(f"Batch lookup failed in stream-answer, falling back: {ve}")
+                 for f_idx in missing_faiss_idxs:
+                     info = database.get_file_by_faiss_index(f_idx)
+                     if info:
+                         file_info_map[f_idx] = info
+
+        # Prepare context
+        for idx, result in enumerate(results):
+             # Use fast fallback summary for streaming context (no new LLM calls)
+             summary = summarize(result['document'], provider, api_key, model_path, question=request.query)
+
+             faiss_idx = result.get('faiss_idx')
+             file_name = result.get('file_name')
+
+             # Fallback to database lookup if missing
+             if not file_name and faiss_idx is not None:
+                 file_info = file_info_map.get(faiss_idx)
+                 if file_info:
+                     file_name = file_info.get('filename')
+
+             file_prefix = f"[From: {file_name}] " if file_name else ""
+             if summary and len(summary) > 20:
+                 final_context_snippets.append(f"{file_prefix}{summary}")
+             else:
+                 final_context_snippets.append(f"{file_prefix}{result['document'][:500]}")
 
     safe_snippets = [s[:600] for s in final_context_snippets[:6]]
     context_text = "\n\n".join(safe_snippets)
