@@ -10,7 +10,7 @@ import tempfile
 import shutil
 from unittest.mock import patch, MagicMock
 import configparser
-from backend import database
+
 
 class TestConfiguration(unittest.TestCase):
     """Tests for configuration management."""
@@ -78,54 +78,53 @@ class TestModelPathValidation(unittest.TestCase):
 
 class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
-
+    
     def setUp(self):
-        self.db_fd, self.db_path = tempfile.mkstemp()
-        os.close(self.db_fd)
-        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
-        self.patcher.start()
+        """Set up test environment."""
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.temp_dir, 'test_metadata.db')
+
+        # Patch database path
+        from backend import database
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = self.db_path
         database.init_database()
 
     def tearDown(self):
-        self.patcher.stop()
-        if os.path.exists(self.db_path):
-            os.remove(self.db_path)
-    
-    @patch('backend.database.add_search_history')
-    @patch('backend.database.get_search_history')
-    def test_empty_query_handling(self, mock_get_history, mock_add_history):
+        """Clean up."""
+        from backend import database
+        database.DATABASE_PATH = self.original_db_path
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
+    def test_empty_query_handling(self):
         """Test handling of empty search queries."""
+        from backend import database
         
         # Empty query should still be storable
         database.add_search_history("", 0, 0)
-        mock_add_history.assert_called_with("", 0, 0)
         
-        mock_get_history.return_value = []
         history = database.get_search_history(limit=1)
         # Should not crash
         self.assertIsInstance(history, list)
     
-    @patch('backend.database.add_search_history')
-    def test_very_long_query(self, mock_add_history):
+    def test_very_long_query(self):
         """Test handling of very long search queries."""
+        from backend import database
         
         long_query = "word " * 1000  # 5000+ characters
         
         # Should handle long queries
         database.add_search_history(long_query, 0, 0)
-        mock_add_history.assert_called_with(long_query, 0, 0)
         
-    @patch('backend.database.add_search_history')
-    @patch('backend.database.get_search_history')
-    def test_special_characters_in_query(self, mock_get_history, mock_add_history):
+    def test_special_characters_in_query(self):
         """Test handling of special characters in queries."""
+        from backend import database
         
         special_query = "test's \"quoted\" <html> & special chars: 日本語"
         
         database.add_search_history(special_query, 0, 0)
-        mock_add_history.assert_called_with(special_query, 0, 0)
         
-        mock_get_history.return_value = []
         history = database.get_search_history(limit=1)
         self.assertIsInstance(history, list)
 
@@ -135,22 +134,28 @@ class TestAPIResponseFormats(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
-        # Initialize isolated DB for API tests
-        self.db_fd, self.db_path = tempfile.mkstemp()
-        os.close(self.db_fd)
-        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
-        self.patcher.start()
+        # Use a separate temp db for API tests too to ensure isolation
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.temp_dir, 'api_test.db')
+
+        from backend import database
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = self.db_path
         database.init_database()
+        # BUT we must ensure the patched path is visible to the app
 
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
-    
-    def tearDown(self):
-        self.patcher.stop()
-        if os.path.exists(self.db_path):
-            os.remove(self.db_path)
+        # Force startup to run if it hasn't
+        # TestClient runs startup on first request usually
 
+    def tearDown(self):
+        from backend import database
+        database.DATABASE_PATH = self.original_db_path
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+    
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
         response = self.client.get("/api/config")
@@ -165,34 +170,29 @@ class TestAPIResponseFormats(unittest.TestCase):
     
     def test_models_available_response_format(self):
         """Test /api/models/available returns correct format."""
-        # Mocking backend.api.get_available_models to avoid real file system access
-        with patch('backend.api.get_available_models', return_value=[{'id': 'model1', 'name': 'Model 1'}]):
-            response = self.client.get("/api/models/available")
-
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-
-            self.assertIsInstance(data, list)
-
-            if data:
-                model = data[0]
-                self.assertIn('id', model)
-                self.assertIn('name', model)
+        response = self.client.get("/api/models/available")
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertIsInstance(data, list)
+        
+        if data:
+            model = data[0]
+            self.assertIn('id', model)
+            self.assertIn('name', model)
     
     def test_models_local_response_format(self):
         """Test /api/models/local returns correct format."""
-        with patch('backend.api.get_local_models', return_value=[]):
-            response = self.client.get("/api/models/local")
-
-            self.assertEqual(response.status_code, 200)
-            data = response.json()
-
-            self.assertIsInstance(data, list)
+        response = self.client.get("/api/models/local")
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertIsInstance(data, list)
     
-    @patch('backend.database.get_search_history')
-    def test_search_history_response_format(self, mock_get_history):
+    def test_search_history_response_format(self):
         """Test /api/search/history returns correct format."""
-        mock_get_history.return_value = []
         response = self.client.get("/api/search/history")
         
         self.assertEqual(response.status_code, 200)
@@ -206,21 +206,22 @@ class TestErrorHandling(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
-        # Initialize isolated DB for API tests
-        self.db_fd, self.db_path = tempfile.mkstemp()
-        os.close(self.db_fd)
-        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
-        self.patcher.start()
-        database.init_database()
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.temp_dir, 'api_test_error.db')
+
+        from backend import database
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = self.db_path
 
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
-
+    
     def tearDown(self):
-        self.patcher.stop()
-        if os.path.exists(self.db_path):
-            os.remove(self.db_path)
+        from backend import database
+        database.DATABASE_PATH = self.original_db_path
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
 
     def test_search_without_index(self):
         """Test search returns appropriate error when no index exists."""

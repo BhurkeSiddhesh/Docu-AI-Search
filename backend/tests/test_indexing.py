@@ -32,9 +32,19 @@ class TestIndexing(unittest.TestCase):
     def setUp(self):
         """Set up test environment before each test method."""
         self.temp_dir = tempfile.mkdtemp()
-        self.test_folder = self.temp_dir
         
-        # Create a dummy file
+        # Create a subfolder for documents to avoid indexing the DB file
+        self.test_folder = os.path.join(self.temp_dir, "documents")
+        os.makedirs(self.test_folder, exist_ok=True)
+
+        # Setup temp database in the root temp dir (outside documents)
+        from backend import database
+        self.db_path = os.path.join(self.temp_dir, 'test_metadata.db')
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = self.db_path
+        database.init_database()
+
+        # Create a dummy file in the documents folder
         self.test_file = os.path.join(self.test_folder, "test.txt")
         with open(self.test_file, "w") as f:
             f.write("This is a test document content for indexing.")
@@ -49,6 +59,9 @@ class TestIndexing(unittest.TestCase):
 
     def tearDown(self):
         """Clean up after each test method."""
+        from backend import database
+        database.DATABASE_PATH = self.original_db_path
+
         self.pp_patcher.stop()
         self.tp_patcher.stop()
         self.ac_patcher.stop()
@@ -73,9 +86,7 @@ class TestIndexing(unittest.TestCase):
         mock_get_embeddings.return_value = mock_embeddings_model
         
         # Mock the get_tags and clustering functions
-        with patch('backend.indexing.get_tags', return_value="test, indexing"), \
-             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+        with patch('backend.indexing.get_tags', return_value="test, indexing"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
             res = create_index(self.test_folder, "openai", "fake_api_key")
             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
             
@@ -103,9 +114,7 @@ class TestIndexing(unittest.TestCase):
         mock_embeddings_model = MagicMock()
         mock_get_embeddings.return_value = mock_embeddings_model
         
-        with patch('backend.indexing.get_tags', return_value=""), \
-             patch('backend.indexing.perform_global_clustering', return_value={}), \
-             patch('backend.indexing.smart_summary', return_value=""):
+        with patch('backend.indexing.get_tags', return_value=""),              patch('backend.indexing.perform_global_clustering', return_value={}),              patch('backend.indexing.smart_summary', return_value=""):
             res = create_index(empty_folder, "openai", "fake_api_key")
             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
 
@@ -188,9 +197,20 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         
-        # Create two test folders
-        self.folder1 = os.path.join(self.temp_dir, "folder1")
-        self.folder2 = os.path.join(self.temp_dir, "folder2")
+        # Setup temp database in root temp dir
+        from backend import database
+        self.db_path = os.path.join(self.temp_dir, 'test_metadata.db')
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = self.db_path
+        database.init_database()
+
+        # Create documents subfolder
+        self.docs_dir = os.path.join(self.temp_dir, "documents")
+        os.makedirs(self.docs_dir, exist_ok=True)
+
+        # Create two test folders inside documents
+        self.folder1 = os.path.join(self.docs_dir, "folder1")
+        self.folder2 = os.path.join(self.docs_dir, "folder2")
         os.makedirs(self.folder1, exist_ok=True)
         os.makedirs(self.folder2, exist_ok=True)
         
@@ -199,6 +219,12 @@ class TestIndexingMultipleFolders(unittest.TestCase):
             f.write("Content from folder 1")
         with open(os.path.join(self.folder2, "doc2.txt"), 'w') as f:
             f.write("Content from folder 2")
+
+    def tearDown(self):
+        from backend import database
+        database.DATABASE_PATH = self.original_db_path
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
 
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
@@ -215,9 +241,7 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
         mock_get_embeddings.return_value = mock_embeddings_model
         
-        with patch('backend.indexing.get_tags', return_value="test"), \
-             patch('backend.indexing.perform_global_clustering', return_value={0: [0, 1]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0, 1]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
             res = create_index(
                 [self.folder1, self.folder2], 
                 "openai", 
@@ -248,9 +272,7 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         def progress_callback(current, total, filename):
             progress_calls.append((current, total, filename))
         
-        with patch('backend.indexing.get_tags', return_value="test"), \
-             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
             create_index(self.folder1, "openai", "fake_key", progress_callback=progress_callback)
             
             # Verify progress was called
@@ -288,9 +310,7 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3]]
         mock_get_embeddings.return_value = mock_embeddings_model
         
-        with patch('backend.indexing.get_tags', return_value="test"), \
-             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
             # Pass string instead of list
             res = create_index(
                 self.folder1,  # String, not list
