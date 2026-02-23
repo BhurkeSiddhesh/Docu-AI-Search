@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Depends
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 import json
 import asyncio
@@ -102,8 +102,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:3000", "http://localhost:5175", "http://localhost:5174"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Global state
@@ -390,7 +390,7 @@ async def update_config(config_data: ConfigModel):
     return {"status": "success", "message": "Configuration saved"}
 
 @app.post("/api/search")
-async def search_files(request: SearchRequest, background_tasks: BackgroundTasks):
+async def search_files(request: SearchRequest):
     global index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25
     
     if not index:
@@ -435,8 +435,7 @@ async def search_files(request: SearchRequest, background_tasks: BackgroundTasks
                 pass
 
         # Run Search
-        results, context_snippets = await asyncio.to_thread(
-            search,
+        results, context_snippets = search(
             request.query, index, docs, tags, 
             get_embeddings(provider, api_key, model_path),
             index_summaries, cluster_summaries, cluster_map, bm25
@@ -498,7 +497,7 @@ async def search_files(request: SearchRequest, background_tasks: BackgroundTasks
         
         # Save to search history
         execution_time_ms = int((time.time() - start_time) * 1000)
-        background_tasks.add_task(database.add_search_history, request.query, len(processed_results), execution_time_ms)
+        database.add_search_history(request.query, len(processed_results), execution_time_ms)
             
         return SearchResponse(
             results=processed_results,
@@ -576,7 +575,7 @@ async def stream_answer_endpoint(request: SearchRequest):
 async def get_search_history():
     """Get recent search history."""
     try:
-        history = await asyncio.to_thread(database.get_search_history, limit=50)
+        history = database.get_search_history(limit=50)
         return history
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -623,19 +622,7 @@ async def receive_log(log: LogRequest):
         logger.info(log_msg)
     return {"status": "logged"}
 
-def verify_local_request(request: Request):
-    """
-    Ensure the request originates from localhost.
-    This prevents arbitrary file execution from remote clients.
-    """
-    allowed_hosts = {"localhost", "127.0.0.1", "::1"}
-    client_host = request.client.host if request.client else None
-
-    if client_host not in allowed_hosts:
-        logger.warning(f"Security: Blocked remote file open attempt from {client_host}")
-        raise HTTPException(status_code=403, detail="Access denied: Only local requests are allowed")
-
-@app.post("/api/open-file", dependencies=[Depends(verify_local_request)])
+@app.post("/api/open-file")
 async def open_file(request: dict):
     """Open a file in the default system application."""
     file_path = request.get('path', '')
@@ -644,15 +631,10 @@ async def open_file(request: dict):
     
     # Normalize path - fix mixed slashes from FAISS metadata
     file_path = os.path.normpath(file_path)
-
-    # Security: Validate file extension
-    _, ext = os.path.splitext(file_path)
-    if ext.lower() not in {'.txt', '.pdf', '.docx', '.xlsx', '.pptx'}:
-        raise HTTPException(status_code=403, detail="Access denied: File type not allowed")
     
     # Security: Only allow opening files that are in the index
     # This prevents opening arbitrary files on the system
-    if not await asyncio.to_thread(database.get_file_by_path, file_path):
+    if not database.get_file_by_path(file_path):
         logger.warning(f"Security: Attempt to open non-indexed file: {file_path}")
         raise HTTPException(status_code=403, detail="Access denied: File is not in the index")
 
@@ -675,10 +657,10 @@ async def open_file(request: dict):
         raise HTTPException(status_code=500, detail=f"Failed to open file: {str(e)}")
 
 @app.get("/api/files")
-async def list_indexed_files():
+async def list_indexed_files(limit: Optional[int] = None, offset: int = 0):
     """Get all indexed files with metadata."""
     try:
-        files = await asyncio.to_thread(database.get_all_files)
+        files = database.get_all_files(limit=limit, offset=offset)
         return files
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
