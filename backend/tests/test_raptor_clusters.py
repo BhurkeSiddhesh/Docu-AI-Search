@@ -1,6 +1,23 @@
-
 import pytest
+import tempfile
+import os
 from backend import database
+
+@pytest.fixture(autouse=True)
+def setup_db():
+    # Create temp DB
+    fd, path = tempfile.mkstemp()
+    os.close(fd)
+
+    original_path = database.DATABASE_PATH
+    database.DATABASE_PATH = path
+    database.init_database()
+
+    yield
+
+    # Cleanup
+    os.remove(path)
+    database.DATABASE_PATH = original_path
 
 def test_raptor_clusters_crud():
     """Test Create, Read, Delete for RAPTOR clusters table."""
@@ -33,3 +50,30 @@ def test_raptor_clusters_crud():
     database.clear_clusters()
     assert len(database.get_clusters_by_level(0)) == 0
     assert len(database.get_clusters_by_level(1)) == 0
+
+def test_add_clusters_batch():
+    """Test batch insertion of RAPTOR clusters."""
+    # 1. Clear existing
+    database.clear_clusters()
+
+    # 2. Add batch
+    data = [("Batch Summary 1", 0), ("Batch Summary 2", 1), ("Batch Summary 3", 0)]
+    database.add_clusters_batch(data)
+
+    # 3. Verify counts
+    level_0 = database.get_clusters_by_level(0)
+    level_1 = database.get_clusters_by_level(1)
+
+    assert len(level_0) == 2
+    assert len(level_1) == 1
+
+    # Verify content
+    summaries_0 = {c['summary'] for c in level_0}
+    assert "Batch Summary 1" in summaries_0
+    assert "Batch Summary 3" in summaries_0
+
+    summaries_1 = {c['summary'] for c in level_1}
+    assert "Batch Summary 2" in summaries_1
+
+    # 4. Clear
+    database.clear_clusters()
