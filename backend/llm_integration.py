@@ -212,99 +212,49 @@ def get_llm_client(provider, api_key=None, model_path=None):
         _llm_client_cache[cache_key] = client
     return client
 
-def generate_raw_completion(input_data, provider, api_key=None, model_path=None, **kwargs):
-    """
-    Unified function for generating text completion from local or cloud LLMs.
-
-    Args:
-        input_data: String prompt or list of LangChain Message objects.
-        provider: 'local', 'openai', 'anthropic', etc.
-        api_key: API key for cloud providers.
-        model_path: Path for local model.
-        **kwargs: Additional arguments passed to the generation method (e.g. max_tokens, stop, temperature).
-
-    Returns:
-        str: The generated text.
-
-    Raises:
-        Exception: If client creation fails or generation fails.
-    """
-    client = get_llm_client(provider, api_key, model_path)
-    if not client:
-        raise ValueError(f"Could not initialize LLM client for provider: {provider}")
-
-    # Handle Local LLM
-    if isinstance(client, str) and client.startswith("LOCAL:"):
-        real_model_path = client.split("LOCAL:")[1]
-        # Pass tensor_split if it's in kwargs, otherwise None (default behavior)
-        # Note: get_llm_client usually caches the model, so tensor_split might be ignored if already loaded.
-        llm = get_local_llm(real_model_path)
-        if not llm:
-            raise ValueError("Local model failed to load.")
-
-        # Convert input to string if it is a list (e.g. messages)
-        prompt_text = input_data
-        if isinstance(input_data, list):
-            # Simple concatenation for now, matching ReActAgent's previous behavior
-            # Assuming list of objects with 'content' attribute
-            # We use duck typing to avoid importing LangChain types here
-            prompt_text = "\n\n".join([m.content for m in input_data if hasattr(m, 'content')])
-
-        # Prepare arguments for create_completion
-        # Default defaults
-        gen_kwargs = {
-            "max_tokens": 256,
-            "echo": False,
-            "temperature": 0.1,
-            "repeat_penalty": 1.1,
-            "stop": []
-        }
-        # Filter kwargs to only those accepted by create_completion?
-        # Llama.create_completion accepts many args. We'll trust kwargs.
-        gen_kwargs.update(kwargs)
-
-        with _local_llm_lock:
-            output = llm.create_completion(
-                prompt_text,
-                **gen_kwargs
-            )
-        return output['choices'][0]['text'].strip()
-
-    # Handle Cloud (LangChain)
-    else:
-        # LangChain expects input_data to be prompt (str) or messages (list)
-
-        invocation_kwargs = {}
-        if "stop" in kwargs:
-            invocation_kwargs["stop"] = kwargs["stop"]
-
-        # Attempt to invoke
-        response = client.invoke(input_data, **invocation_kwargs)
-        return response.content.strip()
-
-def generate_ai_answer(context, question, provider, api_key=None, model_path=None, tensor_split=None):
+def generate_ai_answer(context, question, provider, api_key=None, model_path=None, tensor_split=None,
+                       raw=False, system_instruction=None, stop=None, max_tokens=512, temperature=0.2):
     """
     Generate a natural language answer using the selected provider.
+
+    Args:
+        context: Context text (documents). Ignored if raw=True unless manually included in question.
+        question: User query. If raw=True, this is treated as the full user prompt content.
+        provider: 'openai', 'gemini', 'anthropic', 'local', etc.
+        raw: If True, bypasses standard prompt wrapping. 'question' becomes the main prompt.
+        system_instruction: Optional system prompt to override default.
+        stop: Optional list of stop sequences.
+        max_tokens: Max tokens to generate.
+        temperature: Sampling temperature.
     """
     # Get client
     client = get_llm_client(provider, api_key, model_path)
     if not client:
         return "Error: Could not initialize AI model. Check settings and API keys."
 
-    prompt_text = f"""You are a document search assistant. Answer the question using ONLY facts from the provided documents.
-    
-    IMPORTANT: 
-    1. Check Names: If the question is about a specific person (e.g., 'Siddhesh'), ensure you ONLY use documents describing that exact person. Do NOT confuse them with similar names like 'Siddharth'.
-    2. Quote specific content, data, numbers, or key details from the documents. 
-    3. Reference which file the information comes from when possible. 
-    4. If the documents do not contain information for the specific person requested, state that clearly.
+    # Default logic for non-raw (RAG) mode
+    if not raw:
+        system_prompt = system_instruction or """You are a precise document search assistant.
+                CRITICAL: You must distinguish between similar names. If the question asks about 'Siddhesh', do NOT provide info about 'Siddharth'.
+                Only answer based on the provided documents. Quote facts and reference file names."""
 
-    Documents:
-    {context}
-    
-    Question: {question}
-    
-    Answer (cite specific details from the documents):"""
+        # Prepare context
+        # Truncate context to fit within model's context window (roughly)
+        MAX_CONTEXT_CHARS = 10000
+        if len(context) > MAX_CONTEXT_CHARS:
+            context = context[:MAX_CONTEXT_CHARS] + "... [Truncated to fit context window]"
+
+        user_content = f"Documents:\n{context}\n\nQuestion: {question}\n\nAnswer (cite specific details from the documents):"
+
+        # Stops for RAG
+        stop_seqs = stop or ["System:", "Question:", "Context:", "Documents:"]
+
+    else:
+        # RAW mode
+        # 'question' is treated as the main content/prompt
+        system_prompt = system_instruction # Can be None
+        user_content = question
+        stop_seqs = stop # Can be None
 
     try:
         # Handle Local LLM (LlamaCpp)
@@ -314,20 +264,19 @@ def generate_ai_answer(context, question, provider, api_key=None, model_path=Non
             if not llm:
                 return "Error: Local model failed to load."
 
-            # Truncate context to fit within model's context window
-            # Most local models have 4096 token context. ~4 chars/token.
-            # 10,000 chars is ~2,500 tokens, leaving ample room for prompt (300) and output (512).
-            MAX_CONTEXT_CHARS = 10000
-            if len(context) > MAX_CONTEXT_CHARS:
-                context = context[:MAX_CONTEXT_CHARS] + "... [Truncated to fit context window]"
+            # Construct full prompt string for completion
+            if system_prompt:
+                full_prompt = f"{system_prompt}\n\n{user_content}"
+            else:
+                full_prompt = user_content
 
             with _local_llm_lock:
                 output = llm.create_completion(
-                    prompt_text,
-                    max_tokens=512,
-                    stop=["System:", "Question:", "Context:", "Documents:"],
+                    full_prompt,
+                    max_tokens=max_tokens,
+                    stop=stop_seqs,
                     echo=False,
-                    temperature=0.2, # Lower temperature = faster/more stable
+                    temperature=temperature,
                     repeat_penalty=1.1
                 )
             return output['choices'][0]['text'].strip()
@@ -336,14 +285,22 @@ def generate_ai_answer(context, question, provider, api_key=None, model_path=Non
         else:
             from langchain_core.messages import HumanMessage, SystemMessage
 
-            messages = [
-                SystemMessage(content="""You are a precise document search assistant. 
-                CRITICAL: You must distinguish between similar names. If the question asks about 'Siddhesh', do NOT provide info about 'Siddharth'. 
-                Only answer based on the provided documents. Quote facts and reference file names."""),
-                HumanMessage(content=f"Documents:\n{context}\n\nQuestion: {question}\n\nAnswer:")
-            ]
+            messages = []
+            if system_prompt:
+                messages.append(SystemMessage(content=system_prompt))
 
-            response = client.invoke(messages)
+            messages.append(HumanMessage(content=user_content))
+
+            # Use bind for stop sequences if supported, otherwise just invoke
+            if stop_seqs:
+                 try:
+                    response = client.bind(stop=stop_seqs).invoke(messages)
+                 except Exception:
+                    # Fallback if bind not supported
+                    response = client.invoke(messages)
+            else:
+                 response = client.invoke(messages)
+
             return response.content.strip()
 
     except Exception as e:
@@ -448,7 +405,7 @@ def cached_generate_ai_answer(context, question, provider, api_key=None, model_p
     # 1. Check Cache
     cached_text = database.get_cached_response(query_hash, context_hash, model_id, "ai_answer")
     if cached_text:
-        print(f"[CACHE] Hit for AI answer on query: <redacted>")
+        print(f"[CACHE] Hit for AI answer on query: '{question[:30]}...'")
         return cached_text
     
     print(f"[CACHE] Miss for AI answer. Generating with {model_id}...")
@@ -509,7 +466,7 @@ def smart_summary(text, query, provider, api_key=None, model_path=None, file_nam
         # Fallback to regex summary if no model available
         return summarize(text, provider, api_key, model_path, query)
     
-    print(f"[AI] Smart Summary: Analyzing '{file_name or 'unnamed document'}'")
+    print(f"[AI] Smart Summary: Analyzing '{file_name or 'unnamed document'}' for query '{query}'")
 
     # Truncate text to avoid token limits (approx 3000 chars ~ 750 tokens)
     truncated_text = text[:3000]
@@ -528,15 +485,28 @@ Document:
 Key findings:"""
 
     try:
-        result = generate_raw_completion(
-            prompt_text,
-            provider,
-            api_key,
-            model_path,
-            max_tokens=128,
-            stop=["Document Excerpt:", "Summary:"],
-            temperature=0.1
-        )
+        # Handle Local LLM
+        if isinstance(client, str) and client.startswith("LOCAL:"):
+            real_model_path = client.split("LOCAL:")[1]
+            llm = get_local_llm(real_model_path)
+            if not llm:
+                return summarize(text, provider, api_key, model_path, query)
+
+            with _local_llm_lock:
+                output = llm.create_completion(
+                    prompt_text,
+                    max_tokens=128,
+                    stop=["Document Excerpt:", "Summary:"],
+                    echo=False,
+                    temperature=0.1
+                )
+            result = output['choices'][0]['text'].strip()
+
+        # Handle LangChain Clients
+        else:
+            from langchain_core.messages import HumanMessage
+            response = client.invoke([HumanMessage(content=prompt_text)])
+            result = response.content.strip()
 
         if "No relevant info" in result or len(result) < 5:
             return summarize(text, provider, api_key, model_path, query) # Fallback

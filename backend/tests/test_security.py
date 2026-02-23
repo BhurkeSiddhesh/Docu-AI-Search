@@ -12,6 +12,7 @@ class TestSecurityApi(unittest.TestCase):
         # Create a temporary file OUTSIDE the models directory
         self.temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
         self.temp_file.close()
+sys.modules['fastapi.responses'] = MagicMock()
         self.temp_path = self.temp_file.name
 
     def tearDown(self):

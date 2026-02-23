@@ -1,0 +1,6 @@
+            # Generate LLM response
+            try:
+                # Construct the user-facing part of the prompt (history + trigger)
+                user_content = "\n".join(history) + "\n\nThought:"
+
+                response_text = llm_integration.generate_ai_answer(

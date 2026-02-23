@@ -47,39 +47,33 @@ CRITICAL:
         history = [f"Question: {user_query}"]
         
         for step in range(self.max_steps):
+            # Construct Prompt
+            prompt = system_prompt + "\n\n" + "\n".join(history) + "\n\nThought:"
+            
             # Generate LLM response
             try:
-                from langchain_core.messages import HumanMessage, SystemMessage
-            except ImportError:
-                # Fallback simple classes for local-only setups without langchain
-                class HumanMessage:
-                    def __init__(self, content): self.content = content
-                class SystemMessage:
-                    def __init__(self, content): self.content = content
+                # Construct the user-facing part of the prompt (history + trigger)
+                user_content = "\n".join(history) + "\n\nThought:"
 
-            msgs = [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content="\n".join(history) + "\n\nThought:")
-            ]
-            
-            response_text = ""
-            try:
-                response_text = llm_integration.generate_raw_completion(
-                    msgs,
-                    self.provider,
-                    self.api_key,
-                    self.model_path,
-                    max_tokens=256,
+                response_text = llm_integration.generate_ai_answer(
+                    context="", # Ignored in raw mode
+                    question=user_content,
+                    provider=self.provider,
+                    api_key=self.api_key,
+                    model_path=self.model_path,
+                    raw=True,
+                    system_instruction=system_prompt,
                     stop=["Observation:", "Definition:", "Thought:"],
-                    temperature=0.1,
-                    repeat_penalty=1.1
+                    max_tokens=256,
+                    temperature=0.1
                 )
+
+                if response_text.startswith("Error"):
+                     raise Exception(response_text)
+
             except Exception as e:
                 yield {"type": "error", "content": f"LLM Error: {e}"}
                 return
-
-            # Clean response
-            response_text = response_text.strip()
             
             # Print for server console debug
             print(f"\n[AGENT THOUGHT] {response_text}\n")

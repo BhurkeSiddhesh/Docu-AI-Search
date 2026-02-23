@@ -2,6 +2,8 @@ import unittest
 from unittest.mock import patch, MagicMock
 import os
 import sys
+sys.modules['langchain_core'] = MagicMock()
+sys.modules['langchain_core.messages'] = MagicMock()
 
 # Ensure we can import from root
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

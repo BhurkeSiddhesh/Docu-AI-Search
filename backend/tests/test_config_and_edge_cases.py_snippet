@@ -1,0 +1,16 @@
+    def setUp(self):
+        """Set up test environment."""
+        # Initialize database
+        from backend.database import init_database
+        init_database()
+
+        # Override config path
+        self.patcher = patch('backend.api.CONFIG_PATH', 'backend/tests/test_config.ini')
+        self.mock_config_path = self.patcher.start()
+
+        # Create test client
+        self.client = TestClient(app)
+
+        # Ensure clean state
+        if os.path.exists('backend/tests/test_config.ini'):
+            os.remove('backend/tests/test_config.ini')
