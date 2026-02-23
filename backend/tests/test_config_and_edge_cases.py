@@ -10,44 +10,7 @@ import tempfile
 import shutil
 from unittest.mock import patch, MagicMock
 import configparser
-
-# Shared temp database setup for ALL test classes
-_shared_temp_dir = None
-_original_db_path = None
-
-
-def setUpModule():
-    """Set up shared temp database for all tests in this module."""
-    global _shared_temp_dir, _original_db_path
-    from backend import database
-
-    # Create shared temp directory
-    _shared_temp_dir = tempfile.mkdtemp()
-    _original_db_path = database.DATABASE_PATH
-    database.DATABASE_PATH = os.path.join(_shared_temp_dir, 'test_metadata_config.db')
-    database.init_database()
-
-
-def tearDownModule():
-    """Clean up shared temp database."""
-    global _shared_temp_dir, _original_db_path
-    from backend import database
-    import gc
-    import time
-
-    # Restore original path
-    database.DATABASE_PATH = _original_db_path
-
-    # Try to close any lingering connections and clean up
-    gc.collect()
-    time.sleep(0.1)  # Small delay to let OS release file handles
-
-    if _shared_temp_dir and os.path.exists(_shared_temp_dir):
-        try:
-            shutil.rmtree(_shared_temp_dir)
-        except Exception as e:
-            print(f"Warning: Could not clean up test directory {_shared_temp_dir}: {e}")
-
+from backend import database
 
 class TestConfiguration(unittest.TestCase):
     """Tests for configuration management."""
@@ -115,10 +78,21 @@ class TestModelPathValidation(unittest.TestCase):
 
 class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
+
+    def setUp(self):
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        os.close(self.db_fd)
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        database.init_database()
+
+    def tearDown(self):
+        self.patcher.stop()
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
     
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
-        from backend import database
         
         # Empty query should still be storable
         database.add_search_history("", 0, 0)
@@ -129,7 +103,6 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
     
     def test_very_long_query(self):
         """Test handling of very long search queries."""
-        from backend import database
         
         long_query = "word " * 1000  # 5000+ characters
         
@@ -138,7 +111,6 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
         
     def test_special_characters_in_query(self):
         """Test handling of special characters in queries."""
-        from backend import database
         
         special_query = "test's \"quoted\" <html> & special chars: 日本語"
         
@@ -153,10 +125,22 @@ class TestAPIResponseFormats(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
+        # Initialize isolated DB for API tests
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        os.close(self.db_fd)
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        database.init_database()
+
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
     
+    def tearDown(self):
+        self.patcher.stop()
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
+
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
         response = self.client.get("/api/config")
@@ -207,10 +191,22 @@ class TestErrorHandling(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
+        # Initialize isolated DB for API tests
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        os.close(self.db_fd)
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+        database.init_database()
+
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
-    
+
+    def tearDown(self):
+        self.patcher.stop()
+        if os.path.exists(self.db_path):
+            os.remove(self.db_path)
+
     def test_search_without_index(self):
         """Test search returns appropriate error when no index exists."""
         with patch('backend.api.index', None):

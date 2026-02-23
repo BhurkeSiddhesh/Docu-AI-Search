@@ -305,6 +305,12 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-02-09 (Performance)
+- **React Performance Optimization** - Fixed key anti-pattern in ModelComparison component
+  - **perf**: Replaced array index with unique `model.path` as key in `ModelComparison` select options to improve React reconciliation performance.
+  - **test**: Created `frontend/src/test/ModelComparison.test.jsx` to verify component rendering and ensure stability.
+  - **Files**: `frontend/src/components/ModelComparison.jsx`, `frontend/src/test/ModelComparison.test.jsx`
+
 ### 2026-01-30 (Security)
 - **Fixed Arbitrary File Deletion Vulnerability**
   - **fix**: Implemented `is_safe_model_path` validation in `model_manager.py` to prevent path traversal in model deletion.
