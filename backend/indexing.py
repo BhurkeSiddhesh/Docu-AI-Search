@@ -1,6 +1,6 @@
 import os
 import faiss
-import pickle
+import json
 import numpy as np
 import concurrent.futures
 import time
@@ -278,22 +278,19 @@ def save_index(index_chunks, all_chunks, tags, filepath, index_summaries=None, c
     
     base_path = os.path.splitext(filepath)[0]
     
-    with open(base_path + '_docs.pkl', 'wb') as f:
-        pickle.dump(all_chunks, f)
-    with open(base_path + '_tags.pkl', 'wb') as f:
-        pickle.dump(tags, f)
+    with open(base_path + '_docs.json', 'w') as f:
+        json.dump(all_chunks, f)
+    with open(base_path + '_tags.json', 'w') as f:
+        json.dump(tags, f)
         
     if index_summaries is not None:
         faiss.write_index(index_summaries, base_path + '_summary.index')
-        with open(base_path + '_summaries.pkl', 'wb') as f:
-            pickle.dump(cluster_summaries, f)
-        with open(base_path + '_cluster_map.pkl', 'wb') as f:
-            pickle.dump(cluster_map, f)
+        with open(base_path + '_summaries.json', 'w') as f:
+            json.dump(cluster_summaries, f)
+        with open(base_path + '_cluster_map.json', 'w') as f:
+            json.dump(cluster_map, f)
             
-    if bm25 is not None:
-        with open(base_path + '_bm25.pkl', 'wb') as f:
-            pickle.dump(bm25, f)
-            
+    # BM25 is not saved directly as it's not pickle-safe. It will be reconstructed on load.
     print(f"RAPTOR Index saved to {filepath}")
 
 def load_index(filepath):
@@ -306,10 +303,17 @@ def load_index(filepath):
     index_chunks = faiss.read_index(filepath)
     base_path = os.path.splitext(filepath)[0]
     
-    with open(base_path + '_docs.pkl', 'rb') as f:
-        all_chunks = pickle.load(f)
-    with open(base_path + '_tags.pkl', 'rb') as f:
-        tags = pickle.load(f)
+    docs_path = base_path + '_docs.json'
+    tags_path = base_path + '_tags.json'
+
+    if not os.path.exists(docs_path) or not os.path.exists(tags_path):
+        print(f"Warning: Missing metadata files for {filepath}. Index might be incomplete or old format.")
+        return index_chunks, [], [], None, None, None, None
+
+    with open(docs_path, 'r') as f:
+        all_chunks = json.load(f)
+    with open(tags_path, 'r') as f:
+        tags = json.load(f)
         
     index_summaries = None
     cluster_summaries = None
@@ -319,17 +323,26 @@ def load_index(filepath):
     summary_idx_path = base_path + '_summary.index'
     if os.path.exists(summary_idx_path):
         index_summaries = faiss.read_index(summary_idx_path)
-        with open(base_path + '_summaries.pkl', 'rb') as f:
-            cluster_summaries = pickle.load(f)
-        cluster_map_path = base_path + '_cluster_map.pkl'
+
+        summaries_path = base_path + '_summaries.json'
+        cluster_map_path = base_path + '_cluster_map.json'
+
+        if os.path.exists(summaries_path):
+            with open(summaries_path, 'r') as f:
+                cluster_summaries = json.load(f)
+
         if os.path.exists(cluster_map_path):
-            with open(cluster_map_path, 'rb') as f:
-                cluster_map = pickle.load(f)
+            with open(cluster_map_path, 'r') as f:
+                cluster_map_raw = json.load(f)
+                # Convert keys back to int
+                cluster_map = {int(k): v for k, v in cluster_map_raw.items()}
                 
-    bm25_path = base_path + '_bm25.pkl'
-    if os.path.exists(bm25_path):
-        with open(bm25_path, 'rb') as f:
-            bm25 = pickle.load(f)
+    # Reconstruct BM25
+    if all_chunks:
+        print("Reconstructing BM25 Index...")
+        chunk_strings = [chunk['text'] for chunk in all_chunks]
+        tokenized_corpus = [tokenize(doc) for doc in chunk_strings]
+        bm25 = BM25Okapi(tokenized_corpus)
             
     print(f"Loaded RAPTOR Index: {len(all_chunks)} chunks, {len(cluster_summaries) if cluster_summaries else 0} clusters.")
     return index_chunks, all_chunks, tags, index_summaries, cluster_summaries, cluster_map, bm25

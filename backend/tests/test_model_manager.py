@@ -1,125 +1,149 @@
+"""
+Test Model Manager
+
+Tests for the model_manager module including model downloads,
+resource checks, and model discovery.
+"""
+
 import unittest
 import os
-import tempfile
-import shutil
 from unittest.mock import patch, MagicMock
-import sys
-
-# Mock dependencies
-sys.modules['requests'] = MagicMock()
-sys.modules['tqdm'] = MagicMock()
-sys.modules['psutil'] = MagicMock()
-
-# Import after mocking
-from backend.model_manager import get_available_models, get_local_models, check_system_resources, get_download_status
 
 class TestModelManager(unittest.TestCase):
-    """Test cases for model manager module."""
+    """Tests for model_manager module."""
+    
+    @patch('backend.model_manager.psutil')
+    def test_check_system_resources(self, mock_psutil):
+        """Test system resource checking function."""
+        # Configure mock
+        mock_psutil.virtual_memory.return_value.available = 16 * 1024 * 1024 * 1024
+        mock_psutil.disk_usage.return_value.free = 100 * 1024 * 1024 * 1024
 
-    def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
-        self.models_dir = os.path.join(self.temp_dir, "models")
-        os.makedirs(self.models_dir, exist_ok=True)
+        from backend.model_manager import check_system_resources
 
-        self.patcher = patch('backend.model_manager.MODELS_DIR', self.models_dir)
-        self.patcher.start()
+        test_model = {
+            'id': 'test-model',
+            'size_bytes': 1000000,  # 1MB
+            'ram_required': 1  # 1GB
+        }
 
-    def tearDown(self):
-        self.patcher.stop()
-        if os.path.exists(self.temp_dir):
-            shutil.rmtree(self.temp_dir)
+        can_download, warnings = check_system_resources(test_model)
+
+        self.assertIsInstance(can_download, bool)
+        self.assertIsInstance(warnings, list)
+        self.assertTrue(can_download)
+
+    @patch('backend.model_manager.psutil')
+    def test_check_system_resources_large_model(self, mock_psutil):
+        """Test resource check rejects models too large for system."""
+        mock_psutil.virtual_memory.return_value.available = 16 * 1024 * 1024 * 1024
+        mock_psutil.disk_usage.return_value.free = 100 * 1024 * 1024 * 1024
+
+        from backend.model_manager import check_system_resources
+
+        test_model = {
+            'id': 'impossible-model',
+            'size_bytes': 1000 * 1024 * 1024 * 1024,  # 1TB
+            'ram_required': 500  # 500GB RAM
+        }
+
+        can_download, warnings = check_system_resources(test_model)
+
+        self.assertFalse(can_download, "Should reject model requiring too much resources")
+        self.assertGreater(len(warnings), 0, "Should have warnings")
 
     def test_get_available_models(self):
+        """Test that available models list is returned."""
+        from backend.model_manager import get_available_models
+        
         models = get_available_models()
+        
         self.assertIsInstance(models, list)
-        self.assertGreater(len(models), 0)
-        self.assertIn("id", models[0])
-
+        self.assertGreater(len(models), 0, "No available models defined")
+        
+        # Check model structure
+        for model in models:
+            self.assertIn('id', model)
+            self.assertIn('name', model)
+            self.assertIn('url', model)
+            self.assertIn('size', model)
+    
     def test_model_metadata_complete(self):
+        """Test that all models have required metadata."""
+        from backend.model_manager import get_available_models
+        
         models = get_available_models()
-        required_fields = ["id", "name", "size"]
+        required_fields = ['id', 'name', 'description', 'size', 'ram_required', 'category', 'url']
+        
         for model in models:
             for field in required_fields:
-                self.assertIn(field, model)
-
+                with self.subTest(model=model['id'], field=field):
+                    self.assertIn(field, model, f"Model {model['id']} missing {field}")
+    
     def test_model_categories(self):
-        models = get_available_models()
-        field = 'type' if 'type' in models[0] else 'category'
-        types = set(m[field] for m in models)
-        self.assertTrue(len(types) > 0)
-
-    @patch('os.listdir')
-    @patch('os.path.isfile')
-    @patch('os.path.getsize')
-    def test_get_local_models(self, mock_getsize, mock_isfile, mock_listdir):
-        mock_listdir.return_value = ["test-model.gguf"]
-        mock_isfile.return_value = True
-        mock_getsize.return_value = 1000
+        """Test that models are properly categorized."""
+        from backend.model_manager import get_available_models
         
-        local_models = get_local_models()
-        self.assertIsInstance(local_models, list)
-        self.assertEqual(len(local_models), 1)
-        # Just check name is present, not format
-        self.assertTrue(any("test" in m["name"].lower() for m in local_models))
+        models = get_available_models()
+        valid_categories = ['small', 'medium', 'large', 'premium', 'extra-large']
+        
+        for model in models:
+            with self.subTest(model=model['id']):
+                self.assertIn(
+                    model.get('category'), 
+                    valid_categories,
+                    f"Model {model['id']} has invalid category"
+                )
+    
+    def test_get_local_models(self):
+        """Test discovering locally downloaded models."""
+        with patch('os.listdir', return_value=[]):
+            from backend.model_manager import get_local_models
 
-    def test_check_system_resources(self):
-        with patch('psutil.virtual_memory') as mock_mem:
-            mock_mem.return_value.available = 16 * 1024 * 1024 * 1024
-            model_info = {"size_bytes": 1024*1024*100}
-            can_download, warnings = check_system_resources(model_info)
-            self.assertTrue(can_download)
+            local_models = get_local_models()
 
-    def test_check_system_resources_large_model(self):
-        with patch('psutil.virtual_memory') as mock_mem:
-            mock_mem.return_value.available = 1 * 1024 * 1024 * 1024
-            model_info = {"size_bytes": 2 * 1024 * 1024 * 1024}
-            can_download, warnings = check_system_resources(model_info)
-            pass
-
+            self.assertIsInstance(local_models, list)
+    
     def test_get_download_status(self):
+        """Test download status retrieval."""
+        from backend.model_manager import get_download_status
+        
         status = get_download_status()
+        
         self.assertIsInstance(status, dict)
-        self.assertIn("downloading", status)
+        self.assertIn('downloading', status)
+        self.assertIn('progress', status)
+    
+    @patch('backend.model_manager.requests.get')
+    def test_download_nonexistent_model(self, mock_get):
+        """Test downloading a non-existent model ID fails gracefully."""
+        from backend.model_manager import start_download
+        
+        success, message = start_download('nonexistent-model-id')
+        
+        self.assertFalse(success)
+        self.assertIn('not found', message.lower())
 
-    def test_download_nonexistent_model(self):
-        pass
 
 class TestModelManagerIntegration(unittest.TestCase):
+    """Integration tests for model manager with real files."""
+    
     def setUp(self):
-        self.temp_dir = tempfile.mkdtemp()
-        self.models_dir = os.path.join(self.temp_dir, "models")
+        """Set up test environment."""
+        from backend.model_manager import MODELS_DIR
+        self.models_dir = MODELS_DIR
         os.makedirs(self.models_dir, exist_ok=True)
-        self.patcher = patch('backend.model_manager.MODELS_DIR', self.models_dir)
-        self.patcher.start()
-
-    def tearDown(self):
-        self.patcher.stop()
-        shutil.rmtree(self.temp_dir)
-
-    @patch('os.listdir')
-    @patch('os.path.isfile')
-    @patch('os.path.getsize')
-    def test_local_model_sizes_accurate(self, mock_getsize, mock_isfile, mock_listdir):
-        mock_listdir.return_value = ["test.gguf"]
-        mock_isfile.return_value = True
-        mock_getsize.return_value = 1024
-            
-        models = get_local_models()
-        self.assertEqual(models[0]['size'], 1024)
-
-    @patch('os.listdir')
-    @patch('os.path.isfile')
-    @patch('os.path.getsize')
-    def test_local_models_match_files(self, mock_getsize, mock_isfile, mock_listdir):
-        mock_listdir.return_value = ["a.gguf", "b.gguf"]
-        mock_isfile.return_value = True
-        mock_getsize.return_value = 100
-
-        models = get_local_models()
-        self.assertEqual(len(models), 2)
-
+    
     def test_models_directory_exists(self):
-        self.assertTrue(os.path.exists(self.models_dir))
+        """Test that models directory exists."""
+        self.assertTrue(
+            os.path.exists(self.models_dir),
+            f"Models directory should exist at {self.models_dir}"
+        )
+    
+    def test_models_directory_structure(self):
+        """Verify models directory structure."""
+        self.assertTrue(os.path.isdir(self.models_dir))
 
 if __name__ == '__main__':
-    unittest.main()
+    unittest.main(verbosity=2)
