@@ -1,64 +1,130 @@
 import unittest
-from unittest.mock import patch, MagicMock
-import sys
+import os
+import tempfile
+from fastapi.testclient import TestClient
+from backend.api import app, verify_local_request
+from unittest.mock import patch
+from backend import model_manager
 
 class TestSecurityApi(unittest.TestCase):
-    """Test API security features."""
-
     def setUp(self):
-        # Create a mock for pydantic that has BaseModel
-        mock_pydantic = MagicMock()
-        class MockBaseModel:
-            pass
-        mock_pydantic.BaseModel = MockBaseModel
-
-        # Mock dependencies specifically for this test class
-        self.modules_patcher = patch.dict(sys.modules, {
-            'fastapi': MagicMock(),
-            'fastapi.testclient': MagicMock(),
-            'fastapi.responses': MagicMock(),
-            'fastapi.middleware.cors': MagicMock(),
-            'uvicorn': MagicMock(),
-            'pydantic': mock_pydantic,
-            'backend.llm_integration': MagicMock(),
-            'backend.search': MagicMock(),
-            'backend.indexing': MagicMock(),
-            'backend.model_manager': MagicMock(),
-            'backend.agent': MagicMock(),
-            # backend.database should be patched via sys.modules for api.py import to pick it up
-            # But we want to control the return values
-            'backend.database': MagicMock()
-        })
-        self.modules_patcher.start()
-
-        # Import api
-        if 'backend.api' in sys.modules:
-            del sys.modules['backend.api']
-        import backend.api
-        self.api = backend.api
-
-        self.client = MagicMock()
+        self.client = TestClient(app)
+        # Create a temporary file OUTSIDE the models directory
+        self.temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
+        self.temp_file.close()
+        self.temp_path = self.temp_file.name
 
     def tearDown(self):
-        self.modules_patcher.stop()
-
-    def test_open_file_security(self):
-        mock_db = sys.modules['backend.database']
-        mock_db.get_file_by_path.return_value = None
-
-        # This test is tricky because we can't easily invoke the route.
-        # We'll assert that we set up the mock correctly for now.
-        self.assertIsNone(mock_db.get_file_by_path("anything"))
+        # Clean up if the test didn't delete it
+        if os.path.exists(self.temp_path):
+            os.remove(self.temp_path)
+        app.dependency_overrides = {}
 
     def test_arbitrary_file_deletion_prevention(self):
-        pass
+        """
+        Verify that deleting a file OUTSIDE the models directory fails.
+        """
+        print(f"Attempting to delete: {self.temp_path}")
+
+        response = self.client.request(
+            "DELETE",
+            "/api/models/delete",
+            json={"path": self.temp_path}
+        )
+
+        # Check if the file still exists
+        file_exists = os.path.exists(self.temp_path)
+
+        if file_exists:
+            print("SUCCESS: Arbitrary file deletion was blocked.")
+        else:
+            print("FAILURE: Arbitrary file was deleted.")
+
+        # In our implementation, delete_model returns False if unsafe,
+        # causing 404 "Model file not found"
+        self.assertEqual(response.status_code, 404, "Should return 404 for unsafe path")
+        self.assertTrue(file_exists, "File should NOT be deleted")
+
+    @patch('backend.database.get_file_by_path')
+    @patch('os.path.exists')
+    def test_open_file_security(self, mock_exists, mock_get_file):
+        """
+        Verify that opening a non-indexed file is forbidden.
+        """
+        # Override verify_local_request to allow testclient access
+        app.dependency_overrides[verify_local_request] = lambda: None
+
+        mock_exists.return_value = True
+
+        # 1. Try to open a file NOT in database
+        mock_get_file.return_value = None
+
+        response = self.client.post("/api/open-file", json={"path": self.temp_path})
+
+        self.assertEqual(response.status_code, 403, "Should deny access to non-indexed file")
+        self.assertIn("Access denied", response.json()['detail'])
+
+        # 2. Try to open a file IN database
+        # Ensure extension is allowed (the temp file has .txt suffix)
+        mock_get_file.return_value = {'path': self.temp_path}
+
+        # We need to mock os.startfile or subprocess to avoid actually opening it
+        # os.startfile is Windows only, subprocess.run is for Mac/Linux
+        with patch('os.startfile', create=True) as mock_startfile,              patch('subprocess.run') as mock_run:
+                 response = self.client.post("/api/open-file", json={"path": self.temp_path})
+                 self.assertEqual(response.status_code, 200, "Should allow indexed file")
 
 class TestSecurityUnit(unittest.TestCase):
+    """Security regression tests."""
+
     def test_delete_model_arbitrary_file(self):
-        pass
+        """Test that delete_model prevents deleting files outside models directory."""
+        # Create a temporary file outside of MODELS_DIR
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            tmp.write(b"secret data")
+            tmp_path = tmp.name
+
+        try:
+            # Ensure the file exists
+            self.assertTrue(os.path.exists(tmp_path))
+
+            # Attempt to delete it via model_manager
+            # This should fail (return False) and NOT delete the file
+            result = model_manager.delete_model(tmp_path)
+
+            # Assertion: Should fail
+            self.assertFalse(result, "delete_model should return False for arbitrary paths")
+
+            # Assertion: File should still exist
+            self.assertTrue(os.path.exists(tmp_path), "Arbitrary file was deleted!")
+
+        finally:
+            # Cleanup
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
     def test_delete_model_valid_file(self):
-        pass
+        """Test that delete_model allows deleting files INSIDE models directory."""
+        # Ensure models dir exists
+        os.makedirs(model_manager.MODELS_DIR, exist_ok=True)
+
+        # Create a dummy model file inside MODELS_DIR
+        safe_path = os.path.join(model_manager.MODELS_DIR, "test_safe_model.gguf")
+        with open(safe_path, 'wb') as f:
+            f.write(b"dummy model content")
+
+        try:
+            self.assertTrue(os.path.exists(safe_path))
+
+            # Attempt delete
+            result = model_manager.delete_model(safe_path)
+
+            self.assertTrue(result, "Should allow deleting valid model file")
+            self.assertFalse(os.path.exists(safe_path), "Valid file should be deleted")
+
+        finally:
+            if os.path.exists(safe_path):
+                os.remove(safe_path)
 
 if __name__ == '__main__':
     unittest.main()

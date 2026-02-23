@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Depends
 from fastapi.responses import StreamingResponse
 import json
 import asyncio
@@ -623,7 +623,19 @@ async def receive_log(log: LogRequest):
         logger.info(log_msg)
     return {"status": "logged"}
 
-@app.post("/api/open-file")
+def verify_local_request(request: Request):
+    """
+    Ensure the request originates from localhost.
+    This prevents arbitrary file execution from remote clients.
+    """
+    allowed_hosts = {"localhost", "127.0.0.1", "::1"}
+    client_host = request.client.host if request.client else None
+
+    if client_host not in allowed_hosts:
+        logger.warning(f"Security: Blocked remote file open attempt from {client_host}")
+        raise HTTPException(status_code=403, detail="Access denied: Only local requests are allowed")
+
+@app.post("/api/open-file", dependencies=[Depends(verify_local_request)])
 async def open_file(request: dict):
     """Open a file in the default system application."""
     file_path = request.get('path', '')
@@ -632,6 +644,11 @@ async def open_file(request: dict):
     
     # Normalize path - fix mixed slashes from FAISS metadata
     file_path = os.path.normpath(file_path)
+
+    # Security: Validate file extension
+    _, ext = os.path.splitext(file_path)
+    if ext.lower() not in {'.txt', '.pdf', '.docx', '.xlsx', '.pptx'}:
+        raise HTTPException(status_code=403, detail="Access denied: File type not allowed")
     
     # Security: Only allow opening files that are in the index
     # This prevents opening arbitrary files on the system

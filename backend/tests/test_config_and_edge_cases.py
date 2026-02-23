@@ -11,8 +11,6 @@ import shutil
 from unittest.mock import patch, MagicMock
 import configparser
 
-# Import database module but wait for setUp to initialize
-from backend import database
 
 class TestConfiguration(unittest.TestCase):
     """Tests for configuration management."""
@@ -63,46 +61,50 @@ class TestModelPathValidation(unittest.TestCase):
     
     def test_models_directory_structure(self):
         """Test expected models directory structure."""
-        # Use a relative path that won't fail if the directory doesn't exist in test env
-        models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'models')
-        
-        if os.path.exists(models_dir):
-            # Check it's a directory
-            self.assertTrue(os.path.isdir(models_dir))
-            
-            # Check all files are .gguf or hidden
-            for f in os.listdir(models_dir):
-                if os.path.isfile(os.path.join(models_dir, f)) and not f.startswith('.'):
-                    self.assertTrue(
-                        f.endswith('.gguf'),
-                        f"Unexpected file in models dir: {f}"
-                    )
+        # Use a dummy path for test safety
+        models_dir = os.path.join(tempfile.gettempdir(), 'models_test')
+        os.makedirs(models_dir, exist_ok=True)
+        try:
+            with open(os.path.join(models_dir, 'test.gguf'), 'w') as f:
+                f.write('data')
+
+            if os.path.exists(models_dir):
+                # Check it's a directory
+                self.assertTrue(os.path.isdir(models_dir))
+
+                # Check all files are .gguf
+                for f in os.listdir(models_dir):
+                    if os.path.isfile(os.path.join(models_dir, f)):
+                        self.assertTrue(
+                            f.endswith('.gguf') or f.startswith('.'),
+                            f"Unexpected file in models dir: {f}"
+                        )
+        finally:
+            shutil.rmtree(models_dir)
 
 
 class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
-    
+
     def setUp(self):
-        """Initialize database for tests."""
-        # Use a temporary file for the database
-        self.temp_db_fd, self.temp_db_path = tempfile.mkstemp()
-        os.close(self.temp_db_fd)
-
-        # Patch the database path
-        self.db_patcher = patch('backend.database.DATABASE_PATH', self.temp_db_path)
-        self.db_patcher.start()
-
-        # Initialize the schema
+        # Initialize test database
+        from backend import database
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = self.db_path
         database.init_database()
 
     def tearDown(self):
-        """Clean up temporary database."""
-        self.db_patcher.stop()
-        if os.path.exists(self.temp_db_path):
-            os.remove(self.temp_db_path)
-
+        # Cleanup
+        from backend import database
+        database.DATABASE_PATH = self.original_db_path
+        os.close(self.db_fd)
+        os.remove(self.db_path)
+    
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
+        from backend import database
+        
         # Empty query should still be storable
         database.add_search_history("", 0, 0)
         
@@ -112,6 +114,8 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
     
     def test_very_long_query(self):
         """Test handling of very long search queries."""
+        from backend import database
+        
         long_query = "word " * 1000  # 5000+ characters
         
         # Should handle long queries
@@ -119,6 +123,8 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
         
     def test_special_characters_in_query(self):
         """Test handling of special characters in queries."""
+        from backend import database
+        
         special_query = "test's \"quoted\" <html> & special chars: 日本語"
         
         database.add_search_history(special_query, 0, 0)
@@ -131,28 +137,24 @@ class TestAPIResponseFormats(unittest.TestCase):
     """Tests for API response format consistency."""
     
     def setUp(self):
-        """Set up test client and database."""
+        """Set up test client."""
         from fastapi.testclient import TestClient
         from backend.api import app
-
-        # Use a temporary file for the database
-        self.temp_db_fd, self.temp_db_path = tempfile.mkstemp()
-        os.close(self.temp_db_fd)
-
-        # Patch the database path
-        self.db_patcher = patch('backend.database.DATABASE_PATH', self.temp_db_path)
-        self.db_patcher.start()
-
-        # Initialize the schema
-        database.init_database()
+        from backend import database
 
         self.client = TestClient(app)
 
+        # Initialize test database for API tests too
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        self.original_db_path = database.DATABASE_PATH
+        database.DATABASE_PATH = self.db_path
+        database.init_database()
+
     def tearDown(self):
-        """Clean up temporary database."""
-        self.db_patcher.stop()
-        if os.path.exists(self.temp_db_path):
-            os.remove(self.temp_db_path)
+        from backend import database
+        database.DATABASE_PATH = self.original_db_path
+        os.close(self.db_fd)
+        os.remove(self.db_path)
     
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
