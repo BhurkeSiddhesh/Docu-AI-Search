@@ -199,7 +199,7 @@ class TestIndexing(unittest.TestCase):
     @patch('os.path.exists')
     @patch('builtins.open')
     @patch('json.load')
-    def test_load_index_preserves_data(self, mock_json_load, mock_open, mock_exists, mock_read_index):
+    def test_load_index_preserves_data(self, mock_json_load, _mock_open, mock_exists, mock_read_index):
         """Test loading an index."""
         # Mock the index reading
         mock_faiss_index = MagicMock()
@@ -366,7 +366,7 @@ class TestSaveIndex(unittest.TestCase):
 
     @patch('backend.indexing.faiss.write_index')
     def test_save_index_creates_all_files(self, mock_write_index):
-        """Test that save_index creates .faiss, _docs.pkl, and _tags.pkl files."""
+        """Test that save_index creates .faiss, _docs.json, and _tags.json files."""
         # Mock write_index side effect
         def side_effect_write(index, filepath):
             with open(filepath, 'w') as f:

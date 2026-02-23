@@ -1,18 +1,29 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import sys
-
-# Mock modules that might be missing or slow
-sys.modules['backend.search'] = MagicMock()
-sys.modules['backend.llm_integration'] = MagicMock()
-sys.modules['backend.database'] = MagicMock()
-
-from backend.api import app
 from fastapi.testclient import TestClient
 
 class TestStreamOptimization(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Patch modules before importing api
+        cls.module_patcher = patch.dict(sys.modules, {
+            'backend.search': MagicMock(),
+            'backend.llm_integration': MagicMock(),
+            'backend.database': MagicMock()
+        })
+        cls.module_patcher.start()
+
+        # Import app here safely
+        from backend.api import app
+        cls.app = app
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.module_patcher.stop()
+
     def setUp(self):
-        self.client = TestClient(app)
+        self.client = TestClient(self.app)
 
     @patch('backend.api.index', 'dummy_index')
     @patch('backend.api.search')
@@ -72,6 +83,9 @@ class TestStreamOptimization(unittest.TestCase):
 
         # Verify search WAS called
         mock_search.assert_called()
+
+        # Verify stream_ai_answer WAS called
+        mock_stream.assert_called()
 
 if __name__ == '__main__':
     unittest.main()

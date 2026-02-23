@@ -582,6 +582,7 @@ python scripts/verify_golden_set.py
   - **fix**: Redacted `request.query` in `backend/api.py`.
   - **fix**: Redacted sensitive info in `backend/llm_integration.py` and `backend/search.py`.
   - **test**: Added `backend/tests/test_security_logging.py`.
+
   - **Files**: `backend/api.py`, `backend/llm_integration.py`, `backend/search.py`, `backend/tests/test_security_logging.py`
 
 ### 2026-02-23 (Performance)

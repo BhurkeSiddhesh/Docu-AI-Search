@@ -444,7 +444,7 @@ async def search_files(request: SearchRequest, req: Request):
                 pass
 
         # Run Search
-        results, context_snippets = search(
+        results, _context_snippets = search(
             request.query, index, docs, tags, 
             get_embeddings(provider, api_key, model_path),
             index_summaries, cluster_summaries, cluster_map, bm25
@@ -471,7 +471,7 @@ async def search_files(request: SearchRequest, req: Request):
 
         processed_results = []
         
-        for idx, result in enumerate(results):
+        for result in results:
             faiss_idx = result.get('faiss_idx')
             
             # Use file info from search result first (it comes from FAISS doc metadata)
@@ -568,7 +568,7 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request):
         final_context_snippets = request.context
     else:
         # Re-run search to get context
-        results, context_snippets = search(
+        results, _context_snippets = search(
             request.query, index, docs, tags,
             get_embeddings(provider, api_key, model_path),
             index_summaries, cluster_summaries, cluster_map, bm25
@@ -587,14 +587,14 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request):
             try:
                 file_info_map = database.get_files_by_faiss_indices(missing_faiss_idxs)
             except ValueError as ve:
-                 logger.warning(f"Batch lookup failed in stream-answer, falling back: {ve}")
+                 logger.warning("Batch lookup failed in stream-answer, falling back: %s", ve)
                  for f_idx in missing_faiss_idxs:
                      info = database.get_file_by_faiss_index(f_idx)
                      if info:
                          file_info_map[f_idx] = info
 
         # Prepare context
-        for idx, result in enumerate(results):
+        for result in results:
              # Use fast fallback summary for streaming context (no new LLM calls)
              summary = summarize(result['document'], provider, api_key, model_path, question=request.query)
 

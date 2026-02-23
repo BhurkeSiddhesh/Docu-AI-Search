@@ -12,14 +12,42 @@ import shutil
 from backend import database
 
 # Initialize database for unittest execution
+
+# Initialize database for unittest execution
+_original_db_path = None
+_temp_db_file = None
+
 def setUpModule():
-    """Initialize database schema."""
-    # Create a temp file for DB to avoid messing with production
-    # But since code imports database module which sets global PATH,
-    # we need to be careful. Ideally we patch DATABASE_PATH.
-    # However, simpler to just init it if we are running tests.
-    # Given TestDatabaseBase clears it, we just need the schema.
+    """Initialize database schema in a temp file."""
+    global _original_db_path, _temp_db_file
+
+    # Save original path
+    _original_db_path = database.DATABASE_PATH
+
+    # Create temp file
+    _temp_db_file = tempfile.NamedTemporaryFile(delete=False)
+    _temp_db_file.close() # Close so sqlite can open it
+
+    # Override path
+    database.DATABASE_PATH = _temp_db_file.name
+
+    # Init DB
     database.init_database()
+
+def tearDownModule():
+    """Cleanup temp database."""
+    global _original_db_path, _temp_db_file
+
+    # Restore path
+    if _original_db_path:
+        database.DATABASE_PATH = _original_db_path
+
+    # Remove file
+    if _temp_db_file and os.path.exists(_temp_db_file.name):
+        try:
+            os.unlink(_temp_db_file.name)
+        except:
+            pass
 
 
 class TestDatabaseBase(unittest.TestCase):
