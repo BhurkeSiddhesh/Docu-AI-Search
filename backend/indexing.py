@@ -1,6 +1,6 @@
 import os
 import faiss
-import json
+import pickle
 import numpy as np
 import concurrent.futures
 import time
@@ -96,8 +96,7 @@ def create_index(folder_paths, provider, api_key=None, model_path=None, progress
     
     current_faiss_idx = 0
     
-    files_to_insert = []
-
+    files_to_add = []
     for filepath, text in valid_docs:
         chunks = text_splitter.split_text(text)
         if not chunks:
@@ -105,6 +104,7 @@ def create_index(folder_paths, provider, api_key=None, model_path=None, progress
             
         file_stat = os.stat(filepath)
         file_info = {
+            'path': filepath,
             'filename': os.path.basename(filepath),
             'extension': os.path.splitext(filepath)[1].lower(),
             'size_bytes': file_stat.st_size,
@@ -114,10 +114,11 @@ def create_index(folder_paths, provider, api_key=None, model_path=None, progress
             'faiss_end_idx': current_faiss_idx + len(chunks) - 1
         }
         
-        # Queue for batch insert
-        file_data = file_info.copy()
-        file_data['path'] = filepath
-        files_to_insert.append(file_data)
+        # Add to DB immediately
+        files_to_add.append(file_info)
+        if len(files_to_add) >= 500:
+            database.add_files_batch(files_to_add)
+            files_to_add = []
         
         for chunk in chunks:
             all_chunks.append({
@@ -129,11 +130,8 @@ def create_index(folder_paths, provider, api_key=None, model_path=None, progress
             chunk_strings.append(chunk)
             current_faiss_idx += 1
             
-    # Batch insert all files
-    if files_to_insert:
-        database.batch_add_files(files_to_insert)
-        print(f"Batch inserted {len(files_to_insert)} files metadata.")
-
+    if files_to_add:
+        database.add_files_batch(files_to_add)
     print(f"Generated {len(chunk_strings)} total chunks.")
 
     # 5. Parallel Embedding (I/O Bound) - 25% to 65%
@@ -288,19 +286,21 @@ def save_index(index_chunks, all_chunks, tags, filepath, index_summaries=None, c
     
     base_path = os.path.splitext(filepath)[0]
     
-    with open(base_path + '_docs.json', 'w') as f:
-        json.dump(all_chunks, f)
-    with open(base_path + '_tags.json', 'w') as f:
-        json.dump(tags, f)
+    with open(base_path + '_docs.pkl', 'wb') as f:
+        pickle.dump(all_chunks, f)
+    with open(base_path + '_tags.pkl', 'wb') as f:
+        pickle.dump(tags, f)
         
     if index_summaries is not None:
         faiss.write_index(index_summaries, base_path + '_summary.index')
-        with open(base_path + '_summaries.json', 'w') as f:
-            json.dump(cluster_summaries, f)
-        with open(base_path + '_cluster_map.json', 'w') as f:
-            json.dump(cluster_map, f)
+        with open(base_path + '_summaries.pkl', 'wb') as f:
+            pickle.dump(cluster_summaries, f)
+        with open(base_path + '_cluster_map.pkl', 'wb') as f:
+            pickle.dump(cluster_map, f)
             
-    # BM25 is not saved via pickle anymore. We reconstruct it on load.
+    if bm25 is not None:
+        with open(base_path + '_bm25.pkl', 'wb') as f:
+            pickle.dump(bm25, f)
             
     print(f"RAPTOR Index saved to {filepath}")
 
@@ -314,17 +314,10 @@ def load_index(filepath):
     index_chunks = faiss.read_index(filepath)
     base_path = os.path.splitext(filepath)[0]
     
-    # Try loading from JSON
-    try:
-        with open(base_path + '_docs.json', 'r') as f:
-            all_chunks = json.load(f)
-        with open(base_path + '_tags.json', 'r') as f:
-            tags = json.load(f)
-    except FileNotFoundError:
-        # Fallback for old pickle files? No, we enforce security update.
-        # Users must re-index.
-        print("Error: Index files not found. Please re-index your documents.")
-        return None, None, None, None, None, None, None
+    with open(base_path + '_docs.pkl', 'rb') as f:
+        all_chunks = pickle.load(f)
+    with open(base_path + '_tags.pkl', 'rb') as f:
+        tags = pickle.load(f)
         
     index_summaries = None
     cluster_summaries = None
@@ -334,25 +327,17 @@ def load_index(filepath):
     summary_idx_path = base_path + '_summary.index'
     if os.path.exists(summary_idx_path):
         index_summaries = faiss.read_index(summary_idx_path)
-
-        summaries_path = base_path + '_summaries.json'
-        if os.path.exists(summaries_path):
-            with open(summaries_path, 'r') as f:
-                cluster_summaries = json.load(f)
-
-        cluster_map_path = base_path + '_cluster_map.json'
+        with open(base_path + '_summaries.pkl', 'rb') as f:
+            cluster_summaries = pickle.load(f)
+        cluster_map_path = base_path + '_cluster_map.pkl'
         if os.path.exists(cluster_map_path):
-            with open(cluster_map_path, 'r') as f:
-                cluster_map_raw = json.load(f)
-                # Convert keys back to integers (JSON keys are always strings)
-                cluster_map = {int(k): v for k, v in cluster_map_raw.items()}
+            with open(cluster_map_path, 'rb') as f:
+                cluster_map = pickle.load(f)
                 
-    # Reconstruct BM25 from all_chunks text
-    if all_chunks:
-        print("Reconstructing BM25 index...")
-        chunk_strings = [chunk.get('text', '') for chunk in all_chunks]
-        tokenized_corpus = [tokenize(doc) for doc in chunk_strings]
-        bm25 = BM25Okapi(tokenized_corpus)
+    bm25_path = base_path + '_bm25.pkl'
+    if os.path.exists(bm25_path):
+        with open(bm25_path, 'rb') as f:
+            bm25 = pickle.load(f)
             
     print(f"Loaded RAPTOR Index: {len(all_chunks)} chunks, {len(cluster_summaries) if cluster_summaries else 0} clusters.")
     return index_chunks, all_chunks, tags, index_summaries, cluster_summaries, cluster_map, bm25

@@ -141,30 +141,32 @@ def add_file(path: str, filename: str, extension: str, size_bytes: int,
     conn.close()
     return file_id
 
-def batch_add_files(files_data: List[Dict]) -> int:
-    """Add multiple files to the database in a single transaction."""
-    if not files_data:
-        return 0
-
+def add_files_batch(files: List[Dict]):
+    """Add multiple files to the database."""
     conn = get_connection()
     cursor = conn.cursor()
 
-    try:
-        cursor.executemany("""
-            INSERT OR REPLACE INTO files
-            (path, filename, extension, size_bytes, modified_date, chunk_count, faiss_start_idx, faiss_end_idx)
-            VALUES (:path, :filename, :extension, :size_bytes, :modified_date, :chunk_count, :faiss_start_idx, :faiss_end_idx)
-        """, files_data)
+    data = []
+    for f in files:
+        data.append((
+            f['path'],
+            f['filename'],
+            f.get('extension'),
+            f.get('size_bytes'),
+            f.get('modified_date'),
+            f.get('chunk_count', 0),
+            f.get('faiss_start_idx'),
+            f.get('faiss_end_idx')
+        ))
 
-        count = cursor.rowcount
-        conn.commit()
-        return count
-    except Exception as e:
-        print(f"Batch insert failed: {e}")
-        conn.rollback()
-        raise e
-    finally:
-        conn.close()
+    cursor.executemany("""
+        INSERT OR REPLACE INTO files
+        (path, filename, extension, size_bytes, modified_date, chunk_count, faiss_start_idx, faiss_end_idx)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, data)
+
+    conn.commit()
+    conn.close()
 
 def get_all_files() -> List[Dict]:
     """Get all indexed files."""
@@ -187,56 +189,6 @@ def get_file_by_path(path: str) -> Optional[Dict]:
     
     conn.close()
     return dict(row) if row else None
-
-def get_files_by_faiss_indices(faiss_indices: List[int]) -> Dict[int, Optional[Dict]]:
-    """Get the files that contain specific FAISS chunk indices in batch.
-    
-    Args:
-        faiss_indices: List of FAISS indices to look up (should be deduplicated by caller)
-        
-    Returns:
-        Dict mapping each index to its file metadata (or None if not found)
-        
-    Note:
-        Enforces a maximum of 100 indices to avoid SQLite parameter limits.
-    """
-    if not faiss_indices:
-        return {}
-    
-    # Enforce max size to avoid SQLite limits (SQLITE_MAX_VARIABLE_NUMBER default is 999)
-    MAX_INDICES = 100
-    if len(faiss_indices) > MAX_INDICES:
-        raise ValueError(f"Cannot query more than {MAX_INDICES} FAISS indices at once. Got {len(faiss_indices)}.")
-
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    # Use OR clauses for a small number of indices (standard search results size)
-    # Select only necessary columns to reduce I/O
-    clauses = []
-    params = []
-    for idx in faiss_indices:
-        clauses.append("(faiss_start_idx <= ? AND faiss_end_idx >= ?)")
-        params.extend([idx, idx])
-
-    query = f"SELECT path, filename, faiss_start_idx, faiss_end_idx FROM files WHERE {' OR '.join(clauses)}"
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-
-    # Map them back to the requested indices
-    results_map = {}
-    files_list = [dict(row) for row in rows]
-
-    for idx in faiss_indices:
-        found_file = None
-        for f in files_list:
-            if f['faiss_start_idx'] <= idx <= f['faiss_end_idx']:
-                found_file = f
-                break
-        results_map[idx] = found_file
-
-    conn.close()
-    return results_map
 
 def get_file_by_name(filename: str) -> Optional[Dict]:
     """Get a file by its name."""
@@ -321,56 +273,6 @@ def set_preference(key: str, value: str):
     
     conn.commit()
     conn.close()
-
-MAX_INDICES = 100
-
-def get_files_by_faiss_indices(faiss_indices: List[int]) -> Dict[int, Dict]:
-    """Get files for multiple FAISS indices in a single batch query.
-
-    Callers should deduplicate input indices before calling. Raises ValueError
-    if more than MAX_INDICES unique indices are provided to prevent SQLite
-    parameter overflow.
-    """
-    if not faiss_indices:
-        return {}
-
-    unique_indices = list(dict.fromkeys(faiss_indices))
-    if len(unique_indices) > MAX_INDICES:
-        raise ValueError(
-            f"Too many indices: {len(unique_indices)} exceeds MAX_INDICES={MAX_INDICES}"
-        )
-
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    # Construct query with OR clauses
-    # SELECT ... FROM files WHERE (start <= i1 AND end >= i1) OR (start <= i2 AND end >= i2) ...
-    conditions = []
-    params = []
-    for idx in unique_indices:
-        conditions.append("(faiss_start_idx <= ? AND faiss_end_idx >= ?)")
-        params.extend([idx, idx])
-
-    query = (
-        "SELECT id, filename, path, faiss_start_idx, faiss_end_idx "
-        "FROM files WHERE " + " OR ".join(conditions)
-    )
-
-    try:
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        files = [dict(row) for row in rows]
-    finally:
-        conn.close()
-
-    # Map back to indices
-    result = {}
-    for idx in faiss_indices:
-        for f in files:
-            if f["faiss_start_idx"] <= idx <= f["faiss_end_idx"]:
-                result[idx] = f
-                break
-    return result
 
 def get_file_by_faiss_index(faiss_idx: int) -> Optional[Dict]:
     """Get the file that contains a specific FAISS chunk index."""
