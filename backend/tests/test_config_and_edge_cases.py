@@ -129,41 +129,16 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
 
     def setUp(self):
-        from backend import database
-        database.init_database()
-        # Clear search history table before test
-        conn = database.get_connection()
-        conn.execute("DELETE FROM search_history")
-        conn.commit()
-        conn.close()
-    
-    def setUp(self):
-        """Set up temporary database."""
-        self.db_fd, self.db_path = tempfile.mkstemp()
-
-        # Patch get_connection to ensure we use the temp DB regardless of import order
-        import sqlite3
-        def mock_get_connection():
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            return conn
-
-        self.patcher = patch('backend.database.get_connection', side_effect=mock_get_connection)
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.temp_dir, 'test_history.db')
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
         self.patcher.start()
-
         from backend import database
         database.init_database()
-
-        from fastapi.testclient import TestClient
-        from backend.api import app
-        self.client = TestClient(app)
 
     def tearDown(self):
-        """Clean up temporary database."""
         self.patcher.stop()
-        os.close(self.db_fd)
-        if os.path.exists(self.db_path):
-            os.remove(self.db_path)
+        shutil.rmtree(self.temp_dir)
 
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
@@ -202,38 +177,23 @@ class TestAPIResponseFormats(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
-        self.db_fd, self.db_path = tempfile.mkstemp()
-
-        # Initialize the database file
-        import sqlite3
-        conn = sqlite3.connect(self.db_path)
-        # Create tables manually or via init_database using this path
-        # We can't easily use init_database if we don't patch PATH first,
-        # but we want to patch get_connection.
-
-        # Let's use the patch on get_connection to be sure
-        def mock_get_connection():
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            return conn
-
-        self.patcher = patch('backend.database.get_connection', side_effect=mock_get_connection)
-        self.patcher.start()
-
-        from backend import database
-        database.init_database()
-
         from fastapi.testclient import TestClient
         from backend.api import app
-        from backend import database
-        database.init_database()
-        self.client = TestClient(app)
+
+        # Patch database path
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.temp_dir, 'test_api.db')
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+
+        # Use context manager to trigger startup events
+        self.client_context = TestClient(app)
+        self.client = self.client_context.__enter__()
 
     def tearDown(self):
+        self.client_context.__exit__(None, None, None)
         self.patcher.stop()
-        os.close(self.db_fd)
-        if os.path.exists(self.db_path):
-            os.remove(self.db_path)
+        shutil.rmtree(self.temp_dir)
     
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
@@ -287,9 +247,21 @@ class TestErrorHandling(unittest.TestCase):
         """Set up test client."""
         from fastapi.testclient import TestClient
         from backend.api import app
-        from backend import database
-        database.init_database()
-        self.client = TestClient(app)
+
+        # Patch database path
+        self.temp_dir = tempfile.mkdtemp()
+        self.db_path = os.path.join(self.temp_dir, 'test_api.db')
+        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.patcher.start()
+
+        # Use context manager to trigger startup events
+        self.client_context = TestClient(app)
+        self.client = self.client_context.__enter__()
+
+    def tearDown(self):
+        self.client_context.__exit__(None, None, None)
+        self.patcher.stop()
+        shutil.rmtree(self.temp_dir)
     
     def test_search_without_index(self):
         """Test search returns appropriate error when no index exists."""

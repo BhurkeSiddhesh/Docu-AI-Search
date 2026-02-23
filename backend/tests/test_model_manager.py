@@ -128,8 +128,19 @@ class TestModelManagerIntegration(unittest.TestCase):
     
     def setUp(self):
         """Set up test environment."""
-        from backend.model_manager import MODELS_DIR
-        self.models_dir = MODELS_DIR
+        import tempfile
+        self.temp_dir = tempfile.mkdtemp()
+        self.models_dir = os.path.join(self.temp_dir, 'models')
+        os.makedirs(self.models_dir, exist_ok=True)
+
+        # Patch MODELS_DIR
+        self.patcher = patch('backend.model_manager.MODELS_DIR', self.models_dir)
+        self.patcher.start()
+
+    def tearDown(self):
+        self.patcher.stop()
+        import shutil
+        shutil.rmtree(self.temp_dir)
     
     def test_models_directory_exists(self):
         """Test that models directory exists."""
