@@ -143,34 +143,16 @@ def create_index(folder_paths, provider, api_key=None, model_path=None, progress
     batch_size = 100 
     batches = [chunk_strings[i:i + batch_size] for i in range(0, len(chunk_strings), batch_size)]
     
-    chunk_embeddings = []
-    
     # Use ThreadPool for Network/GPU bound
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {executor.submit(embeddings_model.embed_documents, batch): i for i, batch in enumerate(batches)}
-        
-        completed = 0
-        total_batches = len(batches)
-        for future in concurrent.futures.as_completed(futures):
-            batch_emb = future.result()
-            chunk_embeddings.extend(batch_emb)
-            completed += 1
-            
-            if progress_callback:
-                # Map 0-total_batches to 25-65% (range of 40)
-                percent = 25 + int((completed / total_batches) * 40)
-                progress_callback(percent, 100, f"Embedding batch {completed}/{total_batches}")
-
-    # Sort embeddings by original order? No, extend() might mix them up if not careful.
-    # Wait, as_completed() yields out of order. We MUST re-order.
-    # Retry: sequential batching is safer for correct ordering unless we index futures.
-    # Let's fix this:
-    
     chunk_embeddings_map = {}
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         # submit returns a future object
         future_map = {executor.submit(embeddings_model.embed_documents, batch): i for i, batch in enumerate(batches)}
         
+        completed = 0
+        total_batches = len(batches)
+
         for future in concurrent.futures.as_completed(future_map):
             batch_idx = future_map[future]
             try:
@@ -180,6 +162,11 @@ def create_index(folder_paths, provider, api_key=None, model_path=None, progress
                 print(f"Error embedding batch {batch_idx}: {e}")
                 chunk_embeddings_map[batch_idx] = [] # Handle failure gracefully?
 
+            completed += 1
+            if progress_callback:
+                # Map 0-total_batches to 25-65% (range of 40)
+                percent = 25 + int((completed / total_batches) * 40)
+                progress_callback(percent, 100, f"Embedding batch {completed}/{total_batches}")
     # Reassemble in order
     chunk_embeddings = []
     for i in range(len(batches)):
