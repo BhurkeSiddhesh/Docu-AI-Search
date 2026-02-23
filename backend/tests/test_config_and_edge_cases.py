@@ -10,37 +10,6 @@ import tempfile
 import shutil
 from unittest.mock import patch, MagicMock
 import configparser
-from backend import database
-
-# Shared temp database setup for ALL test classes in this module
-_shared_temp_dir = None
-_original_db_path = None
-
-
-def setUpModule():
-    """Set up shared temp database for all tests in this module."""
-    global _shared_temp_dir, _original_db_path
-
-    # Create shared temp directory
-    _shared_temp_dir = tempfile.mkdtemp()
-    _original_db_path = database.DATABASE_PATH
-    database.DATABASE_PATH = os.path.join(_shared_temp_dir, 'test_metadata.db')
-    database.init_database()
-
-
-def tearDownModule():
-    """Clean up shared temp database."""
-    global _shared_temp_dir, _original_db_path
-
-    # Restore original path
-    database.DATABASE_PATH = _original_db_path
-
-    # Try to clean up
-    if _shared_temp_dir and os.path.exists(_shared_temp_dir):
-        try:
-            shutil.rmtree(_shared_temp_dir)
-        except Exception as e:
-            print(f"Warning: Could not clean up test directory {_shared_temp_dir}: {e}")
 
 
 class TestConfiguration(unittest.TestCase):
@@ -111,26 +80,27 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
     """Edge case tests for search history."""
     
     def setUp(self):
-        """Set up test environment."""
+        """Set up temporary database."""
         self.temp_dir = tempfile.mkdtemp()
         self.db_path = os.path.join(self.temp_dir, 'test_metadata.db')
 
-        # Patch database path
+        # Patch the database path
+        self.db_patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.db_patcher.start()
+
+        # Initialize the database
         from backend import database
-        self.original_db_path = database.DATABASE_PATH
-        database.DATABASE_PATH = self.db_path
         database.init_database()
 
     def tearDown(self):
-        """Clean up."""
-        from backend import database
-        database.DATABASE_PATH = self.original_db_path
+        """Clean up temporary database."""
+        self.db_patcher.stop()
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
     def test_empty_query_handling(self):
         """Test handling of empty search queries."""
-        # Database setup is handled by setUpModule
+        from backend import database
         
         # Empty query should still be storable
         database.add_search_history("", 0, 0)
@@ -141,7 +111,7 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
     
     def test_very_long_query(self):
         """Test handling of very long search queries."""
-        # Database setup is handled by setUpModule
+        from backend import database
         
         long_query = "word " * 1000  # 5000+ characters
         
@@ -150,7 +120,7 @@ class TestSearchHistoryEdgeCases(unittest.TestCase):
         
     def test_special_characters_in_query(self):
         """Test handling of special characters in queries."""
-        # Database setup is handled by setUpModule
+        from backend import database
         
         special_query = "test's \"quoted\" <html> & special chars: 日本語"
         
@@ -164,29 +134,28 @@ class TestAPIResponseFormats(unittest.TestCase):
     """Tests for API response format consistency."""
     
     def setUp(self):
-        """Set up test client."""
-        # Use a separate temp db for API tests too to ensure isolation
+        """Set up test client with temporary database."""
         self.temp_dir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.temp_dir, 'api_test.db')
+        self.db_path = os.path.join(self.temp_dir, 'test_metadata.db')
 
+        # Patch the database path
+        self.db_patcher = patch('backend.database.DATABASE_PATH', self.db_path)
+        self.db_patcher.start()
+
+        # Initialize the database
         from backend import database
-        self.original_db_path = database.DATABASE_PATH
-        database.DATABASE_PATH = self.db_path
         database.init_database()
-        # BUT we must ensure the patched path is visible to the app
 
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
-        # Force startup to run if it hasn't
-        # TestClient runs startup on first request usually
-
+    
     def tearDown(self):
-        from backend import database
-        database.DATABASE_PATH = self.original_db_path
+        """Clean up."""
+        self.db_patcher.stop()
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
-    
+
     def test_config_response_format(self):
         """Test /api/config returns expected format."""
         response = self.client.get("/api/config")
@@ -237,23 +206,10 @@ class TestErrorHandling(unittest.TestCase):
     
     def setUp(self):
         """Set up test client."""
-        self.temp_dir = tempfile.mkdtemp()
-        self.db_path = os.path.join(self.temp_dir, 'api_test_error.db')
-
-        from backend import database
-        self.original_db_path = database.DATABASE_PATH
-        database.DATABASE_PATH = self.db_path
-
         from fastapi.testclient import TestClient
         from backend.api import app
         self.client = TestClient(app)
     
-    def tearDown(self):
-        from backend import database
-        database.DATABASE_PATH = self.original_db_path
-        if os.path.exists(self.temp_dir):
-            shutil.rmtree(self.temp_dir)
-
     def test_search_without_index(self):
         """Test search returns appropriate error when no index exists."""
         with patch('backend.api.index', None):

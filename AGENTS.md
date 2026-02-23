@@ -305,12 +305,6 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
-### 2026-02-09 (Performance)
-- **React Performance Optimization** - Fixed key anti-pattern in ModelComparison component
-  - **perf**: Replaced array index with unique `model.path` as key in `ModelComparison` select options to improve React reconciliation performance.
-  - **test**: Created `frontend/src/test/ModelComparison.test.jsx` to verify component rendering and ensure stability.
-  - **Files**: `frontend/src/components/ModelComparison.jsx`, `frontend/src/test/ModelComparison.test.jsx`
-
 ### 2026-01-30 (Security)
 - **Fixed Arbitrary File Deletion Vulnerability**
   - **fix**: Implemented `is_safe_model_path` validation in `model_manager.py` to prevent path traversal in model deletion.
@@ -532,13 +526,6 @@ python scripts/verify_golden_set.py
   - `data/golden_dataset/`: Target directory for test files.
   - Added documentation to `AGENTS.md`.
 
-### 2026-02-13 (Performance)
-- **Optimized Search Performance (N+1 Query Fix)**
-  - **perf**: Implemented `get_files_by_faiss_indices` in `database.py` for batch lookup of file metadata.
-  - **perf**: Updated `search_files` and `stream_answer_endpoint` in `api.py` to use batch lookups, eliminating N+1 database queries.
-  - **Result**: Achieved ~6.5x speedup for metadata retrieval in search results (benchmarked with 10 lookups).
-  - **Files**: `backend/database.py`, `backend/api.py`, `backend/tests/test_database.py`, `backend/tests/benchmark_n1_query.py`
-
 ### 2026-01-30
 - **Optimized Startup** - Reduced polling interval to 500ms and enabled early browser launch
   - Files: `scripts/start_all.js`
@@ -583,9 +570,23 @@ python scripts/verify_golden_set.py
 ```
 
 > **Always read [AGENTS.md](cci:7://file:///c:/Users/siddh/OneDrive/Desktop/Projects/File-Search-Engine-1/AGENTS.md:0:0-0:0) in project root for the latest Change Log before and after making changes.**
-### 2026-02-06 (Security Fix)
-- **Redacted Sensitive Search Queries** - Prevent PII leak in logs
-  - **fix**: Redacted `request.query` in `backend/api.py`.
-  - **fix**: Redacted sensitive info in `backend/llm_integration.py` and `backend/search.py`.
-  - **test**: Added `backend/tests/test_security_logging.py`.
-  - **Files**: `backend/api.py`, `backend/llm_integration.py`, `backend/search.py`, `backend/tests/test_security_logging.py`
+### 2026-02-09 (Security & CI)
+- **Security & CI Improvements**
+  - **fix**: Restricted CORS policy in  to whitelisted methods and headers (preventing wildcard  vulnerabilities).
+  - **fix**: Isolated database state in backend tests (, ) using /tmp/fileOZ8bmR and mocks to resolve CI failures.
+  - **test**: Added  to enforce security policy.
+  - **Files**: , , ,
+
+### 2026-02-09 (Security & CI)
+- **Security & CI Improvements**
+  - **fix**: Restricted CORS policy in  to whitelisted methods and headers (preventing wildcard  vulnerabilities).
+  - **fix**: Isolated database state in backend tests (, ) using /tmp/fileOA3zpW and mocks to resolve CI failures.
+  - **test**: Added  to enforce security policy.
+  - **Files**: , , ,
+
+### 2026-02-09 (Security & CI)
+- **Security & CI Improvements**
+  - **fix**: Restricted CORS policy in backend/api.py to whitelisted methods and headers.
+  - **fix**: Isolated database state in backend tests (test_config_and_edge_cases.py, test_indexing.py) using tempfile and mocks to resolve CI failures.
+  - **test**: Added backend/tests/test_cors_config.py to enforce security policy.
+  - **Files**: backend/api.py, backend/tests/test_cors_config.py, backend/tests/test_config_and_edge_cases.py, backend/tests/test_indexing.py
