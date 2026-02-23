@@ -1,0 +1,53 @@
+
+> docu-ai-search@1.0.0 test
+> python scripts/run_tests.py --quick
+
+2026-02-23 13:41:15,349 - [INFO] - --- SERVER RESTARTING (Logging Configured Early) ---
+2026-02-23 13:41:16,559 - [INFO] - Loading faiss with AVX2 support.
+2026-02-23 13:41:16,950 - [INFO] - Successfully loaded faiss with AVX2 support.
+2026-02-23 13:41:32,738 - [INFO] - LLM Integration Module Loading...
+2026-02-23 13:41:32,739 - [INFO] - Python Executable: C:\Python312\python.exe
+2026-02-23 13:41:32,739 - [INFO] - Python Path: ['C:\\Users\\siddh\\Desktop\\Projects\\Docu-AI-Search', 'C:\\Users\\siddh\\Desktop\\Projects\\Docu-AI-Search\\scripts', 'C:\\Python312\\python312.zip', 'C:\\Python312\\DLLs', 'C:\\Python312\\Lib', 'C:\\Python312', 'C:\\Users\\siddh\\AppData\\Roaming\\Python\\Python312\\site-packages', 'C:\\Users\\siddh\\AppData\\Roaming\\Python\\Python312\\site-packages\\win32', 'C:\\Users\\siddh\\AppData\\Roaming\\Python\\Python312\\site-packages\\win32\\lib', 'C:\\Users\\siddh\\AppData\\Roaming\\Python\\Python312\\site-packages\\Pythonwin', 'C:\\Python312\\Lib\\site-packages']
+2026-02-23 13:41:32,739 - [INFO] - CWD: C:\Users\siddh\Desktop\Projects\Docu-AI-Search
+2026-02-23 13:41:55,876 - [INFO] - HTTP Request: GET http://testserver/api/benchmarks/results "HTTP/1.1 200 OK"
+
+[94m[1m============================================================[0m
+[94m[1m                 DOCU AI SEARCH TEST SUITE                  [0m
+[94m[1m============================================================[0m
+
+[93mRunning QUICK tests (skipping slow model tests)...[0m
+
+[96mFound 109 tests to run...[0m
+
+Traceback (most recent call last):
+  File "C:\Users\siddh\Desktop\Projects\Docu-AI-Search\scripts\run_tests.py", line 265, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "C:\Users\siddh\Desktop\Projects\Docu-AI-Search\scripts\run_tests.py", line 198, in main
+    result = runner.run(suite)
+             ^^^^^^^^^^^^^^^^^
+  File "C:\Users\siddh\Desktop\Projects\Docu-AI-Search\scripts\run_tests.py", line 117, in run
+    suite(result)
+  File "C:\Python312\Lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python312\Lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "C:\Python312\Lib\unittest\suite.py", line 84, in __call__
+    return self.run(*args, **kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python312\Lib\unittest\suite.py", line 122, in run
+    test(result)
+  File "C:\Python312\Lib\unittest\case.py", line 690, in __call__
+    return self.run(*args, **kwds)
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Python312\Lib\unittest\case.py", line 648, in run
+    result.addSuccess(self)
+  File "C:\Users\siddh\Desktop\Projects\Docu-AI-Search\scripts\run_tests.py", line 86, in addSuccess
+    self._print_progress('\u2713', test, Colors.GREEN)
+  File "C:\Users\siddh\Desktop\Projects\Docu-AI-Search\scripts\run_tests.py", line 71, in _print_progress
+    self.stream.write(f"\r{Colors.CYAN}[{bar}] {percentage:5.1f}%{Colors.ENDC} ")
+  File "C:\Python312\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 7-36: character maps to <undefined>

@@ -1,0 +1,195 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index c0a83d8..e07fbc5 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -305,6 +305,12 @@ python scripts/verify_golden_set.py
+ 
+ > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
+ 
++### 2026-02-09 (Performance)
++- **React Performance Optimization** - Fixed key anti-pattern in ModelComparison component
++  - **perf**: Replaced array index with unique `model.path` as key in `ModelComparison` select options to improve React reconciliation performance.
++  - **test**: Created `frontend/src/test/ModelComparison.test.jsx` to verify component rendering and ensure stability.
++  - **Files**: `frontend/src/components/ModelComparison.jsx`, `frontend/src/test/ModelComparison.test.jsx`
++
+ ### 2026-01-30 (Security)
+ - **Fixed Arbitrary File Deletion Vulnerability**
+   - **fix**: Implemented `is_safe_model_path` validation in `model_manager.py` to prevent path traversal in model deletion.
+diff --git a/backend/tests/test_config_and_edge_cases.py b/backend/tests/test_config_and_edge_cases.py
+index b1ac151..8deee06 100644
+--- a/backend/tests/test_config_and_edge_cases.py
++++ b/backend/tests/test_config_and_edge_cases.py
+@@ -10,7 +10,7 @@
+ import shutil
+ from unittest.mock import patch, MagicMock
+ import configparser
+-
++from backend import database
+ 
+ class TestConfiguration(unittest.TestCase):
+     """Tests for configuration management."""
+@@ -78,10 +78,21 @@ def test_models_directory_structure(self):
+ 
+ class TestSearchHistoryEdgeCases(unittest.TestCase):
+     """Edge case tests for search history."""
++
++    def setUp(self):
++        self.db_fd, self.db_path = tempfile.mkstemp()
++        os.close(self.db_fd)
++        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
++        self.patcher.start()
++        database.init_database()
++
++    def tearDown(self):
++        self.patcher.stop()
++        if os.path.exists(self.db_path):
++            os.remove(self.db_path)
+     
+     def test_empty_query_handling(self):
+         """Test handling of empty search queries."""
+-        from backend import database
+         
+         # Empty query should still be storable
+         database.add_search_history("", 0, 0)
+@@ -92,7 +103,6 @@ def test_empty_query_handling(self):
+     
+     def test_very_long_query(self):
+         """Test handling of very long search queries."""
+-        from backend import database
+         
+         long_query = "word " * 1000  # 5000+ characters
+         
+@@ -101,7 +111,6 @@ def test_very_long_query(self):
+         
+     def test_special_characters_in_query(self):
+         """Test handling of special characters in queries."""
+-        from backend import database
+         
+         special_query = "test's \"quoted\" <html> & special chars: µùÑµ£¼Φ¬₧"
+         
+@@ -116,10 +125,22 @@ class TestAPIResponseFormats(unittest.TestCase):
+     
+     def setUp(self):
+         """Set up test client."""
++        # Initialize isolated DB for API tests
++        self.db_fd, self.db_path = tempfile.mkstemp()
++        os.close(self.db_fd)
++        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
++        self.patcher.start()
++        database.init_database()
++
+         from fastapi.testclient import TestClient
+         from backend.api import app
+         self.client = TestClient(app)
+     
++    def tearDown(self):
++        self.patcher.stop()
++        if os.path.exists(self.db_path):
++            os.remove(self.db_path)
++
+     def test_config_response_format(self):
+         """Test /api/config returns expected format."""
+         response = self.client.get("/api/config")
+@@ -170,10 +191,22 @@ class TestErrorHandling(unittest.TestCase):
+     
+     def setUp(self):
+         """Set up test client."""
++        # Initialize isolated DB for API tests
++        self.db_fd, self.db_path = tempfile.mkstemp()
++        os.close(self.db_fd)
++        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
++        self.patcher.start()
++        database.init_database()
++
+         from fastapi.testclient import TestClient
+         from backend.api import app
+         self.client = TestClient(app)
+-    
++
++    def tearDown(self):
++        self.patcher.stop()
++        if os.path.exists(self.db_path):
++            os.remove(self.db_path)
++
+     def test_search_without_index(self):
+         """Test search returns appropriate error when no index exists."""
+         with patch('backend.api.index', None):
+diff --git a/frontend/src/components/ModelComparison.jsx b/frontend/src/components/ModelComparison.jsx
+index 9e8e6ed..f6fc347 100644
+--- a/frontend/src/components/ModelComparison.jsx
++++ b/frontend/src/components/ModelComparison.jsx
+@@ -113,8 +113,8 @@ const ModelComparison = () => {
+                     onChange={(e) => setModel1(e.target.value)}
+                     className="p-2 text-sm rounded-lg border border-border bg-background"
+                 >
+-                    {localModels.map((m, idx) => (
+-                        <option key={idx} value={m.path}>{m.name}</option>
++                    {localModels.map((m) => (
++                        <option key={m.path} value={m.path}>{m.name}</option>
+                     ))}
+                 </select>
+                 <select
+@@ -122,8 +122,8 @@ const ModelComparison = () => {
+                     onChange={(e) => setModel2(e.target.value)}
+                     className="p-2 text-sm rounded-lg border border-border bg-background"
+                 >
+-                    {localModels.map((m, idx) => (
+-                        <option key={idx} value={m.path}>{m.name}</option>
++                    {localModels.map((m) => (
++                        <option key={m.path} value={m.path}>{m.name}</option>
+                     ))}
+                 </select>
+             </div>
+diff --git a/frontend/src/test/ModelComparison.test.jsx b/frontend/src/test/ModelComparison.test.jsx
+new file mode 100644
+index 0000000..eb780aa
+--- /dev/null
++++ b/frontend/src/test/ModelComparison.test.jsx
+@@ -0,0 +1,47 @@
++import { describe, it, expect, vi, beforeEach } from 'vitest'
++import { render, screen, waitFor, act } from '@testing-library/react'
++import ModelComparison from '../components/ModelComparison'
++import axios from 'axios'
++
++// Mock axios
++vi.mock('axios')
++
++describe('ModelComparison Component', () => {
++    const mockModels = [
++        { name: 'Model A', path: '/models/model-a' },
++        { name: 'Model B', path: '/models/model-b' },
++        { name: 'Model C', path: '/models/model-c' }
++    ]
++
++    beforeEach(() => {
++        vi.clearAllMocks()
++        axios.get.mockResolvedValue({ data: mockModels })
++    })
++
++    it('renders model selection dropdowns correctly', async () => {
++        await act(async () => {
++            render(<ModelComparison />)
++        })
++
++        // Wait for models to load
++        await waitFor(() => {
++            expect(axios.get).toHaveBeenCalledWith('http://localhost:8000/api/models/local')
++        })
++
++        // Check if dropdowns are present
++        const dropdowns = screen.getAllByRole('combobox')
++        expect(dropdowns).toHaveLength(2)
++
++        // Check options in the first dropdown
++        // Note: We can't easily check the 'key' prop directly in the DOM,
++        // but we can verify the options are rendered correctly.
++        const options = screen.getAllByRole('option')
++        // 3 options per dropdown * 2 dropdowns = 6 options
++        expect(options).toHaveLength(6)
++
++        expect(options[0].value).toBe('/models/model-a')
++        expect(options[0].textContent).toBe('Model A')
++        expect(options[1].value).toBe('/models/model-b')
++        expect(options[1].textContent).toBe('Model B')
++    })
++})

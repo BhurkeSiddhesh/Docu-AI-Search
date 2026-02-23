@@ -1,0 +1,83 @@
+diff --git a/backend/tests/test_config_and_edge_cases.py b/backend/tests/test_config_and_edge_cases.py
+index b1ac151..eb518e2 100644
+--- a/backend/tests/test_config_and_edge_cases.py
++++ b/backend/tests/test_config_and_edge_cases.py
+@@ -11,6 +11,43 @@
+ from unittest.mock import patch, MagicMock
+ import configparser
+ 
++# Shared temp database setup for ALL test classes
++_shared_temp_dir = None
++_original_db_path = None
++
++
++def setUpModule():
++    """Set up shared temp database for all tests in this module."""
++    global _shared_temp_dir, _original_db_path
++    from backend import database
++
++    # Create shared temp directory
++    _shared_temp_dir = tempfile.mkdtemp()
++    _original_db_path = database.DATABASE_PATH
++    database.DATABASE_PATH = os.path.join(_shared_temp_dir, 'test_metadata_config.db')
++    database.init_database()
++
++
++def tearDownModule():
++    """Clean up shared temp database."""
++    global _shared_temp_dir, _original_db_path
++    from backend import database
++    import gc
++    import time
++
++    # Restore original path
++    database.DATABASE_PATH = _original_db_path
++
++    # Try to close any lingering connections and clean up
++    gc.collect()
++    time.sleep(0.1)  # Small delay to let OS release file handles
++
++    if _shared_temp_dir and os.path.exists(_shared_temp_dir):
++        try:
++            shutil.rmtree(_shared_temp_dir)
++        except Exception as e:
++            print(f"Warning: Could not clean up test directory {_shared_temp_dir}: {e}")
++
+ 
+ class TestConfiguration(unittest.TestCase):
+     """Tests for configuration management."""
+diff --git a/frontend/src/components/SearchResults.jsx b/frontend/src/components/SearchResults.jsx
+index 65df315..2f77072 100644
+--- a/frontend/src/components/SearchResults.jsx
++++ b/frontend/src/components/SearchResults.jsx
+@@ -34,7 +34,7 @@ const SearchResults = ({ results, aiAnswer }) => {
+     const resultsList = useMemo(() => {
+         return results.map((result, index) => (
+             <motion.div
+-                key={index}
++                key={result.faiss_idx !== undefined ? result.faiss_idx : index}
+                 initial={{ opacity: 0, y: 15 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 transition={{ duration: 0.3, delay: index * 0.05 }}
+diff --git a/frontend/src/test/SearchResults.test.jsx b/frontend/src/test/SearchResults.test.jsx
+index ed4ed7c..57dc3c0 100644
+--- a/frontend/src/test/SearchResults.test.jsx
++++ b/frontend/src/test/SearchResults.test.jsx
+@@ -15,7 +15,7 @@ vi.mock('axios')
+ describe('SearchResults Component', () => {
+     const mockResults = [
+         {
+-            id: 'doc1',
++            id: 'doc1', faiss_idx: 101,
+             document: 'This is the content of document 1',
+             summary: 'Summary of document 1',
+             file_path: '/path/to/doc1.pdf',
+@@ -23,7 +23,7 @@ describe('SearchResults Component', () => {
+             tags: ['AI', 'ML']
+         },
+         {
+-            id: 'doc2',
++            id: 'doc2', faiss_idx: 102,
+             document: 'Content of document 2',
+             summary: 'Summary of document 2',
+             file_path: '/path/to/doc2.txt',

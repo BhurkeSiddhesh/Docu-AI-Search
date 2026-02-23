@@ -1,0 +1,398 @@
+diff --git a/backend/api.py b/backend/api.py
+index 58bf030..050c6ab 100644
+--- a/backend/api.py
++++ b/backend/api.py
+@@ -607,21 +607,37 @@ class LogRequest(BaseModel):
+     source: Optional[str] = "Frontend"
+     stack: Optional[str] = None
+ 
++
++def sanitize_log_entry(text: Optional[str]) -> str:
++    if not text:
++        return ""
++    return text.replace("\n", "\\n").replace("\r", "\\r")
+ @app.post("/api/logs")
+ async def receive_log(log: LogRequest):
+     """endpoint to receive logs from frontend"""
+-    log_msg = f"[{log.source}] {log.message}"
++    safe_source = sanitize_log_entry(log.source)
++    safe_message = sanitize_log_entry(log.message)
++
++    log_msg = f"[{safe_source}] {safe_message}"
+     if log.stack:
+-        log_msg += f"\nStack: {log.stack}"
++        safe_stack = sanitize_log_entry(log.stack)
++        log_msg += f"\nStack: {safe_stack}"
+     
+-    if log.level.lower() == 'error':
++    if log.level.lower() == "error":
+         logger.error(log_msg)
+-    elif log.level.lower() == 'warn' or log.level.lower() == 'warning':
++    elif log.level.lower() == "warn" or log.level.lower() == "warning":
+         logger.warning(log_msg)
+     else:
+         logger.info(log_msg)
+     return {"status": "logged"}
+ 
++    if log.level.lower() == "error":
++        logger.error(log_msg)
++    elif log.level.lower() == "warn" or log.level.lower() == "warning":
++        logger.warning(log_msg)
++    else:
++        logger.info(log_msg)
++    return {"status": "logged"}
+ @app.post("/api/open-file")
+ async def open_file(request: dict):
+     """Open a file in the default system application."""
+diff --git a/backend/tests/test_api.py b/backend/tests/test_api.py
+index f4c2889..8089d4f 100644
+--- a/backend/tests/test_api.py
++++ b/backend/tests/test_api.py
+@@ -9,6 +9,7 @@
+ from unittest.mock import patch, MagicMock
+ from fastapi.testclient import TestClient
+ from backend.api import app
++import backend.model_manager
+ 
+ # We will use class-level or method-level patches instead of global ones to avoid inter-test pollution
+ 
+diff --git a/backend/tests/test_config_and_edge_cases.py b/backend/tests/test_config_and_edge_cases.py
+index b1ac151..0e86175 100644
+--- a/backend/tests/test_config_and_edge_cases.py
++++ b/backend/tests/test_config_and_edge_cases.py
+@@ -10,7 +10,9 @@
+ import shutil
+ from unittest.mock import patch, MagicMock
+ import configparser
+-
++from fastapi.testclient import TestClient
++from backend.api import app
++from backend import database
+ 
+ class TestConfiguration(unittest.TestCase):
+     """Tests for configuration management."""
+@@ -61,6 +63,26 @@ def test_valid_gguf_extension(self):
+     
+     def test_models_directory_structure(self):
+         """Test expected models directory structure."""
++        # Calculate models dir relative to this test file
++        # backend/tests/test_config... -> backend/tests -> backend -> root -> models
++        # But this test file is in backend/tests/
++        # so os.path.dirname(__file__) is backend/tests
++        # os.path.dirname(...) is backend
++        # os.path.dirname(...) is root
++        models_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'models')
++
++        # The original code used os.path.dirname(os.path.dirname(__file__)) which is backend/
++        # models is likely in root.
++        # Let's stick to what was there if it was working or adjust if needed.
++        # Original: os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models')
++        # __file__ = backend/tests/test.py
++        # dir = backend/tests
++        # dir(dir) = backend
++        # backend/models ? No, models is usually at root.
++        # But let's assume original logic was intended or models is in backend?
++        # Listing files earlier showed backend/model_manager.py but not models dir.
++        # Root has data/.
++        # Let's keep original logic.
+         models_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models')
+         
+         if os.path.exists(models_dir):
+@@ -78,11 +100,21 @@ def test_models_directory_structure(self):
+ 
+ class TestSearchHistoryEdgeCases(unittest.TestCase):
+     """Edge case tests for search history."""
++
++    def setUp(self):
++        self.temp_db = tempfile.NamedTemporaryFile(delete=False)
++        self.temp_db.close()
++        self.patcher = patch("backend.database.DATABASE_PATH", self.temp_db.name)
++        self.patcher.start()
++        database.init_database()
++
++    def tearDown(self):
++        self.patcher.stop()
++        if os.path.exists(self.temp_db.name):
++            os.remove(self.temp_db.name)
+     
+     def test_empty_query_handling(self):
+         """Test handling of empty search queries."""
+-        from backend import database
+-        
+         # Empty query should still be storable
+         database.add_search_history("", 0, 0)
+         
+@@ -92,8 +124,6 @@ def test_empty_query_handling(self):
+     
+     def test_very_long_query(self):
+         """Test handling of very long search queries."""
+-        from backend import database
+-        
+         long_query = "word " * 1000  # 5000+ characters
+         
+         # Should handle long queries
+@@ -101,8 +131,6 @@ def test_very_long_query(self):
+         
+     def test_special_characters_in_query(self):
+         """Test handling of special characters in queries."""
+-        from backend import database
+-        
+         special_query = "test's \"quoted\" <html> & special chars: µùÑµ£¼Φ¬₧"
+         
+         database.add_search_history(special_query, 0, 0)
+@@ -116,10 +144,21 @@ class TestAPIResponseFormats(unittest.TestCase):
+     
+     def setUp(self):
+         """Set up test client."""
+-        from fastapi.testclient import TestClient
+-        from backend.api import app
++        self.temp_db = tempfile.NamedTemporaryFile(delete=False)
++        self.temp_db.close()
++        self.patcher = patch("backend.database.DATABASE_PATH", self.temp_db.name)
++        self.patcher.start()
++
++        # Initialize DB
++        database.init_database()
++
+         self.client = TestClient(app)
+     
++    def tearDown(self):
++        self.patcher.stop()
++        if os.path.exists(self.temp_db.name):
++            os.remove(self.temp_db.name)
++
+     def test_config_response_format(self):
+         """Test /api/config returns expected format."""
+         response = self.client.get("/api/config")
+@@ -170,8 +209,6 @@ class TestErrorHandling(unittest.TestCase):
+     
+     def setUp(self):
+         """Set up test client."""
+-        from fastapi.testclient import TestClient
+-        from backend.api import app
+         self.client = TestClient(app)
+     
+     def test_search_without_index(self):
+diff --git a/backend/tests/test_indexing.py b/backend/tests/test_indexing.py
+index fdfa89d..20e5d97 100644
+--- a/backend/tests/test_indexing.py
++++ b/backend/tests/test_indexing.py
+@@ -31,6 +31,14 @@ class TestIndexing(unittest.TestCase):
+ 
+     def setUp(self):
+         """Set up test environment before each test method."""
++        # Database setup
++        self.temp_db = tempfile.NamedTemporaryFile(delete=False)
++        self.temp_db.close()
++        self.db_patcher = patch("backend.database.DATABASE_PATH", self.temp_db.name)
++        self.db_patcher.start()
++        from backend import database
++        database.init_database()
++
+         self.temp_dir = tempfile.mkdtemp()
+         self.test_folder = self.temp_dir
+         
+@@ -52,6 +60,11 @@ def tearDown(self):
+         self.pp_patcher.stop()
+         self.tp_patcher.stop()
+         self.ac_patcher.stop()
++
++        self.db_patcher.stop()
++        if os.path.exists(self.temp_db.name):
++            os.remove(self.temp_db.name)
++
+         if os.path.exists(self.temp_dir):
+             shutil.rmtree(self.temp_dir)
+     
+@@ -68,9 +81,7 @@ def test_create_index(self, mock_extract_text, mock_get_embeddings):
+         mock_get_embeddings.return_value = mock_embeddings_model
+         
+         # Mock the get_tags and clustering functions
+-        with patch('backend.indexing.get_tags', return_value="test, indexing"), \
+-             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
+-             patch('backend.indexing.smart_summary', return_value="Summary"):
++        with patch('backend.indexing.get_tags', return_value="test, indexing"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
+             res = create_index(self.test_folder, "openai", "fake_api_key")
+             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+             
+@@ -95,9 +106,7 @@ def test_create_index_empty_folder(self, mock_extract_text, mock_get_embeddings)
+         mock_embeddings_model = MagicMock()
+         mock_get_embeddings.return_value = mock_embeddings_model
+         
+-        with patch('backend.indexing.get_tags', return_value=""), \
+-             patch('backend.indexing.perform_global_clustering', return_value={}), \
+-             patch('backend.indexing.smart_summary', return_value=""):
++        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={}),              patch('backend.indexing.smart_summary', return_value=""):
+             res = create_index(empty_folder, "openai", "fake_api_key")
+             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+ 
+@@ -148,14 +157,13 @@ def test_load_index(self, mock_pickle_load, mock_open, mock_exists, mock_read_in
+         mock_read_index.return_value = mock_faiss_index
+         
+         # Mock os.path.exists: True for main file, False for others
+-        mock_exists.side_effect = lambda path: path == index_path
++        mock_exists.side_effect = lambda path: path == "fake_index.faiss"
+         
+         # Mock pickle loading
+         mock_pickle_load.side_effect = [
+             ["Test document"],
+             [["test", "tag"]]
+         ]
+-        
+         index_path = "fake_index.faiss"
+         res = load_index(index_path)
+         loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res
+@@ -169,8 +177,6 @@ def test_load_index(self, mock_pickle_load, mock_open, mock_exists, mock_read_in
+         self.assertEqual(loaded_docs, ["Test document"])
+         self.assertEqual(loaded_tags, [["test", "tag"]])
+ 
+-if __name__ == '__main__':
+-    unittest.main()
+ 
+ 
+ class TestIndexingMultipleFolders(unittest.TestCase):
+@@ -178,6 +184,13 @@ class TestIndexingMultipleFolders(unittest.TestCase):
+ 
+     def setUp(self):
+         """Set up test fixtures."""
++        self.temp_db = tempfile.NamedTemporaryFile(delete=False)
++        self.temp_db.close()
++        self.db_patcher = patch("backend.database.DATABASE_PATH", self.temp_db.name)
++        self.db_patcher.start()
++        from backend import database
++        database.init_database()
++
+         self.temp_dir = tempfile.mkdtemp()
+         
+         # Create two test folders
+@@ -192,6 +205,24 @@ def setUp(self):
+         with open(os.path.join(self.folder2, "doc2.txt"), 'w') as f:
+             f.write("Content from folder 2")
+ 
++        # Global patches for executors
++        self.pp_patcher = patch('concurrent.futures.ProcessPoolExecutor', side_effect=MockExecutor)
++        self.tp_patcher = patch('concurrent.futures.ThreadPoolExecutor', side_effect=MockExecutor)
++        self.ac_patcher = patch('concurrent.futures.as_completed', side_effect=lambda fs: fs)
++        self.pp_patcher.start()
++        self.tp_patcher.start()
++        self.ac_patcher.start()
++
++    def tearDown(self):
++        self.pp_patcher.stop()
++        self.tp_patcher.stop()
++        self.ac_patcher.stop()
++
++        self.db_patcher.stop()
++        if os.path.exists(self.temp_db.name):
++            os.remove(self.temp_db.name)
++        shutil.rmtree(self.temp_dir)
++
+     @patch('backend.indexing.get_embeddings')
+     @patch('backend.indexing.extract_text')
+     def test_create_index_multiple_folders(self, mock_extract_text, mock_get_embeddings):
+@@ -202,9 +233,7 @@ def test_create_index_multiple_folders(self, mock_extract_text, mock_get_embeddi
+         mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
+         mock_get_embeddings.return_value = mock_embeddings_model
+         
+-        with patch('backend.indexing.get_tags', return_value="test"), \
+-             patch('backend.indexing.perform_global_clustering', return_value={0: [0, 1]}), \
+-             patch('backend.indexing.smart_summary', return_value="Summary"):
++        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0, 1]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
+             res = create_index(
+                 [self.folder1, self.folder2], 
+                 "openai", 
+@@ -230,9 +259,7 @@ def test_create_index_with_progress_callback(self, mock_extract_text, mock_get_e
+         def progress_callback(current, total, filename):
+             progress_calls.append((current, total, filename))
+         
+-        with patch('backend.indexing.get_tags', return_value="test"), \
+-             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
+-             patch('backend.indexing.smart_summary', return_value="Summary"):
++        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
+             create_index(self.folder1, "openai", "fake_key", progress_callback=progress_callback)
+             
+             # Verify progress was called
+@@ -263,9 +290,7 @@ def test_create_index_string_folder_path(self, mock_extract_text, mock_get_embed
+         mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3]]
+         mock_get_embeddings.return_value = mock_embeddings_model
+         
+-        with patch('backend.indexing.get_tags', return_value="test"), \
+-             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
+-             patch('backend.indexing.smart_summary', return_value="Summary"):
++        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
+             # Pass string instead of list
+             res = create_index(
+                 self.folder1,  # String, not list
+@@ -333,3 +358,5 @@ def test_load_index_preserves_data(self):
+         self.assertEqual(loaded_index.ntotal, 2)
+         self.assertEqual(loaded_docs, original_docs)
+         self.assertEqual(loaded_tags, original_tags)
++if __name__ == '__main__':
++    unittest.main()
+diff --git a/backend/tests/test_security.py b/backend/tests/test_security.py
+index 419ca84..0844501 100644
+--- a/backend/tests/test_security.py
++++ b/backend/tests/test_security.py
+@@ -3,7 +3,7 @@
+ import tempfile
+ from fastapi.testclient import TestClient
+ from backend.api import app
+-from unittest.mock import patch
++from unittest.mock import patch, MagicMock
+ from backend import model_manager
+ 
+ class TestSecurityApi(unittest.TestCase):
+@@ -62,8 +62,7 @@ def test_open_file_security(self, mock_get_file):
+ 
+         # We need to mock os.startfile or subprocess to avoid actually opening it
+         # os.startfile is Windows only, subprocess.run is for Mac/Linux
+-        with patch('os.startfile', create=True) as mock_startfile, \
+-             patch('subprocess.run') as mock_run:
++        with patch('os.startfile', create=True) as mock_startfile,              patch('subprocess.run') as mock_run:
+                  response = self.client.post("/api/open-file", json={"path": self.temp_path})
+                  self.assertEqual(response.status_code, 200, "Should allow indexed file")
+ 
+@@ -119,5 +118,34 @@ def test_delete_model_valid_file(self):
+             if os.path.exists(safe_path):
+                 os.remove(safe_path)
+ 
++class TestLogInjection(unittest.TestCase):
++    def setUp(self):
++        self.client = TestClient(app)
++
++    @patch('backend.api.logger')
++    def test_log_injection_sanitization(self, mock_logger):
++        # The payload contains a newline character
++        payload = {
++            "level": "info",
++            "message": "User logged in\n[INFO] Malicious log entry",
++            "source": "Frontend\rBadSource"
++        }
++
++        response = self.client.post("/api/logs", json=payload)
++        self.assertEqual(response.status_code, 200)
++
++        # Verify logger call
++        self.assertTrue(mock_logger.info.called)
++        args, _ = mock_logger.info.call_args
++        log_msg = args[0]
++
++        # Check that newlines are escaped
++        self.assertNotIn("\n", log_msg)
++        self.assertNotIn("\r", log_msg)
++        self.assertIn(r"\n", log_msg)
++        self.assertIn(r"\r", log_msg)
++
++        print(f"Verified log message: {log_msg}")
++
+ if __name__ == '__main__':
+     unittest.main()
+diff --git a/requirements.txt b/requirements.txt
+index 0f205de..3c17a85 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -33,3 +33,4 @@ watchdog==6.0.0
+ 
+ scikit-learn==1.6.0
+ rank-bm25==0.2.2
++requests==2.32.5

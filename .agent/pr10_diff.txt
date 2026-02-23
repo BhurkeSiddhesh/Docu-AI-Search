@@ -1,0 +1,183 @@
+diff --git a/backend/tests/test_config_and_edge_cases.py b/backend/tests/test_config_and_edge_cases.py
+index b1ac151..b3a9fcf 100644
+--- a/backend/tests/test_config_and_edge_cases.py
++++ b/backend/tests/test_config_and_edge_cases.py
+@@ -79,6 +79,19 @@ def test_models_directory_structure(self):
+ class TestSearchHistoryEdgeCases(unittest.TestCase):
+     """Edge case tests for search history."""
+     
++
++    def setUp(self):
++        self.temp_dir = tempfile.mkdtemp()
++        self.db_path = os.path.join(self.temp_dir, 'test_history.db')
++        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
++        self.patcher.start()
++        from backend import database
++        database.init_database()
++
++    def tearDown(self):
++        self.patcher.stop()
++        shutil.rmtree(self.temp_dir)
++
+     def test_empty_query_handling(self):
+         """Test handling of empty search queries."""
+         from backend import database
+@@ -118,7 +131,21 @@ def setUp(self):
+         """Set up test client."""
+         from fastapi.testclient import TestClient
+         from backend.api import app
+-        self.client = TestClient(app)
++
++        # Patch database path
++        self.temp_dir = tempfile.mkdtemp()
++        self.db_path = os.path.join(self.temp_dir, 'test_api.db')
++        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
++        self.patcher.start()
++
++        # Use context manager to trigger startup events
++        self.client_context = TestClient(app)
++        self.client = self.client_context.__enter__()
++
++    def tearDown(self):
++        self.client_context.__exit__(None, None, None)
++        self.patcher.stop()
++        shutil.rmtree(self.temp_dir)
+     
+     def test_config_response_format(self):
+         """Test /api/config returns expected format."""
+@@ -172,7 +199,21 @@ def setUp(self):
+         """Set up test client."""
+         from fastapi.testclient import TestClient
+         from backend.api import app
+-        self.client = TestClient(app)
++
++        # Patch database path
++        self.temp_dir = tempfile.mkdtemp()
++        self.db_path = os.path.join(self.temp_dir, 'test_api.db')
++        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
++        self.patcher.start()
++
++        # Use context manager to trigger startup events
++        self.client_context = TestClient(app)
++        self.client = self.client_context.__enter__()
++
++    def tearDown(self):
++        self.client_context.__exit__(None, None, None)
++        self.patcher.stop()
++        shutil.rmtree(self.temp_dir)
+     
+     def test_search_without_index(self):
+         """Test search returns appropriate error when no index exists."""
+diff --git a/backend/tests/test_indexing.py b/backend/tests/test_indexing.py
+index fdfa89d..ed1fbeb 100644
+--- a/backend/tests/test_indexing.py
++++ b/backend/tests/test_indexing.py
+@@ -32,6 +32,17 @@ class TestIndexing(unittest.TestCase):
+     def setUp(self):
+         """Set up test environment before each test method."""
+         self.temp_dir = tempfile.mkdtemp()
++        self.db_dir = tempfile.mkdtemp() # Separate dir for DB to avoid indexing it
++        self.addCleanup(shutil.rmtree, self.db_dir)
++
++        # Setup temp database
++        self.db_path = os.path.join(self.db_dir, 'test_indexing.db')
++        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
++        self.patcher.start()
++        from backend import database
++        database.init_database()
++
++
+         self.test_folder = self.temp_dir
+         
+         # Create a dummy file
+@@ -48,6 +59,7 @@ def setUp(self):
+         self.ac_patcher.start()
+ 
+     def tearDown(self):
++        self.patcher.stop()
+         """Clean up after each test method."""
+         self.pp_patcher.stop()
+         self.tp_patcher.stop()
+@@ -179,6 +191,18 @@ class TestIndexingMultipleFolders(unittest.TestCase):
+     def setUp(self):
+         """Set up test fixtures."""
+         self.temp_dir = tempfile.mkdtemp()
++        self.db_dir = tempfile.mkdtemp() # Separate dir for DB
++        self.addCleanup(shutil.rmtree, self.db_dir)
++
++        # Setup temp database
++        self.db_path = os.path.join(self.db_dir, 'test_indexing.db')
++        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
++        self.patcher.start()
++        from backend import database
++        database.init_database()
++        self.addCleanup(self.patcher.stop)
++
++
+         
+         # Create two test folders
+         self.folder1 = os.path.join(self.temp_dir, "folder1")
+@@ -284,6 +308,18 @@ class TestSaveIndex(unittest.TestCase):
+     def setUp(self):
+         """Set up test fixtures."""
+         self.temp_dir = tempfile.mkdtemp()
++        self.db_dir = tempfile.mkdtemp() # Separate dir for DB
++        self.addCleanup(shutil.rmtree, self.db_dir)
++
++        # Setup temp database
++        self.db_path = os.path.join(self.db_dir, 'test_indexing.db')
++        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
++        self.patcher.start()
++        from backend import database
++        database.init_database()
++        self.addCleanup(self.patcher.stop)
++
++
+ 
+     def test_save_index_creates_all_files(self):
+         """Test that save_index creates .faiss, _docs.pkl, and _tags.pkl files."""
+@@ -310,6 +346,18 @@ class TestLoadIndex(unittest.TestCase):
+     def setUp(self):
+         """Set up test fixtures."""
+         self.temp_dir = tempfile.mkdtemp()
++        self.db_dir = tempfile.mkdtemp() # Separate dir for DB
++        self.addCleanup(shutil.rmtree, self.db_dir)
++
++        # Setup temp database
++        self.db_path = os.path.join(self.db_dir, 'test_indexing.db')
++        self.patcher = patch('backend.database.DATABASE_PATH', self.db_path)
++        self.patcher.start()
++        from backend import database
++        database.init_database()
++        self.addCleanup(self.patcher.stop)
++
++
+ 
+     def test_load_index_preserves_data(self):
+         """Test that load_index correctly restores saved data."""
+diff --git a/backend/tests/test_model_manager.py b/backend/tests/test_model_manager.py
+index c9f9ebc..fa43305 100644
+--- a/backend/tests/test_model_manager.py
++++ b/backend/tests/test_model_manager.py
+@@ -128,8 +128,19 @@ class TestModelManagerIntegration(unittest.TestCase):
+     
+     def setUp(self):
+         """Set up test environment."""
+-        from backend.model_manager import MODELS_DIR
+-        self.models_dir = MODELS_DIR
++        import tempfile
++        self.temp_dir = tempfile.mkdtemp()
++        self.models_dir = os.path.join(self.temp_dir, 'models')
++        os.makedirs(self.models_dir, exist_ok=True)
++
++        # Patch MODELS_DIR
++        self.patcher = patch('backend.model_manager.MODELS_DIR', self.models_dir)
++        self.patcher.start()
++
++    def tearDown(self):
++        self.patcher.stop()
++        import shutil
++        shutil.rmtree(self.temp_dir)
+     
+     def test_models_directory_exists(self):
+         """Test that models directory exists."""
