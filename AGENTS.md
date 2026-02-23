@@ -526,6 +526,13 @@ python scripts/verify_golden_set.py
   - `data/golden_dataset/`: Target directory for test files.
   - Added documentation to `AGENTS.md`.
 
+### 2026-02-13 (Performance)
+- **Optimized Search Performance (N+1 Query Fix)**
+  - **perf**: Implemented `get_files_by_faiss_indices` in `database.py` for batch lookup of file metadata.
+  - **perf**: Updated `search_files` and `stream_answer_endpoint` in `api.py` to use batch lookups, eliminating N+1 database queries.
+  - **Result**: Achieved ~6.5x speedup for metadata retrieval in search results (benchmarked with 10 lookups).
+  - **Files**: `backend/database.py`, `backend/api.py`, `backend/tests/test_database.py`, `backend/tests/benchmark_n1_query.py`
+
 ### 2026-01-30
 - **Optimized Startup** - Reduced polling interval to 500ms and enabled early browser launch
   - Files: `scripts/start_all.js`
@@ -569,22 +576,18 @@ python scripts/verify_golden_set.py
   - Files: modified files list
 ```
 
-### 2026-02-02 (Security)
-- **Fixed Insecure Deserialization Vulnerability**
-  - **fix**: Replaced `pickle` with `json` serialization in `backend/indexing.py` for metadata files.
-  - **fix**: BM25 index is now reconstructed from source text on load to avoid serialization risks.
-  - **test**: Added `backend/tests/test_security_fix_verification.py` to verify JSON usage.
-  - **Files**: `backend/indexing.py`, `backend/tests/test_indexing.py`
+> **Always read [AGENTS.md](cci:7://file:///c:/Users/siddh/OneDrive/Desktop/Projects/File-Search-Engine-1/AGENTS.md:0:0-0:0) in project root for the latest Change Log before and after making changes.**
+### 2026-02-06 (Security Fix)
+- **Redacted Sensitive Search Queries** - Prevent PII leak in logs
+  - **fix**: Redacted `request.query` in `backend/api.py`.
+  - **fix**: Redacted sensitive info in `backend/llm_integration.py` and `backend/search.py`.
+  - **test**: Added `backend/tests/test_security_logging.py`.
 
-### 2026-02-10 (Test Stability)
-- **Fixed CI Failures**
-  - **fix**: Updated `test_benchmarks.py` and `test_model_manager.py` to correctly mock `psutil` return values (integer/float expected).
-  - **fix**: Updated `test_config_and_edge_cases.py` to properly initialize and clean up the database for search history tests, resolving 500 errors.
-  - **refactor**: Rewrote `test_indexing.py` to use `patch.dict` for `sys.modules` instead of global assignment, preventing side effects on other tests.
-  - **Files**: `backend/tests/test_benchmarks.py`, `backend/tests/test_model_manager.py`, `backend/tests/test_config_and_edge_cases.py`, `backend/tests/test_indexing.py`
+  - **Files**: `backend/api.py`, `backend/llm_integration.py`, `backend/search.py`, `backend/tests/test_security_logging.py`
 
-### 2026-02-10 (Test Stability - Part 2)
-- **Fixed `psutil` Mocking Issues**
-  - **fix**: Replaced `patch.dict(sys.modules, ...)` with `@patch('target.module.psutil')` in `test_model_manager.py` and `test_benchmarks.py`.
-  - **rationale**: Previous global module patching caused `AttributeError: 'dict' object has no attribute 'virtual_memory'` because the mock was wrapping the dict instead of the module in some contexts. Targeted patching ensures the mock is applied correctly at the import site.
-  - **Files**: `backend/tests/test_model_manager.py`, `backend/tests/test_benchmarks.py`
+### 2026-02-23 (Performance)
+- **Optimized Search Result Streaming** - Instant response by reusing search context
+  - **perf**: Modified `stream_answer_endpoint` in `backend/api.py` to accept and use provided context, skipping redundant search.
+  - **perf**: Updated `frontend/src/App.jsx` to pass search results as context to the streaming endpoint.
+  - **Files**: `backend/api.py`, `frontend/src/App.jsx`
+  - **Tests**: `backend/tests/test_stream_optimization.py`

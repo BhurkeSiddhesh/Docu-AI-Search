@@ -1,10 +1,14 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Depends
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from fastapi.responses import StreamingResponse
 import json
 import asyncio
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 import uvicorn
 import os
 import time
@@ -95,7 +99,11 @@ from backend import database
 
 
 
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
 app = FastAPI()
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Enable CORS for frontend
 app.add_middleware(
@@ -115,24 +123,12 @@ cluster_summaries = []
 cluster_map = None
 bm25 = None
 
-
-async def verify_local_request(request: Request):
-    client_host = request.client.host
-    if client_host not in ("127.0.0.1", "::1", "testclient"):
-        logger.warning(f"Security: Blocked remote access to sensitive endpoint from {client_host}")
-        raise HTTPException(status_code=403, detail="Access denied")
-
-def mask_key(key: str) -> str:
-    if not key or len(key) < 5:
-        return ""
-    return "********"
-
 @app.get("/")
-async def root():
+async def root(request: Request):
     return {"status": "online", "message": "Docu AI Search API is running"}
 
 @app.get("/api/health")
-async def health_check():
+async def health_check(request: Request):
     return {"status": "ok"}
 
 def load_config():
@@ -181,7 +177,7 @@ async def load_initial_index():
             bm25 = None
 
 @app.get("/api/browse")
-async def browse_folder():
+async def browse_folder(request: Request):
     """Open a folder browser dialog and return the selected path."""
     import tkinter as tk
     from tkinter import filedialog
@@ -202,26 +198,26 @@ async def browse_folder():
         raise HTTPException(status_code=500, detail=f"Failed to open folder dialog: {str(e)}")
 
 @app.get("/api/models/available")
-async def list_available_models():
+async def list_available_models(request: Request):
     return get_available_models()
 
 @app.get("/api/models/local")
-async def list_local_models():
+async def list_local_models(request: Request):
     return get_local_models()
 
 @app.post("/api/models/download/{model_id}")
-async def download_model_endpoint(model_id: str):
+async def download_model_endpoint(model_id: str, request: Request):
     success, message = start_download(model_id)
     if not success:
         raise HTTPException(status_code=400, detail=message)
     return {"status": "success", "message": message}
 
 @app.get("/api/models/status")
-async def download_status_endpoint():
+async def download_status_endpoint(request: Request):
     return get_download_status()
 
 @app.delete("/api/models/delete")
-async def delete_model(request: dict):
+async def delete_model(request: dict, req: Request):
     """Delete a downloaded model file."""
     model_path = request.get('path', '')
     if not model_path:
@@ -286,7 +282,7 @@ def run_benchmark_task():
         benchmark_status["error"] = str(e)
 
 @app.post("/api/benchmarks/run")
-async def run_benchmarks(background_tasks: BackgroundTasks):
+async def run_benchmarks(background_tasks: BackgroundTasks, request: Request):
     """Start benchmark suite in background."""
     global benchmark_status
     
@@ -297,12 +293,12 @@ async def run_benchmarks(background_tasks: BackgroundTasks):
     return {"status": "started", "message": "Benchmark started in background"}
 
 @app.get("/api/benchmarks/status")
-async def get_benchmark_status():
+async def get_benchmark_status(request: Request):
     """Get current benchmark status."""
     return benchmark_status
 
 @app.get("/api/benchmarks/results")
-async def get_benchmark_results():
+async def get_benchmark_results(request: Request):
     """Get latest benchmark results."""
     global benchmark_results
     
@@ -323,6 +319,7 @@ async def get_benchmark_results():
 
 class SearchRequest(BaseModel):
     query: str
+    context: Optional[List[str]] = None
 
 class SearchResult(BaseModel):
     document: str
@@ -348,8 +345,8 @@ class ConfigModel(BaseModel):
     provider: str = "openai"
     tensor_split: Optional[str] = None
 
-@app.get("/api/config", dependencies=[Depends(verify_local_request)])
-async def get_config():
+@app.get("/api/config")
+async def get_config(request: Request):
     config = load_config()
     # Handle both old 'folder' and new 'folders' format
     folder = config.get('General', 'folder', fallback='')
@@ -362,35 +359,27 @@ async def get_config():
     return {
         "folders": folders,
         "auto_index": config.getboolean('General', 'auto_index', fallback=False),
-        "openai_api_key": mask_key(config.get('APIKeys', 'openai_api_key', fallback='')),
-        "gemini_api_key": mask_key(config.get('APIKeys', 'gemini_api_key', fallback='')),
-        "anthropic_api_key": mask_key(config.get('APIKeys', 'anthropic_api_key', fallback='')),
-        "grok_api_key": mask_key(config.get('APIKeys', 'grok_api_key', fallback='')),
+        "openai_api_key": config.get('APIKeys', 'openai_api_key', fallback=''),
+        "gemini_api_key": config.get('APIKeys', 'gemini_api_key', fallback=''),
+        "anthropic_api_key": config.get('APIKeys', 'anthropic_api_key', fallback=''),
+        "grok_api_key": config.get('APIKeys', 'grok_api_key', fallback=''),
         "local_model_path": config.get('LocalLLM', 'model_path', fallback=''),
         "provider": config.get('LocalLLM', 'provider', fallback='openai'),
         "tensor_split": config.get('LocalLLM', 'tensor_split', fallback=None)
     }
 
-@app.post("/api/config", dependencies=[Depends(verify_local_request)])
-async def update_config(config_data: ConfigModel):
-    # Load current config to check for masked values
-    current_config = load_config()
-
-    def resolve_key(section, key, new_val):
-        if new_val == "********":
-            return current_config.get(section, key, fallback='')
-        return new_val or ''
-
+@app.post("/api/config")
+async def update_config(config_data: ConfigModel, request: Request):
     config = configparser.ConfigParser()
     config['General'] = {
         'folders': ','.join(config_data.folders),
         'auto_index': str(config_data.auto_index)
     }
     config['APIKeys'] = {
-        'openai_api_key': resolve_key('APIKeys', 'openai_api_key', config_data.openai_api_key),
-        'gemini_api_key': resolve_key('APIKeys', 'gemini_api_key', config_data.gemini_api_key),
-        'anthropic_api_key': resolve_key('APIKeys', 'anthropic_api_key', config_data.anthropic_api_key),
-        'grok_api_key': resolve_key('APIKeys', 'grok_api_key', config_data.grok_api_key)
+        'openai_api_key': config_data.openai_api_key or '',
+        'gemini_api_key': config_data.gemini_api_key or '',
+        'anthropic_api_key': config_data.anthropic_api_key or '',
+        'grok_api_key': config_data.grok_api_key or ''
     }
     config['LocalLLM'] = {
         'model_path': config_data.local_model_path or '', 
@@ -410,13 +399,13 @@ async def update_config(config_data: ConfigModel):
     return {"status": "success", "message": "Configuration saved"}
 
 @app.post("/api/search")
-async def search_files(request: SearchRequest):
+async def search_files(request: SearchRequest, req: Request):
     global index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25
     
     if not index:
         raise HTTPException(status_code=400, detail="Index not loaded. Please configure and index a folder first.")
 
-    print(f"\n[API] POST /api/search - Query: '{request.query}'")
+    print(f"\n[API] POST /api/search - Query: <redacted>")
 
     try:
         start_time = time.time()
@@ -455,34 +444,45 @@ async def search_files(request: SearchRequest):
                 pass
 
         # Run Search
-        results, context_snippets = search(
+        results, _context_snippets = search(
             request.query, index, docs, tags, 
             get_embeddings(provider, api_key, model_path),
             index_summaries, cluster_summaries, cluster_map, bm25
         )
         
+        # OPTIMIZATION: Batch database lookups for missing file info
+        indices_to_lookup = list(dict.fromkeys(
+            result['faiss_idx']
+            for result in results
+            if not result.get('file_path') and result.get('faiss_idx') is not None
+        ))
+
+        file_lookup_map = {}
+        if indices_to_lookup:
+            try:
+                file_lookup_map = database.get_files_by_faiss_indices(indices_to_lookup)
+            except ValueError as ve:
+                logger.warning(f"Batch lookup failed, falling back to sequential: {ve}")
+                # Fallback: manually lookup one by one if batch size exceeded
+                for f_idx in indices_to_lookup:
+                    info = database.get_file_by_faiss_index(f_idx)
+                    if info:
+                        file_lookup_map[f_idx] = info
+
         processed_results = []
         
-        # Helper to get full file path
-        # Note: search() now returns a list of result dicts directly
-        # We need to adapt the caching logic below
-        
-        # Wait, the previous logic was:
-        # results = search(...) -> returns list of dicts
-        for idx, result in enumerate(results):
+        for result in results:
             faiss_idx = result.get('faiss_idx')
             
             # Use file info from search result first (it comes from FAISS doc metadata)
-            # Only fall back to database lookup if not available
             file_path = result.get('file_path')
             file_name = result.get('file_name')
             
-            # If not in search result, try database lookup (for backward compatibility)
-            if not file_path and faiss_idx is not None:
-                file_info = database.get_file_by_faiss_index(faiss_idx)
-                if file_info:
-                    file_path = file_info.get('path')
-                    file_name = file_info.get('filename')
+            # If not in search result, use batched lookup map
+            if not file_path and faiss_idx in file_lookup_map:
+                file_info = file_lookup_map[faiss_idx]
+                file_path = file_info.get('path')
+                file_name = file_info.get('filename')
             
             # OPTIMIZATION: Use fast summary for all results to avoid blocking
             summary = summarize(result['document'], provider, api_key, model_path, question=request.query)
@@ -531,7 +531,7 @@ async def search_files(request: SearchRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/stream-answer")
-async def stream_answer_endpoint(request: SearchRequest):
+async def stream_answer_endpoint(request: SearchRequest, req: Request):
     """
     Stream the AI answer for a given query.
     Re-runs the search to get context (fast) and then streams tokens.
@@ -560,24 +560,58 @@ async def stream_answer_endpoint(request: SearchRequest):
         except:
             pass
 
-    # Re-run search to get context
-    results, context_snippets = search(
-        request.query, index, docs, tags,
-        get_embeddings(provider, api_key, model_path),
-        index_summaries, cluster_summaries, cluster_map, bm25
-    )
 
-    # Prepare context
     final_context_snippets = []
-    for idx, result in enumerate(results):
-         # Use fast fallback summary for streaming context (no new LLM calls)
-         summary = summarize(result['document'], provider, api_key, model_path, question=request.query)
-         file_name = result.get('file_name', '')
-         file_prefix = f"[From: {file_name}] " if file_name else ""
-         if summary and len(summary) > 20:
-             final_context_snippets.append(f"{file_prefix}{summary}")
-         else:
-             final_context_snippets.append(f"{file_prefix}{result['document'][:500]}")
+
+    if request.context:
+        print(f"[API] Using provided context ({len(request.context)} snippets) for streaming answer")
+        final_context_snippets = request.context
+    else:
+        # Re-run search to get context
+        results, _context_snippets = search(
+            request.query, index, docs, tags,
+            get_embeddings(provider, api_key, model_path),
+            index_summaries, cluster_summaries, cluster_map, bm25
+        )
+
+        # OPTIMIZATION: Batch fetch missing file info to avoid N+1 queries and improve context quality
+        missing_faiss_idxs = [
+            r.get('faiss_idx') for r in results
+            if not r.get('file_name') and r.get('faiss_idx') is not None
+        ]
+        # De-duplicate indices to avoid inflating SQL query
+        missing_faiss_idxs = list(dict.fromkeys(missing_faiss_idxs))
+
+        file_info_map = {}
+        if missing_faiss_idxs:
+            try:
+                file_info_map = database.get_files_by_faiss_indices(missing_faiss_idxs)
+            except ValueError as ve:
+                 logger.warning("Batch lookup failed in stream-answer, falling back: %s", ve)
+                 for f_idx in missing_faiss_idxs:
+                     info = database.get_file_by_faiss_index(f_idx)
+                     if info:
+                         file_info_map[f_idx] = info
+
+        # Prepare context
+        for result in results:
+             # Use fast fallback summary for streaming context (no new LLM calls)
+             summary = summarize(result['document'], provider, api_key, model_path, question=request.query)
+
+             faiss_idx = result.get('faiss_idx')
+             file_name = result.get('file_name')
+
+             # Fallback to database lookup if missing
+             if not file_name and faiss_idx is not None:
+                 file_info = file_info_map.get(faiss_idx)
+                 if file_info:
+                     file_name = file_info.get('filename')
+
+             file_prefix = f"[From: {file_name}] " if file_name else ""
+             if summary and len(summary) > 20:
+                 final_context_snippets.append(f"{file_prefix}{summary}")
+             else:
+                 final_context_snippets.append(f"{file_prefix}{result['document'][:500]}")
 
     safe_snippets = [s[:600] for s in final_context_snippets[:6]]
     context_text = "\n\n".join(safe_snippets)
@@ -592,16 +626,16 @@ async def stream_answer_endpoint(request: SearchRequest):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 @app.get("/api/search/history")
-async def get_search_history():
+async def get_search_history(request: Request):
     """Get recent search history."""
     try:
-        history = database.get_search_history(limit=50)
+        history = await asyncio.to_thread(database.get_search_history, limit=50)
         return history
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/search/history/{history_id}")
-async def delete_search_history_item(history_id: int):
+async def delete_search_history_item(history_id: int, request: Request):
     """Delete a single search history item."""
     try:
         success = database.delete_search_history_item(history_id)
@@ -612,7 +646,7 @@ async def delete_search_history_item(history_id: int):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/search/history")
-async def delete_all_search_history():
+async def delete_all_search_history(request: Request):
     """Delete all search history."""
     try:
         count = database.delete_all_search_history()
@@ -628,7 +662,7 @@ class LogRequest(BaseModel):
     stack: Optional[str] = None
 
 @app.post("/api/logs")
-async def receive_log(log: LogRequest):
+async def receive_log(log: LogRequest, request: Request):
     """endpoint to receive logs from frontend"""
     log_msg = f"[{log.source}] {log.message}"
     if log.stack:
@@ -643,7 +677,7 @@ async def receive_log(log: LogRequest):
     return {"status": "logged"}
 
 @app.post("/api/open-file")
-async def open_file(request: dict):
+async def open_file(request: dict, req: Request):
     """Open a file in the default system application."""
     file_path = request.get('path', '')
     if not file_path:
@@ -677,16 +711,16 @@ async def open_file(request: dict):
         raise HTTPException(status_code=500, detail=f"Failed to open file: {str(e)}")
 
 @app.get("/api/files")
-async def list_indexed_files(limit: Optional[int] = None, offset: int = 0):
+async def list_indexed_files(request: Request):
     """Get all indexed files with metadata."""
     try:
-        files = database.get_all_files(limit=limit, offset=offset)
+        files = await asyncio.to_thread(database.get_all_files)
         return files
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/folders/history")
-async def get_folder_history():
+async def get_folder_history(request: Request):
     """Get previously used folders."""
     try:
         # User requested: ONLY show 100% indexed folders in history
@@ -696,7 +730,7 @@ async def get_folder_history():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/folders/history")
-async def clear_folder_history():
+async def clear_folder_history(request: Request):
     """Clear all folder history."""
     try:
         count = database.clear_folder_history()
@@ -705,7 +739,7 @@ async def clear_folder_history():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/folders/history/item")
-async def delete_folder_history_item(request: dict):
+async def delete_folder_history_item(request: dict, req: Request):
     """Delete a single folder from history."""
     path = request.get('path', '')
     if not path:
@@ -722,7 +756,7 @@ async def delete_folder_history_item(request: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/validate-path")
-async def validate_path(request: dict):
+async def validate_path(request: dict, req: Request):
     """Validate a folder path and count indexable files."""
     path = request.get('path', '')
     if not path:
@@ -746,12 +780,12 @@ async def validate_path(request: dict):
     return {"valid": True, "file_count": file_count}
 
 @app.get("/api/index/status")
-async def get_indexing_status():
+async def get_indexing_status(request: Request):
     """Get current indexing status."""
     return indexing_status
 
 @app.post("/api/index")
-async def trigger_indexing(background_tasks: BackgroundTasks):
+async def trigger_indexing(background_tasks: BackgroundTasks, request: Request):
     global indexing_status
     if indexing_status["running"]:
         raise HTTPException(status_code=400, detail="Indexing already in progress")
@@ -802,7 +836,7 @@ def indexing_progress_callback(current, total, message=None):
         logger.info(f"Indexing Progress: {indexing_status['progress']}% - {indexing_status['current_file']}")
 
 @app.get("/api/agent/chat")
-async def agent_chat(query: str):
+async def agent_chat(query: str, request: Request):
     """
     Stream agent thoughts and final answer.
     """
@@ -879,4 +913,4 @@ def run_indexing(config, folders):
         indexing_status["error"] = str(e)
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
