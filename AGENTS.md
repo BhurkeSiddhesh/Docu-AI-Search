@@ -305,6 +305,10 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-02-10
+- **Added Copilot onboarding instructions** - Created centralized guide for agents covering setup, testing, layout, and pitfalls.
+  - Files: `.github/copilot-instructions.md`, `AGENTS.md`
+
 ### 2026-01-30 (Security)
 - **Fixed Arbitrary File Deletion Vulnerability**
   - **fix**: Implemented `is_safe_model_path` validation in `model_manager.py` to prevent path traversal in model deletion.
@@ -570,23 +574,3 @@ python scripts/verify_golden_set.py
 ```
 
 > **Always read [AGENTS.md](cci:7://file:///c:/Users/siddh/OneDrive/Desktop/Projects/File-Search-Engine-1/AGENTS.md:0:0-0:0) in project root for the latest Change Log before and after making changes.**
-### 2026-02-09 (Security & CI)
-- **Security & CI Improvements**
-  - **fix**: Restricted CORS policy in  to whitelisted methods and headers (preventing wildcard  vulnerabilities).
-  - **fix**: Isolated database state in backend tests (, ) using /tmp/fileOZ8bmR and mocks to resolve CI failures.
-  - **test**: Added  to enforce security policy.
-  - **Files**: , , ,
-
-### 2026-02-09 (Security & CI)
-- **Security & CI Improvements**
-  - **fix**: Restricted CORS policy in  to whitelisted methods and headers (preventing wildcard  vulnerabilities).
-  - **fix**: Isolated database state in backend tests (, ) using /tmp/fileOA3zpW and mocks to resolve CI failures.
-  - **test**: Added  to enforce security policy.
-  - **Files**: , , ,
-
-### 2026-02-09 (Security & CI)
-- **Security & CI Improvements**
-  - **fix**: Restricted CORS policy in backend/api.py to whitelisted methods and headers.
-  - **fix**: Isolated database state in backend tests (test_config_and_edge_cases.py, test_indexing.py) using tempfile and mocks to resolve CI failures.
-  - **test**: Added backend/tests/test_cors_config.py to enforce security policy.
-  - **Files**: backend/api.py, backend/tests/test_cors_config.py, backend/tests/test_config_and_edge_cases.py, backend/tests/test_indexing.py
