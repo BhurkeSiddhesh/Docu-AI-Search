@@ -171,7 +171,7 @@ class TestIndexing(unittest.TestCase):
         embeddings = np.array([[1.0, 2.0, 3.0]], dtype='float32')
         index.add(embeddings)
         
-        docs = ["Test document"]
+        docs = [{"text": "Test document"}]
         tags = [["test", "tag"]]
         
         # Save the index
@@ -180,8 +180,8 @@ class TestIndexing(unittest.TestCase):
         
         # Check that files were created
         self.assertTrue(os.path.exists(index_path))
-        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "test_index_docs.pkl")))
-        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "test_index_tags.pkl")))
+        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "test_index_docs.json")))
+        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "test_index_tags.json")))
         
         # Setup mock for load_index
         mock_read_index.return_value = index # Return the mock index
@@ -198,8 +198,8 @@ class TestIndexing(unittest.TestCase):
     @patch('faiss.read_index')
     @patch('os.path.exists')
     @patch('builtins.open')
-    @patch('pickle.load')
-    def test_load_index_preserves_data(self, mock_pickle_load, mock_open, mock_exists, mock_read_index):
+    @patch('json.load')
+    def test_load_index_preserves_data(self, mock_json_load, mock_open, mock_exists, mock_read_index):
         """Test loading an index."""
         # Mock the index reading
         mock_faiss_index = MagicMock()
@@ -211,8 +211,8 @@ class TestIndexing(unittest.TestCase):
         mock_exists.side_effect = lambda path: path == index_path
         
         # Mock pickle loading
-        mock_pickle_load.side_effect = [
-            ["Test document"],
+        mock_json_load.side_effect = [
+            [{"text": "Test document"}],
             [["test", "tag"]]
         ]
         
@@ -221,11 +221,11 @@ class TestIndexing(unittest.TestCase):
         
         # Verify the functions were called
         mock_read_index.assert_called_once_with(index_path)
-        self.assertEqual(mock_pickle_load.call_count, 2)
+        self.assertEqual(mock_json_load.call_count, 2)
         
         # Verify the results
         self.assertEqual(loaded_index, mock_faiss_index)
-        self.assertEqual(loaded_docs, ["Test document"])
+        self.assertEqual(loaded_docs, [{"text": "Test document"}])
         self.assertEqual(loaded_tags, [["test", "tag"]])
 
 
@@ -386,8 +386,8 @@ class TestSaveIndex(unittest.TestCase):
         save_index(index, docs, tags, index_path)
         
         self.assertTrue(os.path.exists(index_path))
-        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_docs.pkl")))
-        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_tags.pkl")))
+        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_docs.json")))
+        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_tags.json")))
 
 
 class TestLoadIndex(unittest.TestCase):
@@ -421,7 +421,7 @@ class TestLoadIndex(unittest.TestCase):
         embeddings = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype='float32')
         original_index.add(embeddings)
         
-        original_docs = ["Doc A", "Doc B"]
+        original_docs = [{"text": "Doc A"}, {"text": "Doc B"}]
         original_tags = [["alpha"], ["beta", "gamma"]]
         
         index_path = os.path.join(self.temp_dir, "test.faiss")
