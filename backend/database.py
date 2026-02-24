@@ -1,140 +1,77 @@
 import sqlite3
-import os
 import threading
-from datetime import datetime
-from typing import List, Dict, Optional
+import os
+import json
+from typing import List, Optional, Tuple, Dict, Any
 
-# Path configuration for new folder structure
+# Path configuration
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
-os.makedirs(DATA_DIR, exist_ok=True)
 DATABASE_PATH = os.path.join(DATA_DIR, 'metadata.db')
 
+# Ensure data directory exists
+os.makedirs(DATA_DIR, exist_ok=True)
+
 # Thread-local storage for database connections
-_local_storage = threading.local()
+thread_local = threading.local()
 
 class PooledConnection:
-    """
-    A wrapper around sqlite3.Connection to support thread-local pooling.
-    Intercepts close() to keep the connection open and resets state on close.
-    """
+    """Wrapper to prevent closing the thread-local connection."""
     def __init__(self, connection):
         self._connection = connection
-
-    def close(self):
-        """
-        Don't actually close the connection. Just rollback any uncommitted transaction.
-        This resets the connection state for the next user.
-        """
-        try:
-            self._connection.rollback()
-        except sqlite3.ProgrammingError:
-            # Connection might be closed or failed
-            pass
-
-    def commit(self):
-        self._connection.commit()
-
-    def rollback(self):
-        self._connection.rollback()
-
-    def cursor(self, *args, **kwargs):
-        return self._connection.cursor(*args, **kwargs)
-
-    def execute(self, *args, **kwargs):
-        return self._connection.execute(*args, **kwargs)
-
-    def executemany(self, *args, **kwargs):
-        return self._connection.executemany(*args, **kwargs)
-
-    def executescript(self, *args, **kwargs):
-        return self._connection.executescript(*args, **kwargs)
-
-    def create_function(self, *args, **kwargs):
-        return self._connection.create_function(*args, **kwargs)
 
     def __getattr__(self, name):
         return getattr(self._connection, name)
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type:
-            self._connection.rollback()
-        else:
-            self._connection.commit()
-        # Do not close the underlying connection
+    def close(self):
+        # Don't actually close, just rollback any uncommitted transaction
+        # to leave the connection in a clean state for the next user.
+        self._connection.rollback()
+        pass
 
 def get_connection():
-    """Create and return a thread-local database connection."""
-    global _local_storage
-
-    current_pid = os.getpid()
-
-    # Check if we have a connection for this thread
-    if not hasattr(_local_storage, "connection"):
-        _local_storage.connection = None
-        _local_storage.db_path = None
-        _local_storage.pid = None
-
-    # Check if the connection is valid and points to the correct database path
-    # AND is owned by the current process (handling forks)
-    if (_local_storage.connection is None or
-        _local_storage.db_path != DATABASE_PATH or
-        getattr(_local_storage, 'pid', None) != current_pid):
-
-        # Close old connection if it exists AND belongs to this process
-        if _local_storage.connection and getattr(_local_storage, 'pid', None) == current_pid:
-            try:
-                _local_storage.connection.close()
-            except Exception:
-                pass
-
+    """
+    Get a thread-local database connection.
+    Reuses connection if it exists for the current thread and matches the current DATABASE_PATH.
+    """
+    if not hasattr(thread_local, "connection") or thread_local.db_path != DATABASE_PATH:
         # Create new connection
-        _local_storage.connection = sqlite3.connect(DATABASE_PATH)
-        _local_storage.db_path = DATABASE_PATH
-        _local_storage.pid = current_pid
+        conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        thread_local.connection = conn
+        thread_local.db_path = DATABASE_PATH
 
-    # Ensure clean transaction state
-    # If a previous user didn't close properly, the connection might be in a transaction.
-    try:
-        if _local_storage.connection.in_transaction:
-            _local_storage.connection.rollback()
-    except Exception:
-        # If checking failed (e.g. connection closed externally), recreate
-        _local_storage.connection = sqlite3.connect(DATABASE_PATH)
-        _local_storage.db_path = DATABASE_PATH
-        _local_storage.pid = current_pid
+        # Enable WAL mode for better concurrency
+        conn.execute("PRAGMA journal_mode=WAL")
 
-    # Always ensure row_factory is set correctly
-    _local_storage.connection.row_factory = sqlite3.Row
-
-    return PooledConnection(_local_storage.connection)
+    return PooledConnection(thread_local.connection)
 
 def init_database():
     """Initialize the database schema."""
     conn = get_connection()
     cursor = conn.cursor()
     
-    # Files table
-    cursor.execute("""
+    # Files table - stores metadata about indexed files
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS files (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             path TEXT UNIQUE NOT NULL,
             filename TEXT NOT NULL,
-            extension TEXT,
-            size_bytes INTEGER,
-            modified_date DATETIME,
-            indexed_date DATETIME DEFAULT CURRENT_TIMESTAMP,
-            chunk_count INTEGER DEFAULT 0,
+            file_type TEXT,
+            size INTEGER,
+            last_modified FLOAT,
             faiss_start_idx INTEGER,
-            faiss_end_idx INTEGER
+            faiss_end_idx INTEGER,
+            tags TEXT
         )
-    """)
+    ''')
+
+    # Indices for faster lookup
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_faiss_start ON files(faiss_start_idx)')
     
     # Search history table
-    cursor.execute("""
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS search_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             query TEXT NOT NULL,
@@ -142,343 +79,258 @@ def init_database():
             result_count INTEGER,
             execution_time_ms INTEGER
         )
-    """)
-    
-    # Preferences table
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS preferences (
-            key TEXT PRIMARY KEY,
-            value TEXT
-        )
-    """)
+    ''')
 
     # Folder history table
-    cursor.execute("""
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS folder_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             path TEXT UNIQUE NOT NULL,
             added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-    # Response Cache table (Persistent AI Answers)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS response_cache (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            query_hash TEXT NOT NULL,
-            context_hash TEXT NOT NULL,
-            model_id TEXT NOT NULL,
-            response_type TEXT NOT NULL,
-            response_text TEXT NOT NULL,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            hit_count INTEGER DEFAULT 0,
             last_accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(query_hash, context_hash, model_id, response_type)
+            is_indexed BOOLEAN DEFAULT 0
         )
-    """)
+    ''')
 
-    # Clusters table (RAPTOR)
-    cursor.execute("""
+    # User preferences table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS preferences (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    ''')
+
+    # Response Cache Table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS response_cache (
+            query_hash TEXT,
+            context_hash TEXT,
+            model_id TEXT,
+            response_type TEXT,
+            response_text TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            hit_count INTEGER DEFAULT 0,
+            PRIMARY KEY (query_hash, context_hash, model_id, response_type)
+        )
+    ''')
+
+    # Cluster Table (RAPTOR)
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS clusters (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            summary TEXT NOT NULL,
-            level INTEGER DEFAULT 0,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            summary TEXT,
+            level INTEGER
         )
-    """)
+    ''')
     
-    # Index for fast cache lookups
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_lookup ON response_cache(query_hash, model_id)")
-    
-    # NEW: Index for fast file-to-chunk range lookups
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_faiss_range ON files(faiss_start_idx, faiss_end_idx)")
-    
-    # NEW: Index for fast filename lookups (used by agent and search)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_file_name ON files(filename)")
-
-    # Populate history from existing files if empty
-    cursor.execute("SELECT COUNT(*) FROM folder_history")
-    if cursor.fetchone()[0] == 0:
-        try:
-            cursor.execute("SELECT path FROM files")
-            files = cursor.fetchall()
-            seen_folders = set()
-            timestamp = datetime.now()
-            
-            for row in files:
-                folder = os.path.dirname(row['path'])
-                if folder and folder not in seen_folders:
-                    seen_folders.add(folder)
-                    cursor.execute("INSERT OR IGNORE INTO folder_history (path, added_at, last_used_at) VALUES (?, ?, ?)", 
-                                  (folder, timestamp, timestamp))
-            if seen_folders:
-                print(f"Migrated {len(seen_folders)} folders to history.")
-        except Exception as e:
-            print(f"Migration failed: {e}")
-            
     conn.commit()
     conn.close()
 
-def add_file(path: str, filename: str, extension: str, size_bytes: int, 
-             modified_date: datetime, chunk_count: int, 
-             faiss_start_idx: int, faiss_end_idx: int) -> int:
-    """Add a file to the database."""
+# -----------------------------------------------------------------------------
+# File Operations
+# -----------------------------------------------------------------------------
+
+def add_file(path: str, filename: str, file_type: str, size: int, last_modified: float,
+             faiss_start_idx: int, faiss_end_idx: int, tags: List[str] = None):
     conn = get_connection()
     cursor = conn.cursor()
     
-    cursor.execute("""
-        INSERT OR REPLACE INTO files 
-        (path, filename, extension, size_bytes, modified_date, chunk_count, faiss_start_idx, faiss_end_idx)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (path, filename, extension, size_bytes, modified_date, chunk_count, faiss_start_idx, faiss_end_idx))
+    tags_json = json.dumps(tags) if tags else '[]'
     
-    file_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return file_id
+    try:
+        cursor.execute('''
+            INSERT OR REPLACE INTO files
+            (path, filename, file_type, size, last_modified, faiss_start_idx, faiss_end_idx, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (path, filename, file_type, size, last_modified, faiss_start_idx, faiss_end_idx, tags_json))
+        conn.commit()
+    except Exception as e:
+        print(f"Error adding file to DB: {e}")
+    finally:
+        conn.close()
 
-def get_all_files(limit: Optional[int] = None, offset: int = 0) -> List[Dict]:
-    """Get all indexed files."""
+def add_files_batch(files_data: List[Dict]):
+    """Batch insert files for performance."""
     conn = get_connection()
     cursor = conn.cursor()
     
-    query = "SELECT * FROM files ORDER BY indexed_date DESC, id DESC"
-    params = []
+    try:
+        cursor.executemany('''
+            INSERT OR REPLACE INTO files
+            (path, filename, file_type, size, last_modified, faiss_start_idx, faiss_end_idx, tags)
+            VALUES (:path, :filename, :file_type, :size, :last_modified, :faiss_start_idx, :faiss_end_idx, :tags)
+        ''', files_data)
+        conn.commit()
+    except Exception as e:
+        print(f"Error adding batch files to DB: {e}")
+    finally:
+        conn.close()
 
-    if limit is not None:
-        query += " LIMIT ?"
-        params.append(limit)
-    elif offset > 0:
-        query += " LIMIT -1"
-
-    if offset > 0:
-        query += " OFFSET ?"
-        params.append(offset)
-
-    cursor.execute(query, tuple(params))
+def get_all_files():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM files ORDER BY filename')
     files = [dict(row) for row in cursor.fetchall()]
-    
     conn.close()
     return files
 
-def get_file_by_path(path: str) -> Optional[Dict]:
-    """Get a file by its path."""
+def get_file_by_path(path: str):
     conn = get_connection()
     cursor = conn.cursor()
-    
-    cursor.execute("SELECT * FROM files WHERE path = ?", (path,))
+    cursor.execute('SELECT * FROM files WHERE path = ?', (path,))
     row = cursor.fetchone()
-    
     conn.close()
     return dict(row) if row else None
 
-def get_file_by_name(filename: str) -> Optional[Dict]:
-    """Get a file by its name."""
+def get_file_by_faiss_index(idx: int):
     conn = get_connection()
     cursor = conn.cursor()
-    
-    cursor.execute("SELECT * FROM files WHERE filename = ?", (filename,))
+    # Find the file where the index falls within the start/end range
+    cursor.execute('''
+        SELECT * FROM files
+        WHERE ? BETWEEN faiss_start_idx AND faiss_end_idx
+    ''', (idx,))
     row = cursor.fetchone()
-    
     conn.close()
     return dict(row) if row else None
 
-def delete_file(file_id: int):
-    """Delete a file from the database."""
+def clear_files():
     conn = get_connection()
     cursor = conn.cursor()
-    
-    cursor.execute("DELETE FROM files WHERE id = ?", (file_id,))
-    
+    cursor.execute('DELETE FROM files')
     conn.commit()
     conn.close()
+
+# -----------------------------------------------------------------------------
+# Search History Operations
+# -----------------------------------------------------------------------------
 
 def add_search_history(query: str, result_count: int, execution_time_ms: int):
-    """Add a search to history."""
     conn = get_connection()
     cursor = conn.cursor()
-    
-    cursor.execute("""
-        INSERT INTO search_history (query, result_count, execution_time_ms)
-        VALUES (?, ?, ?)
-    """, (query, result_count, execution_time_ms))
-    
-    conn.commit()
-    conn.close()
+    try:
+        cursor.execute('''
+            INSERT INTO search_history (query, result_count, execution_time_ms)
+            VALUES (?, ?, ?)
+        ''', (query, result_count, execution_time_ms))
+        conn.commit()
+    except Exception as e:
+        print(f"Error adding search history: {e}")
+    finally:
+        conn.close()
 
-def get_search_history(limit: int = 20) -> List[Dict]:
-    """Get recent search history."""
+def get_search_history(limit: int = 50):
     conn = get_connection()
     cursor = conn.cursor()
-    
-    cursor.execute("""
-        SELECT * FROM search_history 
-        ORDER BY timestamp DESC 
-        LIMIT ?
-    """, (limit,))
-    
+    cursor.execute('SELECT * FROM search_history ORDER BY timestamp DESC LIMIT ?', (limit,))
     history = [dict(row) for row in cursor.fetchall()]
-    
     conn.close()
     return history
 
-def clear_all_files():
-    """Clear all files from the database."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("DELETE FROM files")
-    
-    conn.commit()
-    conn.close()
-
-def get_preference(key: str) -> Optional[str]:
-    """Get a preference value."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT value FROM preferences WHERE key = ?", (key,))
-    row = cursor.fetchone()
-    
-    conn.close()
-    return row['value'] if row else None
-
-def set_preference(key: str, value: str):
-    """Set a preference value."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        INSERT OR REPLACE INTO preferences (key, value)
-        VALUES (?, ?)
-    """, (key, value))
-    
-    conn.commit()
-    conn.close()
-
-def get_file_by_faiss_index(faiss_idx: int) -> Optional[Dict]:
-    """Get the file that contains a specific FAISS chunk index."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("""
-        SELECT * FROM files 
-        WHERE faiss_start_idx <= ? AND faiss_end_idx >= ?
-    """, (faiss_idx, faiss_idx))
-    row = cursor.fetchone()
-    
-    conn.close()
-    return dict(row) if row else None
-
 def delete_search_history_item(history_id: int) -> bool:
-    """Delete a single search history item."""
     conn = get_connection()
     cursor = conn.cursor()
-    
-    cursor.execute("DELETE FROM search_history WHERE id = ?", (history_id,))
-    deleted = cursor.rowcount > 0
-    
+    cursor.execute('DELETE FROM search_history WHERE id = ?', (history_id,))
     conn.commit()
+    deleted = cursor.rowcount > 0
     conn.close()
     return deleted
 
 def delete_all_search_history() -> int:
-    """Delete all search history. Returns count of deleted items."""
     conn = get_connection()
     cursor = conn.cursor()
-    
-    cursor.execute("SELECT COUNT(*) FROM search_history")
-    count = cursor.fetchone()[0]
-    
-    cursor.execute("DELETE FROM search_history")
-    
+    cursor.execute('DELETE FROM search_history')
+    count = cursor.rowcount
     conn.commit()
     conn.close()
     return count
 
-def add_folder_to_history(path: str):
-    """Add or update a folder in history."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    
-    timestamp = datetime.now()
-    
-    # Check if exists
-    cursor.execute("SELECT id FROM folder_history WHERE path = ?", (path,))
-    row = cursor.fetchone()
-    
-    if row:
-        cursor.execute("UPDATE folder_history SET last_used_at = ? WHERE id = ?", (timestamp, row['id']))
-    else:
-        cursor.execute("INSERT INTO folder_history (path, added_at, last_used_at) VALUES (?, ?, ?)", 
-                      (path, timestamp, timestamp))
-    
-    conn.commit()
-    conn.close()
+# -----------------------------------------------------------------------------
+# Folder History Operations
+# -----------------------------------------------------------------------------
 
-def get_folder_history(limit: int = 20, indexed_only: bool = False) -> List[Dict]:
-    """Get recent folder history."""
+def add_folder_to_history(path: str):
     conn = get_connection()
     cursor = conn.cursor()
-    
+    try:
+        # Update last_accessed_at if exists, otherwise insert
+        cursor.execute('''
+            INSERT INTO folder_history (path, last_accessed_at)
+            VALUES (?, CURRENT_TIMESTAMP)
+            ON CONFLICT(path) DO UPDATE SET last_accessed_at = CURRENT_TIMESTAMP
+        ''', (path,))
+        conn.commit()
+    except Exception as e:
+        print(f"Error adding folder history: {e}")
+    finally:
+        conn.close()
+
+def mark_folder_indexed(path: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            UPDATE folder_history
+            SET is_indexed = 1
+            WHERE path = ?
+        ''', (path,))
+        conn.commit()
+    except Exception as e:
+        print(f"Error marking folder indexed: {e}")
+    finally:
+        conn.close()
+
+def get_folder_history(indexed_only=False):
+    conn = get_connection()
+    cursor = conn.cursor()
     if indexed_only:
-        cursor.execute("SELECT * FROM folder_history WHERE is_indexed = 1 ORDER BY last_used_at DESC LIMIT ?", (limit,))
+        cursor.execute('SELECT * FROM folder_history WHERE is_indexed = 1 ORDER BY last_accessed_at DESC')
     else:
-        cursor.execute("SELECT * FROM folder_history ORDER BY last_used_at DESC LIMIT ?", (limit,))
-    
+        cursor.execute('SELECT * FROM folder_history ORDER BY last_accessed_at DESC')
     history = [dict(row) for row in cursor.fetchall()]
-    
     conn.close()
     return history
 
-def mark_folder_indexed(path: str):
-    """Mark a folder as successfully indexed."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    timestamp = datetime.now()
-    
-    # Upsert with is_indexed = 1
-    cursor.execute("SELECT id FROM folder_history WHERE path = ?", (path,))
-    row = cursor.fetchone()
-    
-    if row:
-        cursor.execute("UPDATE folder_history SET is_indexed = 1, last_used_at = ? WHERE id = ?", (timestamp, row['id']))
-    else:
-        cursor.execute("INSERT INTO folder_history (path, added_at, last_used_at, is_indexed) VALUES (?, ?, ?, 1)", 
-                      (path, timestamp, timestamp))
-    
-    conn.commit()
-    conn.close()
-
 def delete_folder_history_item(path: str) -> bool:
-    """Delete a single folder from history. Returns True if deleted."""
     conn = get_connection()
     cursor = conn.cursor()
-    
-    cursor.execute("DELETE FROM folder_history WHERE path = ?", (path,))
-    deleted = cursor.rowcount > 0
-    
+    cursor.execute('DELETE FROM folder_history WHERE path = ?', (path,))
     conn.commit()
+    deleted = cursor.rowcount > 0
     conn.close()
     return deleted
 
 def clear_folder_history() -> int:
-    """Clear all folder history. Returns count of deleted items."""
     conn = get_connection()
     cursor = conn.cursor()
-    
-    cursor.execute("SELECT COUNT(*) FROM folder_history")
-    count = cursor.fetchone()[0]
-    
-    cursor.execute("DELETE FROM folder_history")
-    
+    cursor.execute('DELETE FROM folder_history')
+    count = cursor.rowcount
     conn.commit()
     conn.close()
     return count
 
-# Database initialization moved to api.py startup_event
-# to prevent side effects on import (file locking)
+# -----------------------------------------------------------------------------
+# User Preferences Operations
+# -----------------------------------------------------------------------------
+
+def get_preference(key: str, default: str = None) -> str:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT value FROM preferences WHERE key = ?', (key,))
+    row = cursor.fetchone()
+    conn.close()
+    return row['value'] if row else default
+
+def set_preference(key: str, value: str):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT OR REPLACE INTO preferences (key, value)
+        VALUES (?, ?)
+    ''', (key, value))
+    conn.commit()
+    conn.close()
 
 # -----------------------------------------------------------------------------
 # Response Cache Functions
@@ -605,7 +457,6 @@ def clear_clusters():
     conn.commit()
     conn.close()
 
-
 def cleanup_test_data() -> Dict[str, int]:
     """
     Remove test data from the production database.
@@ -653,3 +504,48 @@ def cleanup_test_data() -> Dict[str, int]:
         print(f"[CLEANUP] Removed {counts['files']} test files, {counts['folders']} test folders, {counts['search_history']} test searches")
     
     return counts
+
+# N+1 Optimization for Search Metadata
+MAX_INDICES = 900  # SQLite limit is usually 999 vars, keeping safe margin
+
+def get_files_by_faiss_indices(indices: list[int]) -> dict[int, dict]:
+    """
+    Batch retrieve file metadata for multiple FAISS indices in a single query.
+    Returns a dictionary mapping faiss_idx -> file_info dict.
+    """
+    if not indices:
+        return {}
+
+    # Deduplicate and validate
+    unique_indices = sorted(list(set(indices)))
+
+    if len(unique_indices) > MAX_INDICES:
+        raise ValueError(f"Too many indices for single query (max {MAX_INDICES})")
+
+    conn = get_connection()
+    try:
+        # Build query: SELECT * FROM files WHERE (faiss_start_idx <= ? AND faiss_end_idx >= ?) OR ...
+        query_parts = []
+        params = []
+        for idx in unique_indices:
+            query_parts.append("(faiss_start_idx <= ? AND faiss_end_idx >= ?)")
+            params.extend([idx, idx])
+
+        sql = f"SELECT * FROM files WHERE {' OR '.join(query_parts)}"
+
+        cursor = conn.execute(sql, params)
+        files = [dict(row) for row in cursor.fetchall()]
+
+        result = {}
+        for idx in unique_indices:
+            for file in files:
+                if file['faiss_start_idx'] <= idx <= file['faiss_end_idx']:
+                    result[idx] = file
+                    break
+
+        return result
+    except Exception as e:
+        print(f"Error getting files by faiss indices: {e}")
+        return {}
+    finally:
+        conn.close()
