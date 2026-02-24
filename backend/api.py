@@ -444,7 +444,7 @@ async def search_files(request: SearchRequest, req: Request):
                 pass
 
         # Run Search
-        results, _context_snippets = search(
+        results, context_snippets = search(
             request.query, index, docs, tags, 
             get_embeddings(provider, api_key, model_path),
             index_summaries, cluster_summaries, cluster_map, bm25
@@ -568,7 +568,7 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request):
         final_context_snippets = request.context
     else:
         # Re-run search to get context
-        results, _context_snippets = search(
+        results, context_snippets = search(
             request.query, index, docs, tags,
             get_embeddings(provider, api_key, model_path),
             index_summaries, cluster_summaries, cluster_map, bm25

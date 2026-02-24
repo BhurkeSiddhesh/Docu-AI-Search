@@ -41,7 +41,7 @@ def create_index(folder_paths, provider, api_key=None, model_path=None, progress
     start_time = time.time()
     
     # 1. Clear Database
-    database.clear_all_files()
+    database.clear_files()
     database.clear_clusters()
     
     # 2. Collect Files
