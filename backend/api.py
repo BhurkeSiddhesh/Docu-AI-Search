@@ -685,6 +685,11 @@ async def open_file(request: dict, req: Request):
     
     # Normalize path - fix mixed slashes from FAISS metadata
     file_path = os.path.normpath(file_path)
+
+    # Security: Prevent argument injection (files starting with -)
+    if os.path.basename(file_path).startswith("-"):
+        logger.warning(f"Security: Blocked attempt to open file with leading dash: {file_path}")
+        raise HTTPException(status_code=400, detail="Invalid filename: Files starting with '-' are not allowed.")
     
     # Security: Only allow opening files that are in the index
     # This prevents opening arbitrary files on the system

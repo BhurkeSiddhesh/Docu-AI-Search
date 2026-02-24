@@ -591,3 +591,9 @@ python scripts/verify_golden_set.py
   - **perf**: Updated `frontend/src/App.jsx` to pass search results as context to the streaming endpoint.
   - **Files**: `backend/api.py`, `frontend/src/App.jsx`
   - **Tests**: `backend/tests/test_stream_optimization.py`
+
+### 2026-02-24 (Security Fix)
+- **Fixed Command Injection Vulnerability** - Prevent argument injection in open-file endpoint
+  - **fix**: Added validation to reject filenames starting with `-` in `backend/api.py`.
+  - **test**: Added `backend/tests/test_security_command_injection.py` to verify the fix.
+  - **Files**: `backend/api.py`, `backend/tests/test_security_command_injection.py`
