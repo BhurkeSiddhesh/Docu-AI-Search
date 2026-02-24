@@ -6,6 +6,7 @@ search, models, benchmarks, history, and file operations.
 """
 
 import unittest
+import sys
 from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 from backend.api import app
