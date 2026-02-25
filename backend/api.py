@@ -444,7 +444,7 @@ async def search_files(request: SearchRequest, req: Request):
                 pass
 
         # Run Search
-        results, _context_snippets = search(
+        results, context_snippets = search(
             request.query, index, docs, tags, 
             get_embeddings(provider, api_key, model_path),
             index_summaries, cluster_summaries, cluster_map, bm25
@@ -568,7 +568,7 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request):
         final_context_snippets = request.context
     else:
         # Re-run search to get context
-        results, _context_snippets = search(
+        results, context_snippets = search(
             request.query, index, docs, tags,
             get_embeddings(provider, api_key, model_path),
             index_summaries, cluster_summaries, cluster_map, bm25
@@ -685,6 +685,11 @@ async def open_file(request: dict, req: Request):
     
     # Normalize path - fix mixed slashes from FAISS metadata
     file_path = os.path.normpath(file_path)
+
+    # Security: Prevent argument injection (files starting with -)
+    if os.path.basename(file_path).startswith("-"):
+        logger.warning(f"Security: Blocked attempt to open file with leading dash: {file_path}")
+        raise HTTPException(status_code=400, detail="Invalid filename: Files starting with '-' are not allowed.")
     
     # Security: Only allow opening files that are in the index
     # This prevents opening arbitrary files on the system
@@ -914,3 +919,12 @@ def run_indexing(config, folders):
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+def verify_local_request(request: Request):
+    """
+    Dependency to ensure the request originates from localhost.
+    Useful for sensitive operations like configuration changes or file opening.
+    """
+    client_host = request.client.host
+    if client_host not in ["127.0.0.1", "::1", "localhost", "testclient"]:
+        raise HTTPException(status_code=403, detail="Access denied: Local connection required")

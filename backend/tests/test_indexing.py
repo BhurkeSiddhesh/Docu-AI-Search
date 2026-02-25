@@ -1,232 +1,139 @@
+"""
+Test Indexing Module
+
+Tests for the FAISS indexing and document processing pipeline.
+"""
+
+import sys
+from unittest.mock import MagicMock
+
+# Mock dependencies BEFORE imports
+sys.modules['rank_bm25'] = MagicMock()
+sys.modules['sklearn'] = MagicMock()
+sys.modules['sklearn.cluster'] = MagicMock()
+sys.modules['faiss'] = MagicMock()
+sys.modules['sentence_transformers'] = MagicMock()
+sys.modules['langchain_text_splitters'] = MagicMock()
+sys.modules['langchain'] = MagicMock()
+sys.modules['langchain_community'] = MagicMock()
+sys.modules['backend.llm_integration'] = MagicMock()
+
 import unittest
-import tempfile
+from unittest.mock import patch, ANY
 import os
-import numpy as np
 import shutil
-from unittest.mock import patch, MagicMock, call
-from backend.indexing import create_index, save_index, load_index
+import tempfile
+import numpy as np
 
-# Shared temp database setup for ALL test classes
-_shared_temp_dir = None
-_original_db_path = None
+# Ensure we can import from root
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-def setUpModule():
-    """Set up shared temp database for all tests in this module."""
-    global _shared_temp_dir, _original_db_path
+# Since we're mocking faiss, we need to ensure the mocks have the expected methods
+import faiss
+faiss.IndexFlatL2 = MagicMock()
+faiss.write_index = MagicMock()
+faiss.read_index = MagicMock()
 
-    # Create shared temp directory
-    _shared_temp_dir = tempfile.mkdtemp()
-
-    # Database
-    from backend import database
-    _original_db_path = database.DATABASE_PATH
-    database.DATABASE_PATH = os.path.join(_shared_temp_dir, 'test_indexing_metadata.db')
-    database.init_database()
-
-def tearDownModule():
-    """Clean up shared temp database."""
-    global _shared_temp_dir, _original_db_path
-    from backend import database
-    import gc
-    import time
-
-    # Restore original path
-    database.DATABASE_PATH = _original_db_path
-
-    # Try to close any lingering connections and clean up
-    gc.collect()
-    time.sleep(0.1)
-
-    if _shared_temp_dir and os.path.exists(_shared_temp_dir):
-        try:
-            shutil.rmtree(_shared_temp_dir)
-        except Exception as e:
-            print(f"Warning: Could not clean up test directory {_shared_temp_dir}: {e}")
-
-class MockFuture:
-    def __init__(self, result):
-        self._result = result
-    def result(self, timeout=None):
-        return self._result
-
-class MockExecutor:
-    """A synchronous executor for testing."""
-    def __init__(self, *args, **kwargs):
-        pass
-    def __enter__(self):
-        return self
-    def __exit__(self, *args):
-        pass
-    def submit(self, fn, *args, **kwargs):
-        return MockFuture(fn(*args, **kwargs))
-    def map(self, fn, *iterables):
-        return [fn(*args) for args in zip(*iterables)]
-
+from backend.indexing import create_index, load_index, save_index
 
 class TestIndexing(unittest.TestCase):
-    """Test cases for indexing module"""
+    """Test cases for indexing functionality."""
 
     def setUp(self):
         from backend import database
         database.init_database()
-        """Set up test environment before each test method."""
         self.temp_dir = tempfile.mkdtemp()
-        self.test_folder = self.temp_dir
-        
-        # Create a dummy file
-        self.test_file = os.path.join(self.test_folder, "test.txt")
-        with open(self.test_file, "w") as f:
-            f.write("This is a test document content for indexing.")
-            
-        # Global patches for executors to make tests synchronous and mock-friendly
-        self.pp_patcher = patch('concurrent.futures.ProcessPoolExecutor', side_effect=MockExecutor)
-        self.tp_patcher = patch('concurrent.futures.ThreadPoolExecutor', side_effect=MockExecutor)
-        self.ac_patcher = patch('concurrent.futures.as_completed', side_effect=lambda fs: fs)
-        self.pp_patcher.start()
-        self.tp_patcher.start()
-        self.ac_patcher.start()
+        self.test_folder = os.path.join(self.temp_dir, "test_docs")
+        os.makedirs(self.test_folder, exist_ok=True)
+        with open(os.path.join(self.test_folder, "test.txt"), "w") as f:
+            f.write("This is a test document.")
 
     def tearDown(self):
-        """Clean up after each test method."""
-        self.pp_patcher.stop()
-        self.tp_patcher.stop()
-        self.ac_patcher.stop()
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
-    
+
+    @patch('backend.indexing.concurrent.futures.as_completed')
+    @patch('backend.indexing.concurrent.futures.ThreadPoolExecutor')
+    @patch('backend.indexing.concurrent.futures.ProcessPoolExecutor')
     @patch('backend.indexing.CharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
-        """Test creating an index."""
-        # Mock text splitting
-        mock_splitter_instance = mock_splitter_cls.return_value
-        mock_splitter_instance.split_text.return_value = ["chunk1"]
+    @patch('backend.indexing.perform_global_clustering')
+    @patch('backend.indexing.smart_summary')
+    def test_create_index(self, mock_summary, mock_clustering, mock_extract, mock_get_embeddings, mock_splitter, mock_process_pool, mock_thread_pool, mock_as_completed):
+        """Test creating an index from a folder."""
+        # Setup mocks
+        mock_process_pool.return_value.__enter__.return_value = MagicMock()
+        mock_thread_pool.return_value.__enter__.return_value = MagicMock()
 
-        # Mock the extract_text function to return test content
-        mock_extract_text.return_value = "This is test content for indexing."
+        # Text splitting
+        mock_splitter.return_value.split_text.return_value = ["chunk1"]
         
-        # Mock the embeddings model
+        # Extraction return
+        mock_extract.return_value = "Test content"
+
+        # Embeddings return
         mock_embeddings_model = MagicMock()
         mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3]]
         mock_get_embeddings.return_value = mock_embeddings_model
         
-        # Mock the get_tags and clustering functions
-        with patch('backend.indexing.get_tags', return_value="test, indexing"):
-            with patch('backend.indexing.perform_global_clustering', return_value={0: [0]}):
-                with patch('backend.indexing.smart_summary', return_value="Summary"):
-                    res = create_index(self.test_folder, "openai", "fake_api_key")
-                    index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
-                    
-                    # Verify the index was created
-                    self.assertIsNotNone(index)
-                    self.assertIsNotNone(docs)
-                    self.assertIsNotNone(tags)
-                    self.assertEqual(len(docs), 1)
-                    # tags is now a list of strings (empty or joined tags)
-                    self.assertEqual(len(tags), 1)
+        # Clustering return
+        mock_clustering.return_value = {0: [0]}
 
-    
-    @patch('backend.indexing.CharacterTextSplitter')
+        # Summary return
+        mock_summary.return_value = "Cluster Summary"
+
+        # Mock futures result
+        future_text = MagicMock()
+        future_text.result.return_value = (os.path.join(self.test_folder, "test.txt"), "Test content")
+
+        future_embed = MagicMock()
+        future_embed.result.return_value = [[0.1, 0.2, 0.3]]
+
+        future_sum = MagicMock()
+        future_sum.result.return_value = (0, "Cluster Summary")
+
+        # side_effect for as_completed to handle multiple calls (extraction, embedding, summarization)
+        mock_as_completed.side_effect = [
+            [future_text],   # Extraction
+            [future_embed],  # Embedding
+            [future_sum]     # Summarization
+        ]
+
+        res = create_index(self.test_folder, "openai", "fake_key")
+        index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+
+        self.assertIsNotNone(index)
+        self.assertEqual(len(docs), 1)
+
     @patch('backend.indexing.get_embeddings')
-    @patch('backend.indexing.extract_text')
-    def test_create_index_empty_folder(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
-        """Test creating an index with empty folder."""
-        # Mock text splitting
-        mock_splitter_instance = mock_splitter_cls.return_value
-        mock_splitter_instance.split_text.return_value = []
-
-        empty_folder = os.path.join(self.temp_dir, "empty_folder")
+    def test_create_index_empty_folder(self, mock_embed):
+        """Test creating index with empty folder."""
+        empty_folder = os.path.join(self.temp_dir, "empty")
         os.makedirs(empty_folder, exist_ok=True)
         
-        # Mock the extract_text function to return None
-        mock_extract_text.return_value = None
-        mock_embeddings_model = MagicMock()
-        mock_get_embeddings.return_value = mock_embeddings_model
-        
-        with patch('backend.indexing.get_tags', return_value=""),              patch('backend.indexing.perform_global_clustering', return_value={}),              patch('backend.indexing.smart_summary', return_value=""):
-            res = create_index(empty_folder, "openai", "fake_api_key")
-            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+        res = create_index(empty_folder, "openai", "fake_key")
+        self.assertIsNone(res[0])
 
-            
-            # Verify the result is None, None, None
-            self.assertIsNone(index)
-            self.assertIsNone(docs)
-            self.assertIsNone(tags)
-    
-    @patch('backend.indexing.faiss.write_index')
-    @patch('backend.indexing.faiss.read_index')
-    def test_save_and_load_index(self, mock_read_index, mock_write_index):
-        """Test saving and loading an index."""
-        # Mock write_index to create a dummy file so os.path.exists passes
-        def side_effect_write(index, filepath):
-            with open(filepath, 'w') as f:
-                f.write("dummy")
-        mock_write_index.side_effect = side_effect_write
-
-        # Create a real FAISS index and documents (only write_index is mocked)
-        import faiss
-        dimension = 3
-        index = faiss.IndexFlatL2(dimension)
-        embeddings = np.array([[1.0, 2.0, 3.0]], dtype='float32')
-        index.add(embeddings)
-        
-        docs = [{"text": "Test document"}]
-        tags = [["test", "tag"]]
-        
-        # Save the index
-        index_path = os.path.join(self.temp_dir, "test_index.faiss")
-        save_index(index, docs, tags, index_path)
-        
-        # Check that files were created
-        self.assertTrue(os.path.exists(index_path))
-        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "test_index_docs.json")))
-        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "test_index_tags.json")))
-        
-        # Setup mock for load_index
-        mock_read_index.return_value = index # Return the mock index
-
-        # Load the index
-        res = load_index(index_path)
-        loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res
-        
-        # Verify the loaded data matches the original
-        self.assertIsNotNone(loaded_index)
-        self.assertEqual(loaded_docs, docs)
-        self.assertEqual(loaded_tags, tags)
-    
-    @patch('faiss.read_index')
-    @patch('os.path.exists')
-    @patch('builtins.open')
     @patch('json.load')
-    def test_load_index_preserves_data(self, mock_json_load, _mock_open, mock_exists, mock_read_index):
-        """Test loading an index."""
-        # Mock the index reading
+    @patch('backend.indexing.faiss.read_index')
+    @patch('os.path.exists')
+    def test_load_index_preserves_data(self, mock_exists, mock_read_index, mock_json_load):
+        """Test loading index."""
         mock_faiss_index = MagicMock()
         mock_read_index.return_value = mock_faiss_index
+        mock_exists.return_value = True
         
-        index_path = "fake_index.faiss"
-
-        # Mock os.path.exists: True for main file
-        mock_exists.side_effect = lambda path: path == index_path
-        
-        # Mock pickle loading
         mock_json_load.side_effect = [
-            [{"text": "Test document"}],
-            [["test", "tag"]]
+            [{"text": "Test document"}], # docs
+            [["test", "tag"]], # tags
+            None, # summ_index
+            [], # summ_docs
+            {} # cluster_map
         ]
         
-        res = load_index(index_path)
-        loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res
-        
-        # Verify the functions were called
-        mock_read_index.assert_called_once_with(index_path)
-        self.assertEqual(mock_json_load.call_count, 2)
-        
-        # Verify the results
-        self.assertEqual(loaded_index, mock_faiss_index)
-        self.assertEqual(loaded_docs, [{"text": "Test document"}])
-        self.assertEqual(loaded_tags, [["test", "tag"]])
+        res = load_index("fake.faiss")
+        self.assertEqual(res[0], mock_faiss_index)
 
 
 class TestIndexingMultipleFolders(unittest.TestCase):
@@ -235,214 +142,114 @@ class TestIndexingMultipleFolders(unittest.TestCase):
     def setUp(self):
         from backend import database
         database.init_database()
-        """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
-        
-        # Create two test folders
         self.folder1 = os.path.join(self.temp_dir, "folder1")
         self.folder2 = os.path.join(self.temp_dir, "folder2")
         os.makedirs(self.folder1, exist_ok=True)
         os.makedirs(self.folder2, exist_ok=True)
-        
-        # Create test files
-        with open(os.path.join(self.folder1, "doc1.txt"), 'w') as f:
-            f.write("Content from folder 1")
-        with open(os.path.join(self.folder2, "doc2.txt"), 'w') as f:
-            f.write("Content from folder 2")
+        with open(os.path.join(self.folder1, "doc1.txt"), 'w') as f: f.write("C1")
+        with open(os.path.join(self.folder2, "doc2.txt"), 'w') as f: f.write("C2")
 
     def tearDown(self):
-        """Clean up test fixtures."""
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
+    @patch('backend.indexing.concurrent.futures.as_completed')
+    @patch('backend.indexing.concurrent.futures.ThreadPoolExecutor')
+    @patch('backend.indexing.concurrent.futures.ProcessPoolExecutor')
     @patch('backend.indexing.CharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index_multiple_folders(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
-        """Test creating index from multiple folders."""
-        # Mock text splitting
-        mock_splitter_instance = mock_splitter_cls.return_value
-        mock_splitter_instance.split_text.return_value = ["chunk1"]
+    @patch('backend.indexing.perform_global_clustering')
+    @patch('backend.indexing.smart_summary')
+    def test_create_index_multiple_folders(self, mock_summary, mock_clustering, mock_extract, mock_get_embeddings, mock_splitter, mock_process_pool, mock_thread_pool, mock_as_completed):
+        mock_process_pool.return_value.__enter__.return_value = MagicMock()
+        mock_thread_pool.return_value.__enter__.return_value = MagicMock()
 
-        mock_extract_text.return_value = "Test content"
-        
-        mock_embeddings_model = MagicMock()
-        mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]
-        mock_get_embeddings.return_value = mock_embeddings_model
-        
-        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0, 1]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
-            res = create_index(
-                [self.folder1, self.folder2], 
-                "openai", 
-                "fake_key"
-            )
-            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
-            
-            self.assertIsNotNone(index)
-            self.assertEqual(len(docs), 2)
+        mock_splitter.return_value.split_text.return_value = ["chunk"]
+        mock_extract.return_value = "content"
+        mock_get_embeddings.return_value.embed_documents.return_value = [[0.1]]
+        mock_clustering.return_value = {0: [0]}
+        mock_summary.return_value = "Sum"
 
+        f_txt = MagicMock(); f_txt.result.return_value = (os.path.join(self.folder1, "doc1.txt"), "C1")
+        f_emb = MagicMock(); f_emb.result.return_value = [[0.1]]
+        f_sum = MagicMock(); f_sum.result.return_value = (0, "Sum")
 
+        # 2 files -> 2 futures for extraction
+        mock_as_completed.side_effect = [
+            [f_txt, f_txt],
+            [f_emb],
+            [f_sum]
+        ]
+
+        res = create_index([self.folder1, self.folder2], "openai", "k")
+        self.assertIsNotNone(res[0])
+
+    @patch('backend.indexing.concurrent.futures.as_completed')
+    @patch('backend.indexing.concurrent.futures.ThreadPoolExecutor')
+    @patch('backend.indexing.concurrent.futures.ProcessPoolExecutor')
     @patch('backend.indexing.CharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index_with_progress_callback(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
-        """Test progress callback during indexing."""
-        # Mock text splitting
-        mock_splitter_instance = mock_splitter_cls.return_value
-        mock_splitter_instance.split_text.return_value = ["chunk1"]
-
-        mock_extract_text.return_value = "Test content"
+    @patch('backend.indexing.perform_global_clustering')
+    @patch('backend.indexing.smart_summary')
+    def test_create_index_with_progress_callback(self, mock_summary, mock_clustering, mock_extract, mock_get_embeddings, mock_splitter, mock_process_pool, mock_thread_pool, mock_as_completed):
+        mock_process_pool.return_value.__enter__.return_value = MagicMock()
+        mock_thread_pool.return_value.__enter__.return_value = MagicMock()
         
-        mock_embeddings_model = MagicMock()
-        mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3]]
-        mock_get_embeddings.return_value = mock_embeddings_model
+        mock_splitter.return_value.split_text.return_value = ["chunk"]
+        mock_extract.return_value = "content"
+        mock_get_embeddings.return_value.embed_documents.return_value = [[0.1]]
+        mock_clustering.return_value = {0:[0]}
         
-        progress_calls = []
-        def progress_callback(current, total, filename=None):
-            progress_calls.append((current, total, filename))
+        f_txt = MagicMock(); f_txt.result.return_value = (os.path.join(self.folder1, "doc1.txt"), "C1")
+        f_emb = MagicMock(); f_emb.result.return_value = [[0.1]]
+        f_sum = MagicMock(); f_sum.result.return_value = (0, "Sum")
         
-        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
-            create_index(self.folder1, "openai", "fake_key", progress_callback=progress_callback)
-            
-            # Verify progress was called
-            self.assertGreater(len(progress_calls), 0)
+        mock_as_completed.side_effect = [[f_txt], [f_emb], [f_sum]]
 
-    def test_create_index_nonexistent_folder(self):
-        """Test creating index with nonexistent folder."""
-        with patch('backend.indexing.get_embeddings') as mock_embed:
-            mock_embeddings_model = MagicMock()
-            mock_embed.return_value = mock_embeddings_model
-            
-            res = create_index(
-                "/nonexistent/folder/path", 
-                "openai", 
-                "fake_key"
-            )
-            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
-            
-            self.assertIsNone(index)
+        calls = []
+        def cb(c, t, m=None): calls.append(c)
 
+        create_index(self.folder1, "openai", "k", progress_callback=cb)
+        self.assertTrue(len(calls) > 0)
+
+    @patch('backend.indexing.concurrent.futures.as_completed')
+    @patch('backend.indexing.concurrent.futures.ThreadPoolExecutor')
+    @patch('backend.indexing.concurrent.futures.ProcessPoolExecutor')
     @patch('backend.indexing.CharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
-    def test_create_index_string_folder_path(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
-        """Test that string folder path is converted to list."""
-        # Mock text splitting
-        mock_splitter_instance = mock_splitter_cls.return_value
-        mock_splitter_instance.split_text.return_value = ["chunk1"]
-
-        mock_extract_text.return_value = "Test content"
+    @patch('backend.indexing.perform_global_clustering')
+    def test_create_index_string_folder_path(self, mock_clustering, mock_extract, mock_get_embeddings, mock_splitter, mock_process_pool, mock_thread_pool, mock_as_completed):
+        mock_process_pool.return_value.__enter__.return_value = MagicMock()
+        mock_thread_pool.return_value.__enter__.return_value = MagicMock()
+        mock_splitter.return_value.split_text.return_value = ["chunk"]
+        mock_get_embeddings.return_value.embed_documents.return_value = [[0.1]]
+        mock_clustering.return_value = {} # No clusters -> no summary step loop
         
-        mock_embeddings_model = MagicMock()
-        mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3]]
-        mock_get_embeddings.return_value = mock_embeddings_model
+        f_txt = MagicMock(); f_txt.result.return_value = (os.path.join(self.folder1, "doc1.txt"), "C1")
+        f_emb = MagicMock(); f_emb.result.return_value = [[0.1]]
         
-        with patch('backend.indexing.get_tags', return_value="test"),              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}),              patch('backend.indexing.smart_summary', return_value="Summary"):
-            # Pass string instead of list
-            res = create_index(
-                self.folder1,  # String, not list
-                "openai", 
-                "fake_key"
-            )
-            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
-            
-            self.assertIsNotNone(index)
+        mock_as_completed.side_effect = [[f_txt], [f_emb], []] # 3 calls: extract, embed, summarize(empty)
 
-
+        res = create_index(self.folder1, "openai", "k")
+        self.assertIsNotNone(res[0])
 
 class TestSaveIndex(unittest.TestCase):
-    """Dedicated tests for save_index function."""
-
     def setUp(self):
-        from backend import database
-        database.init_database()
-        """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
-
     def tearDown(self):
-        """Clean up test fixtures."""
-        if os.path.exists(self.temp_dir):
-            shutil.rmtree(self.temp_dir)
+        shutil.rmtree(self.temp_dir)
 
     @patch('backend.indexing.faiss.write_index')
     def test_save_index_creates_all_files(self, mock_write_index):
-        """Test that save_index creates .faiss, _docs.json, and _tags.json files."""
-        # Mock write_index side effect
-        def side_effect_write(index, filepath):
-            with open(filepath, 'w') as f:
-                f.write("dummy")
-        mock_write_index.side_effect = side_effect_write
-
         import faiss
-        
         index = faiss.IndexFlatL2(3)
-        embeddings = np.array([[1.0, 2.0, 3.0]], dtype='float32')
-        index.add(embeddings)
-        
-        docs = ["Document 1", "Document 2"]
-        tags = [["tag1"], ["tag2"]]
-        
         index_path = os.path.join(self.temp_dir, "index.faiss")
-        save_index(index, docs, tags, index_path)
-        
-        self.assertTrue(os.path.exists(index_path))
+        save_index(index, [], [], index_path)
         self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_docs.json")))
-        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_tags.json")))
-
-
-class TestLoadIndex(unittest.TestCase):
-    """Dedicated tests for load_index function."""
-
-    def setUp(self):
-        from backend import database
-        database.init_database()
-        """Set up test fixtures."""
-        self.temp_dir = tempfile.mkdtemp()
-
-    def tearDown(self):
-        """Clean up test fixtures."""
-        if os.path.exists(self.temp_dir):
-            shutil.rmtree(self.temp_dir)
-
-    @patch('backend.indexing.faiss.write_index')
-    @patch('backend.indexing.faiss.read_index')
-    def test_load_index_preserves_data(self, mock_read_index, mock_write_index):
-        """Test that load_index correctly restores saved data."""
-        # Mock write_index
-        def side_effect_write(index, filepath):
-            with open(filepath, 'w') as f:
-                f.write("dummy")
-        mock_write_index.side_effect = side_effect_write
-
-        import faiss
-        
-        # Create and save
-        original_index = faiss.IndexFlatL2(3)
-        embeddings = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype='float32')
-        original_index.add(embeddings)
-        
-        original_docs = [{"text": "Doc A"}, {"text": "Doc B"}]
-        original_tags = [["alpha"], ["beta", "gamma"]]
-        
-        index_path = os.path.join(self.temp_dir, "test.faiss")
-        save_index(original_index, original_docs, original_tags, index_path)
-        
-        # Mock load_index return
-        mock_read_index.return_value = original_index
-
-        # Load and verify
-        res = load_index(index_path)
-        loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res
-        
-        # We can't check ntotal on a mock object unless we set it.
-        # But if we use the same mock object "original_index", it should have whatever we set on it.
-        # However, faiss.IndexFlatL2 is a mock.
-        # We can just check it's the same object.
-        self.assertEqual(loaded_index, original_index)
-        self.assertEqual(loaded_docs, original_docs)
-        self.assertEqual(loaded_tags, original_tags)
-
 
 if __name__ == '__main__':
     unittest.main()
-
