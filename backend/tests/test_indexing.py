@@ -196,7 +196,7 @@ class TestIndexing(unittest.TestCase):
         self.assertEqual(loaded_docs, docs)
         self.assertEqual(loaded_tags, tags)
     
-    @patch('faiss.read_index')
+    @patch('backend.indexing.faiss.read_index')
     @patch('os.path.exists')
     @patch('builtins.open')
     @patch('backend.indexing.pickle.load')

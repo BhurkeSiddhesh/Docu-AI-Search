@@ -278,6 +278,38 @@ class TestAPISearchHistory(unittest.TestCase):
         self.assertIn('deleted_count', data)
 
 
+class TestAPICache(unittest.TestCase):
+    """Test cases for AI response cache endpoints."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    @patch('backend.database.get_cache_stats')
+    def test_cache_stats(self, mock_get_stats):
+        """Test getting cache statistics."""
+        mock_get_stats.return_value = {"total_entries": 5, "total_hits": 10}
+        
+        response = self.client.get("/api/cache/stats")
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["total_entries"], 5)
+        self.assertEqual(data["total_hits"], 10)
+
+    @patch('backend.database.clear_response_cache')
+    def test_clear_cache(self, mock_clear_cache):
+        """Test clearing AI response cache."""
+        mock_clear_cache.return_value = 5
+        
+        response = self.client.post("/api/cache/clear")
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["cleared_entries"], 5)
+
+
 class TestAPIFileOperations(unittest.TestCase):
     """Test cases for file operation endpoints."""
 

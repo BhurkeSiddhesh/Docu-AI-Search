@@ -316,6 +316,21 @@ python scripts/verify_golden_set.py
   - **deps**: Added `slowapi==0.1.9` to `requirements.txt`.
   - **Files**: `backend/database.py`, `backend/indexing.py`, `backend/api.py`, `backend/tests/test_indexing.py`, `backend/tests/test_api.py`, `requirements.txt`
 
+### 2026-02-25 (AI Cache)
+- **Restored AI Response Cache Functionality**
+  - **feat**: Exposed `/api/cache/stats` and `/api/cache/clear` endpoints in `backend/api.py`.
+  - **test**: Added unit tests for new cache endpoints in `backend/tests/test_api.py`.
+  - **fix**: Restored original `delete_model` logic to fix a 403 authorization error in test runs.
+  - **Files**: `backend/api.py`, `backend/tests/test_api.py`
+
+### 2026-02-25 (Advanced RAG)
+- **Implemented Advanced RAG Pipeline (State-of-the-Art)**
+  - **feat**: Added `[AdvancedRAG]` configuration options (`query_rewriting`, `cross_encoder_reranking`) to `config.ini` and `api.py`.
+  - **feat**: Created `backend/rag_optimizers.py` with `rewrite_query` (LLM-based keyword extraction) and `rerank_results` (`sentence-transformers/ms-marco` deep semantic scoring).
+  - **feat**: Modified `backend/search.py` to intercept queries for rewriting, fetch a larger candidate pool (Top 20), and run Cross-Encoder re-ranking before limiting to the final top 6 results.
+  - **test**: Added `backend/tests/test_rag_optimizers.py` with mocked LLM and CrossEncoder.
+  - **Files**: `backend/api.py`, `backend/search.py`, `backend/rag_optimizers.py`, `backend/tests/test_rag_optimizers.py`, `config.ini`
+
 ### 2026-02-25 (Agent Quality)
 - **Improved ReAct Agent Response Quality for Local Models**
   - **fix**: Added provider-aware system prompts — short, clear prompt for local models; full ReAct prompt for cloud.

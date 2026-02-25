@@ -50,6 +50,30 @@ def search(query: str, index, docs: List[Dict], tags: List[str], embeddings_mode
         context_snippets: List of text snippets for AI generation
     """
     
+    import configparser
+    import os
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    do_rewrite = config.getboolean('AdvancedRAG', 'query_rewriting', fallback=False)
+    do_rerank = config.getboolean('AdvancedRAG', 'cross_encoder_reranking', fallback=False)
+    rerank_model = config.get('AdvancedRAG', 'reranker_model', fallback='cross-encoder/ms-marco-MiniLM-L-6-v2')
+
+    original_query = query
+    if do_rewrite:
+        from backend.rag_optimizers import rewrite_query
+        provider = config.get('LocalLLM', 'provider', fallback='openai')
+        api_key_key = f"{provider}_api_key"
+        if provider == 'openai': api_key = config.get('APIKeys', 'openai_api_key', fallback='')
+        elif provider == 'gemini': api_key = config.get('APIKeys', 'gemini_api_key', fallback='')
+        elif provider == 'anthropic': api_key = config.get('APIKeys', 'anthropic_api_key', fallback='')
+        elif provider == 'grok': api_key = config.get('APIKeys', 'grok_api_key', fallback='')
+        else: api_key = ''
+        model_path = config.get('LocalLLM', 'model_path', fallback='')
+        
+        rewritten = rewrite_query(query, provider, api_key, model_path)
+        if rewritten and len(rewritten) > 2:
+            query = rewritten
+
     # 1. Start Vector Search (Parallel Chunk + Summary)
     query_embedding = np.array([embeddings_model.embed_query(query)]).astype('float32')
     
@@ -58,7 +82,7 @@ def search(query: str, index, docs: List[Dict], tags: List[str], embeddings_mode
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         # Start Parallel Tasks
-        future_chunks = executor.submit(index.search, query_embedding, 15) # Top 15 direct
+        future_chunks = executor.submit(index.search, query_embedding, 20) # Top 20 direct (increased for reranker pool)
         
         future_summaries = None
         if index_summaries:
@@ -144,7 +168,8 @@ def search(query: str, index, docs: List[Dict], tags: List[str], embeddings_mode
         
     # 5. Sort by RRF Score (Higher is better)
     sorted_final = sorted(final_scores.items(), key=lambda x: x[1], reverse=True)
-    top_indices = [idx for idx, score in sorted_final[:10]] # Top 10 fused
+    fetch_count = 20 if do_rerank else 10 # Load a larger pool if we are going to rerank
+    top_indices = [idx for idx, score in sorted_final[:fetch_count]] 
     print(f"[SEARCH] Returning top {len(top_indices)} fused results.")
     
     # 4. Format Results
@@ -198,10 +223,21 @@ def search(query: str, index, docs: List[Dict], tags: List[str], embeddings_mode
             "file_name": file_name
         })
         
-        # Prepare context for AI
+        # Prepare context for AI (will be re-built if reranking)
         context_snippets.append(doc_text)
         
-        if len(results) >= 10:
+        if len(results) >= fetch_count:
             break
+            
+    if do_rerank and results:
+        from backend.rag_optimizers import rerank_results
+        results = rerank_results(original_query, results, rerank_model)
+        # Keep top 6 highest confidence after reranking to save context window
+        results = results[:6]
+        # Re-build snippets
+        context_snippets = [r['document'] for r in results]
+    else:
+        results = results[:10]
+        context_snippets = context_snippets[:10]
             
     return results, context_snippets

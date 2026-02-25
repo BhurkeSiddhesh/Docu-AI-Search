@@ -153,6 +153,7 @@ def load_config():
         config['General'] = {'folder': '', 'auto_index': 'False'}
         config['APIKeys'] = {'openai_api_key': ''}
         config['LocalLLM'] = {'model_path': '', 'provider': 'openai'}
+        config['AdvancedRAG'] = {'query_rewriting': 'False', 'cross_encoder_reranking': 'False', 'reranker_model': 'cross-encoder/ms-marco-MiniLM-L-6-v2'}
         with open(CONFIG_PATH, 'w') as configfile:
             config.write(configfile)
     
@@ -248,6 +249,17 @@ async def delete_model(request: dict, req: Request):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/cache/stats")
+def cache_stats_endpoint():
+    """Get AI response cache statistics."""
+    return database.get_cache_stats()
+
+@app.post("/api/cache/clear")
+def clear_cache_endpoint():
+    """Clear all cached AI responses."""
+    count = database.clear_response_cache()
+    return {"status": "success", "cleared_entries": count}
 
 # Benchmark state
 benchmark_status = {
@@ -359,6 +371,9 @@ class ConfigModel(BaseModel):
     local_model_path: Optional[str] = ""
     provider: str = "openai"
     tensor_split: Optional[str] = None
+    query_rewriting: bool = False
+    cross_encoder_reranking: bool = False
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 @app.get("/api/config")
 async def get_config(request: Request):
@@ -380,7 +395,10 @@ async def get_config(request: Request):
         "grok_api_key": config.get('APIKeys', 'grok_api_key', fallback=''),
         "local_model_path": config.get('LocalLLM', 'model_path', fallback=''),
         "provider": config.get('LocalLLM', 'provider', fallback='openai'),
-        "tensor_split": config.get('LocalLLM', 'tensor_split', fallback=None)
+        "tensor_split": config.get('LocalLLM', 'tensor_split', fallback=None),
+        "query_rewriting": config.getboolean('AdvancedRAG', 'query_rewriting', fallback=False),
+        "cross_encoder_reranking": config.getboolean('AdvancedRAG', 'cross_encoder_reranking', fallback=False),
+        "reranker_model": config.get('AdvancedRAG', 'reranker_model', fallback='cross-encoder/ms-marco-MiniLM-L-6-v2')
     }
 
 @app.post("/api/config")
@@ -400,6 +418,11 @@ async def update_config(config_data: ConfigModel, request: Request):
         'model_path': config_data.local_model_path or '', 
         'provider': config_data.provider,
         'tensor_split': config_data.tensor_split or ''
+    }
+    config['AdvancedRAG'] = {
+        'query_rewriting': str(config_data.query_rewriting),
+        'cross_encoder_reranking': str(config_data.cross_encoder_reranking),
+        'reranker_model': config_data.reranker_model or 'cross-encoder/ms-marco-MiniLM-L-6-v2'
     }
     save_config_file(config)
     
