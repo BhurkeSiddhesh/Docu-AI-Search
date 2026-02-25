@@ -305,6 +305,45 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-02-25 (PR #46 Recovery & Security)
+- **Resolved Regressions and Security Logic from PR #46**
+  - **fix**: Fixed `database.py` schema (added `is_indexed` to `folder_history`, `add_files_batch`, `clear_files`).
+  - **fix**: Corrected `indexing.py` dictionary mapping (mapped `extension` -> `file_type`, `size_bytes` -> `size` etc to match DB).
+  - **security**: Implemented `verify_local_request` in `api.py` to protect `open-file` and other sensitive endpoints.
+  - **security**: Added file extension whitelist (`ALLOWED_EXTENSIONS`) to `open-file` to prevent opening dangerous files (.exe, etc).
+  - **fix**: Updated `test_indexing.py` to match the shift from JSON metadata to Pickle (.pkl), ensuring persistent BM25 support.
+  - **fix**: Re-enabled and fixed `test_api.py` (added missing `verify_local_request` and fixed imports).
+  - **deps**: Added `slowapi==0.1.9` to `requirements.txt`.
+  - **Files**: `backend/database.py`, `backend/indexing.py`, `backend/api.py`, `backend/tests/test_indexing.py`, `backend/tests/test_api.py`, `requirements.txt`
+
+### 2026-02-25 (Agent Quality)
+- **Improved ReAct Agent Response Quality for Local Models**
+  - **fix**: Added provider-aware system prompts — short, clear prompt for local models; full ReAct prompt for cloud.
+  - **fix**: Increased `max_tokens` from 256 → 512 to prevent mid-thought truncation.
+  - **feat**: Added `_extract_final_answer` helper — detects `Final Answer:`, `final answer:`, and `Answer:` variants.
+  - **feat**: Added `_is_direct_answer` helper — accepts natural-language answers when model skips ReAct format.
+  - **perf**: Increased observation context fed back to LLM from 200 → 800 chars.
+  - **fix**: Increased max agent steps from 5 → 7 for local models.
+  - **fix**: Fixed pre-existing test bug in `test_agent_refactor.py` (patching `langchain_core.messages` instead of non-existent `backend.llm_integration.SystemMessage`).
+  - **Files**: `backend/agent.py`, `backend/tests/test_agent_refactor.py`
+
+### 2026-02-25 (Critical Hallucination Fix)
+- **Prevented Agent from Answering Without Searching Index**
+  - **fix**: Added `has_searched` boolean guard — agent cannot produce a final answer until `search_knowledge_base` has been called at least once.
+  - **fix**: Added `_force_search_action` — if model tries to skip tools on step 0, agent automatically injects a search using the user's query terms.
+  - **fix**: Replaced broad `_is_direct_answer` patterns (matched hallucinated responses like "Based on my knowledge") with strict `_is_grounded_direct_answer` that only accepts phrases explicitly referencing document/search results.
+  - **fix**: If model produces a "Final Answer" before searching, it is blocked and a forced search is executed instead.
+  - **Files**: `backend/agent.py`
+
+### 2026-02-25 (Context Window Fix)
+- **Fixed 4096 Token Context Overflow on Local Models**
+  - **fix**: Reduced observation window from 800 → 350 chars for local models to halve context usage per step.
+  - **fix**: Reduced `max_steps` from 7 → 4 for local models to prevent multi-search spiraling.
+  - **fix**: History trimmed to `[question] + last 4 entries` when it exceeds 6 entries (local only).
+  - **fix**: Reduced local `max_tokens` from 512 → 384 to leave headroom for prompt growth.
+  - **feat**: After first successful search (local), model is nudged to write `Final Answer` immediately.
+  - **Files**: `backend/agent.py`
+
 ### 2026-01-30 (Security)
 - **Fixed Arbitrary File Deletion Vulnerability**
   - **fix**: Implemented `is_safe_model_path` validation in `model_manager.py` to prevent path traversal in model deletion.

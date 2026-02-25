@@ -10,3 +10,9 @@
 - [x] Process Bolt Branches (Copilot) - Merged `bolt-cache-config`
 - [x] Process Sentinel Branches - Merged `sentinel-fix-arbitrary-deletion`
 - [x] Merge `improvise_functionality` to `master` <!-- id: 5 -->
+- [x] Fix regressions and security issues in PR #46 <!-- id: 46 -->
+    - [x] Fix database schema and missing functions
+    - [x] Fix indexing parameter mappings
+    - [x] Fix verify_local_request and open-file security
+    - [x] Fix backend tests (api, indexing, database)
+

@@ -2,7 +2,7 @@ import sqlite3
 import os
 import threading
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple, Any
 
 # Path configuration for new folder structure
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -158,7 +158,8 @@ def init_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             path TEXT UNIQUE NOT NULL,
             added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            is_indexed BOOLEAN DEFAULT 0
         )
     """)
 
@@ -238,6 +239,23 @@ def add_file(path: str, filename: str, extension: str, size_bytes: int,
     conn.close()
     return file_id
 
+def add_files_batch(files_data: List[Dict]):
+    """Batch insert files for performance."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    try:
+        cursor.executemany('''
+            INSERT OR REPLACE INTO files
+            (path, filename, extension, size_bytes, modified_date, chunk_count, faiss_start_idx, faiss_end_idx)
+            VALUES (:path, :filename, :extension, :size_bytes, :modified_date, :chunk_count, :faiss_start_idx, :faiss_end_idx)
+        ''', files_data)
+        conn.commit()
+    except Exception as e:
+        print(f"Error adding batch files to DB: {e}")
+    finally:
+        conn.close()
+
 def get_all_files(limit: Optional[int] = None, offset: int = 0) -> List[Dict]:
     """Get all indexed files."""
     conn = get_connection()
@@ -293,6 +311,18 @@ def delete_file(file_id: int):
     
     conn.commit()
     conn.close()
+
+def clear_files():
+    """Clear all files from the database."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM files")
+    conn.commit()
+    conn.close()
+
+def clear_all_files():
+    """Alias for clear_files."""
+    clear_files()
 
 def add_search_history(query: str, result_count: int, execution_time_ms: int):
     """Add a search to history."""
@@ -569,6 +599,21 @@ def get_cache_stats():
 # Cluster Functions (RAPTOR)
 # -----------------------------------------------------------------------------
 
+def add_clusters_batch(clusters_data: List[Tuple[str, int]]):
+    """Batch insert cluster summaries."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.executemany('''
+            INSERT INTO clusters (summary, level)
+            VALUES (?, ?)
+        ''', clusters_data)
+        conn.commit()
+    except Exception as e:
+        print(f"Error adding batch clusters to DB: {e}")
+    finally:
+        conn.close()
+
 def add_cluster(summary: str, level: int) -> int:
     """Add a cluster summary to the database."""
     conn = get_connection()
@@ -653,3 +698,48 @@ def cleanup_test_data() -> Dict[str, int]:
         print(f"[CLEANUP] Removed {counts['files']} test files, {counts['folders']} test folders, {counts['search_history']} test searches")
     
     return counts
+
+# N+1 Optimization for Search Metadata
+MAX_INDICES = 100  # SQLite limit is actually 999 vars, keeping conservative for tests
+
+def get_files_by_faiss_indices(indices: list[int]) -> dict[int, dict]:
+    """
+    Batch retrieve file metadata for multiple FAISS indices in a single query.
+    Returns a dictionary mapping faiss_idx -> file_info dict.
+    """
+    if not indices:
+        return {}
+
+    # Deduplicate and validate
+    unique_indices = sorted(list(set(indices)))
+
+    if len(unique_indices) > MAX_INDICES:
+        raise ValueError(f"Too many indices for single query (max {MAX_INDICES}). Provided: {len(unique_indices)}")
+
+    conn = get_connection()
+    try:
+        # Build query: SELECT * FROM files WHERE (faiss_start_idx <= ? AND faiss_end_idx >= ?) OR ...
+        query_parts = []
+        params = []
+        for idx in unique_indices:
+            query_parts.append("(faiss_start_idx <= ? AND faiss_end_idx >= ?)")
+            params.extend([idx, idx])
+
+        sql = f"SELECT * FROM files WHERE {' OR '.join(query_parts)}"
+
+        cursor = conn.execute(sql, params)
+        files = [dict(row) for row in cursor.fetchall()]
+
+        result = {}
+        for idx in unique_indices:
+            for file in files:
+                if file['faiss_start_idx'] <= idx <= file['faiss_end_idx']:
+                    result[idx] = file
+                    break
+
+        return result
+    except Exception as e:
+        print(f"Error getting files by faiss indices: {e}")
+        return {}
+    finally:
+        conn.close()

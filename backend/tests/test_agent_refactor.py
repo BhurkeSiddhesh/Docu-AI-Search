@@ -82,8 +82,9 @@ class TestAgentRefactor(unittest.TestCase):
 
         mock_get_client.return_value = mock_client
 
-        # IMPORTANT: Patch the message classes inside llm_integration to match ours
-        with patch('backend.llm_integration.SystemMessage', SystemMessage),              patch('backend.llm_integration.HumanMessage', HumanMessage):
+        # IMPORTANT: Patch the message classes at the import location (lazy import)
+        with patch('langchain_core.messages.SystemMessage', SystemMessage), \
+             patch('langchain_core.messages.HumanMessage', HumanMessage):
 
             response = llm_integration.generate_ai_answer(
                 context="Ignored",

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Depends
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -96,6 +96,21 @@ def get_download_status(*args, **kwargs):
 
 # -----------------------------
 from backend import database
+
+def verify_local_request(request: Request):
+    """
+    Security middleware to ensure sensitive operations (like opening local files)
+    can only be triggered from the local machine (localhost).
+    """
+    if not request.client:
+        return # Allow for test client if needed
+    client_host = request.client.host
+    # Support both IPv4 and IPv6 localhost
+    if client_host not in ("127.0.0.1", "::1", "localhost", "testserver"):
+        logger.warning(f"Security: Blocked remote request to sensitive endpoint from {client_host}")
+        raise HTTPException(status_code=403, detail="Access denied: Only local connections allowed")
+
+ALLOWED_EXTENSIONS = {'.pdf', '.docx', '.pptx', '.xlsx', '.txt'}
 
 
 
@@ -470,6 +485,7 @@ async def search_files(request: SearchRequest, req: Request):
                         file_lookup_map[f_idx] = info
 
         processed_results = []
+        context_snippets = []
         
         for result in results:
             faiss_idx = result.get('faiss_idx')
@@ -677,7 +693,7 @@ async def receive_log(log: LogRequest, request: Request):
     return {"status": "logged"}
 
 @app.post("/api/open-file")
-async def open_file(request: dict, req: Request):
+async def open_file(request: dict, req: Request, _=Depends(verify_local_request)):
     """Open a file in the default system application."""
     file_path = request.get('path', '')
     if not file_path:
@@ -691,6 +707,12 @@ async def open_file(request: dict, req: Request):
     if not database.get_file_by_path(file_path):
         logger.warning(f"Security: Attempt to open non-indexed file: {file_path}")
         raise HTTPException(status_code=403, detail="Access denied: File is not in the index")
+
+    # Security: File type validation (additional layer)
+    _, ext = os.path.splitext(file_path)
+    if ext.lower() not in ALLOWED_EXTENSIONS:
+        logger.warning(f"Security: Blocked attempt to open disallowed file type: {ext}")
+        raise HTTPException(status_code=403, detail="Access denied: File type not allowed")
 
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")

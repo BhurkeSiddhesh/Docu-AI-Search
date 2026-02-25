@@ -3,6 +3,7 @@ import tempfile
 import os
 import numpy as np
 import shutil
+import pickle
 from unittest.mock import patch, MagicMock, call
 from backend.indexing import create_index, save_index, load_index
 
@@ -180,8 +181,8 @@ class TestIndexing(unittest.TestCase):
         
         # Check that files were created
         self.assertTrue(os.path.exists(index_path))
-        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "test_index_docs.json")))
-        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "test_index_tags.json")))
+        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "test_index_docs.pkl")))
+        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "test_index_tags.pkl")))
         
         # Setup mock for load_index
         mock_read_index.return_value = index # Return the mock index
@@ -198,8 +199,8 @@ class TestIndexing(unittest.TestCase):
     @patch('faiss.read_index')
     @patch('os.path.exists')
     @patch('builtins.open')
-    @patch('json.load')
-    def test_load_index_preserves_data(self, mock_json_load, _mock_open, mock_exists, mock_read_index):
+    @patch('backend.indexing.pickle.load')
+    def test_load_index_preserves_data(self, mock_pickle_load, _mock_open, mock_exists, mock_read_index):
         """Test loading an index."""
         # Mock the index reading
         mock_faiss_index = MagicMock()
@@ -207,21 +208,22 @@ class TestIndexing(unittest.TestCase):
         
         index_path = "fake_index.faiss"
 
-        # Mock os.path.exists: True for main file
-        mock_exists.side_effect = lambda path: path == index_path
+        # Mock os.path.exists: True for main file and .pkl files
+        mock_exists.side_effect = lambda path: path == index_path or path.endswith('.pkl')
         
-        # Mock pickle loading
-        mock_json_load.side_effect = [
-            [{"text": "Test document"}],
-            [["test", "tag"]]
+        # Mock pickle loading: docs, tags, and bm25
+        mock_pickle_load.side_effect = [
+            [{"text": "Test document"}], # docs
+            [["test", "tag"]],            # tags
+            MagicMock()                   # bm25
         ]
         
         res = load_index(index_path)
         loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res
         
-        # Verify the functions were called
+        # Verify the functions were called: faiss, docs.pkl, tags.pkl, bm25.pkl
         mock_read_index.assert_called_once_with(index_path)
-        self.assertEqual(mock_json_load.call_count, 2)
+        self.assertEqual(mock_pickle_load.call_count, 3)
         
         # Verify the results
         self.assertEqual(loaded_index, mock_faiss_index)
@@ -386,8 +388,8 @@ class TestSaveIndex(unittest.TestCase):
         save_index(index, docs, tags, index_path)
         
         self.assertTrue(os.path.exists(index_path))
-        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_docs.json")))
-        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_tags.json")))
+        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_docs.pkl")))
+        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_tags.pkl")))
 
 
 class TestLoadIndex(unittest.TestCase):

@@ -3,7 +3,7 @@ import os
 import tempfile
 from fastapi.testclient import TestClient
 from backend.api import app, verify_local_request
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from backend import model_manager
 
 class TestSecurityApi(unittest.TestCase):
@@ -12,7 +12,8 @@ class TestSecurityApi(unittest.TestCase):
         # Create a temporary file OUTSIDE the models directory
         self.temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
         self.temp_file.close()
-sys.modules['fastapi.responses'] = MagicMock()
+        # Mock sys.modules before importing app if necessary, but here it's already used
+        # sys.modules['fastapi.responses'] = MagicMock() 
         self.temp_path = self.temp_file.name
 
     def tearDown(self):

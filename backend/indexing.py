@@ -1,6 +1,7 @@
 import os
 import faiss
 import json
+import pickle
 import numpy as np
 import concurrent.futures
 import time
@@ -272,30 +273,33 @@ def create_index(folder_paths, provider, api_key=None, model_path=None, progress
 
 def save_index(index_chunks, all_chunks, tags, filepath, index_summaries=None, cluster_summaries=None, cluster_map=None, bm25=None):
     """
-    Saves the Dual FAISS index (RAPTOR) + BM25.
+    Saves the Dual FAISS index (RAPTOR) + BM25 using Pickle (as per AGENTS.md).
     """
     faiss.write_index(index_chunks, filepath)
-    
     base_path = os.path.splitext(filepath)[0]
     
-    with open(base_path + '_docs.json', 'w') as f:
-        json.dump(all_chunks, f)
-    with open(base_path + '_tags.json', 'w') as f:
-        json.dump(tags, f)
+    # Use .pkl for everything as per AGENTS.md and for BM25 picklability
+    with open(base_path + '_docs.pkl', 'wb') as f:
+        pickle.dump(all_chunks, f)
+    with open(base_path + '_tags.pkl', 'wb') as f:
+        pickle.dump(tags, f)
         
     if index_summaries is not None:
         faiss.write_index(index_summaries, base_path + '_summary.index')
-        with open(base_path + '_summaries.json', 'w') as f:
-            json.dump(cluster_summaries, f)
-        with open(base_path + '_cluster_map.json', 'w') as f:
-            json.dump(cluster_map, f)
+        with open(base_path + '_summaries.pkl', 'wb') as f:
+            pickle.dump(cluster_summaries, f)
+        with open(base_path + '_cluster_map.pkl', 'wb') as f:
+            pickle.dump(cluster_map, f)
             
-    # BM25 is not saved directly as it's not pickle-safe. It will be reconstructed on load.
-    print(f"RAPTOR Index saved to {filepath}")
+    if bm25 is not None:
+        with open(base_path + '_bm25.pkl', 'wb') as f:
+            pickle.dump(bm25, f)
+            
+    print(f"RAPTOR Index saved to {filepath} (Pickle format)")
 
 def load_index(filepath):
     """
-    Loads Dual FAISS index + BM25.
+    Loads Dual FAISS index + BM25 with fallback for legacy JSON.
     """
     if not os.path.exists(filepath):
         return None, None, None, None, None, None, None
@@ -303,17 +307,35 @@ def load_index(filepath):
     index_chunks = faiss.read_index(filepath)
     base_path = os.path.splitext(filepath)[0]
     
-    docs_path = base_path + '_docs.json'
-    tags_path = base_path + '_tags.json'
+    # Check for both .pkl and .json for backward compatibility during migration
+    docs_path_pkl = base_path + '_docs.pkl'
+    docs_path_json = base_path + '_docs.json'
+    tags_path_pkl = base_path + '_tags.pkl'
+    tags_path_json = base_path + '_tags.json'
 
-    if not os.path.exists(docs_path) or not os.path.exists(tags_path):
-        print(f"Warning: Missing metadata files for {filepath}. Index might be incomplete or old format.")
+    all_chunks = []
+    tags = []
+    
+    try:
+        if os.path.exists(docs_path_pkl):
+            with open(docs_path_pkl, 'rb') as f:
+                all_chunks = pickle.load(f)
+        elif os.path.exists(docs_path_json):
+            with open(docs_path_json, 'r') as f:
+                all_chunks = json.load(f)
+        else:
+            print(f"Warning: No docs metadata found at {base_path}")
+            return index_chunks, [], [], None, None, None, None
+
+        if os.path.exists(tags_path_pkl):
+            with open(tags_path_pkl, 'rb') as f:
+                tags = pickle.load(f)
+        elif os.path.exists(tags_path_json):
+            with open(tags_path_json, 'r') as f:
+                tags = json.load(f)
+    except Exception as e:
+        print(f"Error loading metadata: {e}")
         return index_chunks, [], [], None, None, None, None
-
-    with open(docs_path, 'r') as f:
-        all_chunks = json.load(f)
-    with open(tags_path, 'r') as f:
-        tags = json.load(f)
         
     index_summaries = None
     cluster_summaries = None
@@ -322,23 +344,43 @@ def load_index(filepath):
     
     summary_idx_path = base_path + '_summary.index'
     if os.path.exists(summary_idx_path):
-        index_summaries = faiss.read_index(summary_idx_path)
-
-        summaries_path = base_path + '_summaries.json'
-        cluster_map_path = base_path + '_cluster_map.json'
-
-        if os.path.exists(summaries_path):
-            with open(summaries_path, 'r') as f:
-                cluster_summaries = json.load(f)
-
-        if os.path.exists(cluster_map_path):
-            with open(cluster_map_path, 'r') as f:
-                cluster_map_raw = json.load(f)
-                # Convert keys back to int
-                cluster_map = {int(k): v for k, v in cluster_map_raw.items()}
+        try:
+            index_summaries = faiss.read_index(summary_idx_path)
+            
+            # Load summaries
+            sum_path_pkl = base_path + '_summaries.pkl'
+            sum_path_json = base_path + '_summaries.json'
+            if os.path.exists(sum_path_pkl):
+                with open(sum_path_pkl, 'rb') as f:
+                    cluster_summaries = pickle.load(f)
+            elif os.path.exists(sum_path_json):
+                with open(sum_path_json, 'r') as f:
+                    cluster_summaries = json.load(f)
+                    
+            # Load cluster map
+            map_path_pkl = base_path + '_cluster_map.pkl'
+            map_path_json = base_path + '_cluster_map.json'
+            if os.path.exists(map_path_pkl):
+                with open(map_path_pkl, 'rb') as f:
+                    cluster_map = pickle.load(f)
+            elif os.path.exists(map_path_json):
+                with open(map_path_json, 'r') as f:
+                    cluster_map_raw = json.load(f)
+                    cluster_map = {int(k): v for k, v in cluster_map_raw.items()}
+        except Exception as e:
+            print(f"Error loading summary index: {e}")
                 
-    # Reconstruct BM25
-    if all_chunks:
+    # Reconstruct or load BM25
+    bm25_path = base_path + '_bm25.pkl'
+    if os.path.exists(bm25_path):
+        try:
+            with open(bm25_path, 'rb') as f:
+                bm25 = pickle.load(f)
+            print("Loaded BM25 from disk.")
+        except:
+             pass
+             
+    if bm25 is None and all_chunks:
         print("Reconstructing BM25 Index...")
         chunk_strings = [chunk['text'] for chunk in all_chunks]
         tokenized_corpus = [tokenize(doc) for doc in chunk_strings]

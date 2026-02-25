@@ -149,7 +149,7 @@ function App() {
                 const context = results.map(r => {
                     const text = (r.summary && r.summary.length > 20) ? r.summary : (r.document ? r.document.slice(0, 500) : "");
                     const fileName = r.file_name || "";
-                    return fileName ?  : text;
+                    return fileName ? `${fileName}: ${text}` : text;
                 }).filter(t => t.length > 0);
 
                 try {
