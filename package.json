@@ -28,6 +28,6 @@
         "faiss",
         "llm"
     ],
-    "author": "",
+    "author": "Siddhesh Bhurke",
     "license": "MIT"
 }
