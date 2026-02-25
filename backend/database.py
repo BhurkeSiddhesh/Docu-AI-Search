@@ -549,3 +549,18 @@ def get_files_by_faiss_indices(indices: list[int]) -> dict[int, dict]:
         return {}
     finally:
         conn.close()
+
+def add_clusters_batch(clusters_data: List[Tuple[str, int]]):
+    """Batch add clusters."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.executemany('''
+            INSERT INTO clusters (summary, level)
+            VALUES (?, ?)
+        ''', clusters_data)
+        conn.commit()
+    except Exception as e:
+        print(f"Error adding batch clusters: {e}")
+    finally:
+        conn.close()

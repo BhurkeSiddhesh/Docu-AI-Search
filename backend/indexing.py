@@ -106,12 +106,12 @@ def create_index(folder_paths, provider, api_key=None, model_path=None, progress
         file_info = {
             'path': filepath,
             'filename': os.path.basename(filepath),
-            'extension': os.path.splitext(filepath)[1].lower(),
-            'size_bytes': file_stat.st_size,
-            'modified_date': datetime.fromtimestamp(file_stat.st_mtime),
-            'chunk_count': len(chunks),
+            'file_type': os.path.splitext(filepath)[1].lower(),
+            'size': file_stat.st_size,
+            'last_modified': file_stat.st_mtime, # Database expects float timestamp
             'faiss_start_idx': current_faiss_idx,
-            'faiss_end_idx': current_faiss_idx + len(chunks) - 1
+            'faiss_end_idx': current_faiss_idx + len(chunks) - 1,
+            'tags': '[]' # Default empty tags
         }
         
         # Add to DB immediately
