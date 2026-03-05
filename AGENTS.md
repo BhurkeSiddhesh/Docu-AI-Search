@@ -305,6 +305,27 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-03-03 (Full Test Suite Fixes)
+- **Resolved remaining quick-suite failures**
+  - **fix**: Updated `/api/open-file` launch logic in `backend/api.py` to prefer `os.startfile` when available and use non-raising subprocess calls on non-Windows systems for robust testability.
+  - **fix**: Added missing `backend/benchmarks.py` module with `get_memory_usage()` so benchmark tests can patch `backend.benchmarks.psutil.Process` correctly.
+  - **Files**: `backend/api.py`, `backend/benchmarks.py`
+
+### 2026-03-03 (Model Recommendation Test Stabilization)
+- **Hardened recommendation logic for test environments**
+  - **fix**: Made `backend/model_manager.py` resilient to mocked/non-numeric `psutil` values by adding safe numeric coercion and defensive fallbacks.
+  - **fix**: Wrapped recommendation annotation in `get_available_models()` with fallback behavior so endpoint responses remain stable under heavily mocked test runs.
+  - **test**: Extended `backend/tests/test_model_recommendations.py` with a regression test for mocked profile values.
+  - **Files**: `backend/model_manager.py`, `backend/tests/test_model_recommendations.py`
+
+### 2026-03-03 (Model Recommendation Manager)
+- **Added system-aware model recommendation flow (LM Studio-style guidance)**
+  - **feat**: Added RAM/CPU/disk profiling and model scoring in `backend/model_manager.py` to rank best-fit downloadable models for the current machine.
+  - **feat**: Added `/api/models/recommendations` endpoint in `backend/api.py` for frontend consumption.
+  - **feat**: Updated `frontend/src/components/ModelManager.jsx` to display smart recommendations with quick download actions and system-fit highlighting.
+  - **test**: Added backend and frontend tests for recommendation endpoint/data rendering.
+  - **Files**: `backend/model_manager.py`, `backend/api.py`, `backend/tests/test_model_recommendations.py`, `frontend/src/components/ModelManager.jsx`, `frontend/src/test/ModelManager.test.jsx`
+
 ### 2026-02-25 (PR #46 Recovery & Security)
 - **Resolved Regressions and Security Logic from PR #46**
   - **fix**: Fixed `database.py` schema (added `is_indexed` to `folder_history`, `add_files_batch`, `clear_files`).

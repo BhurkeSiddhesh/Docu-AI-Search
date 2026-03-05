@@ -9,6 +9,7 @@ const ModelManager = ({ onSelectModel, activeModel, selectedPath }) => {
     const [error, setError] = useState(null);
     const [filter, setFilter] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
+    const [recommendationData, setRecommendationData] = useState(null);
 
     useEffect(() => {
         fetchModels();
@@ -24,6 +25,9 @@ const ModelManager = ({ onSelectModel, activeModel, selectedPath }) => {
             ]);
             setAvailableModels(available.data || []);
             setLocalModels(local.data || []);
+
+            const recommendations = await axios.get('http://localhost:8000/api/models/recommendations');
+            setRecommendationData(recommendations.data || null);
         } catch (err) {
             console.error('Failed to fetch models:', err);
         }
@@ -126,6 +130,35 @@ const ModelManager = ({ onSelectModel, activeModel, selectedPath }) => {
             )}
 
             {/* Downloaded Models */}
+            {recommendationData?.recommendations?.length > 0 && (
+                <div className="p-3 rounded-lg border border-primary/30 bg-primary/5">
+                    <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
+                        <Star className="w-4 h-4 text-yellow-500" />
+                        Smart Recommendations for Your System
+                    </h4>
+                    <p className="text-xs text-muted-foreground mb-2">
+                        Detected: {recommendationData.system?.ram_gb_total}GB RAM, {recommendationData.system?.cpu_cores_logical} threads, {recommendationData.system?.disk_gb_free}GB free disk
+                    </p>
+                    <div className="space-y-1.5">
+                        {recommendationData.recommendations.slice(0, 3).map((model) => (
+                            <div key={model.id} className="flex items-center justify-between text-xs">
+                                <div>
+                                    <span className="font-medium">{model.name}</span>
+                                    <span className="text-muted-foreground"> · {model.compatibility}</span>
+                                </div>
+                                <button
+                                    onClick={() => handleDownload(model.id)}
+                                    disabled={downloadStatus.downloading || isDownloaded(model.id)}
+                                    className="px-2 py-0.5 rounded bg-background border border-border hover:bg-accent disabled:opacity-50"
+                                >
+                                    {isDownloaded(model.id) ? 'Ready' : 'Quick Download'}
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <div>
                 <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
                     <HardDrive className="w-4 h-4" />
@@ -244,7 +277,7 @@ const ModelManager = ({ onSelectModel, activeModel, selectedPath }) => {
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2">
                                         <p className="text-sm font-medium">{model.name}</p>
-                                        {model.recommended && (
+                                        {(model.recommended || model.recommended_for_system) && (
                                             <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
                                         )}
                                     </div>

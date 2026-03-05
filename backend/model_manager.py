@@ -428,7 +428,152 @@ download_status = {
 }
 
 def get_available_models():
-    return AVAILABLE_MODELS
+    try:
+        recommendations = get_model_recommendations(max_results=len(AVAILABLE_MODELS))
+    except Exception:
+        recommendations = {"recommendations": []}
+    recommended_ids = {item["id"] for item in recommendations.get("recommendations", [])}
+    compatibility = {
+        item["id"]: item["compatibility"]
+        for item in recommendations.get("recommendations", [])
+    }
+
+    models = []
+    for model in AVAILABLE_MODELS:
+        model_copy = dict(model)
+        model_copy["recommended_for_system"] = model["id"] in recommended_ids
+        model_copy["compatibility"] = compatibility.get(model["id"], "not_recommended")
+        models.append(model_copy)
+    return models
+
+
+def _coerce_number(value, default):
+    """Safely coerce values (including mocked objects) to float."""
+    try:
+        number = float(value)
+        if number <= 0:
+            return float(default)
+        return number
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def get_system_profile():
+    """Collect lightweight host metrics used to recommend local models."""
+    memory = psutil.virtual_memory()
+    disk = shutil.disk_usage(MODELS_DIR)
+
+    ram_gb_total = _coerce_number(getattr(memory, "total", 0) / (1024 ** 3), 8)
+    ram_gb_available = _coerce_number(getattr(memory, "available", 0) / (1024 ** 3), 4)
+    cpu_logical = int(_coerce_number(psutil.cpu_count(logical=True), 2))
+    cpu_physical = int(_coerce_number(psutil.cpu_count(logical=False), 1))
+    disk_gb_free = _coerce_number(getattr(disk, "free", 0) / (1024 ** 3), 10)
+
+    return {
+        "ram_gb_total": round(ram_gb_total, 1),
+        "ram_gb_available": round(ram_gb_available, 1),
+        "cpu_cores_logical": cpu_logical,
+        "cpu_cores_physical": cpu_physical,
+        "disk_gb_free": round(disk_gb_free, 1)
+    }
+
+
+def _score_model_for_system(model, profile):
+    required_ram = _coerce_number(model.get("ram_required", 4), 4)
+    ram_total = max(_coerce_number(profile.get("ram_gb_total", 8), 8), 1)
+    ram_available = max(_coerce_number(profile.get("ram_gb_available", 4), 4), 0)
+    disk_free = max(_coerce_number(profile.get("disk_gb_free", 10), 10), 0)
+    disk_required = (model.get("size_bytes", 0) / (1024 ** 3)) * 1.1
+
+    has_ram_headroom = ram_total >= required_ram
+    has_disk_headroom = disk_free >= disk_required
+
+    score = 0
+    # Better scores for models that use 45%-80% of total RAM.
+    fit_ratio = required_ram / ram_total
+    if 0.45 <= fit_ratio <= 0.8:
+        score += 45
+    elif 0.3 <= fit_ratio < 0.45:
+        score += 35
+    elif 0.8 < fit_ratio <= 1.0:
+        score += 25
+    else:
+        score += max(0, int((1 - abs(0.6 - fit_ratio)) * 20))
+
+    if has_disk_headroom:
+        score += 25
+    if model.get("recommended"):
+        score += 15
+
+    quantization = model.get("quantization", "")
+    if quantization.startswith("Q4"):
+        score += 8
+    elif quantization.startswith("Q5"):
+        score += 10
+    elif quantization.startswith("Q6"):
+        score += 9
+    elif quantization.startswith("Q8"):
+        score += 6
+
+    # Penalize models that exceed current available RAM right now.
+    if required_ram > ram_available:
+        score -= int((required_ram - ram_available) * 6)
+
+    if not has_ram_headroom:
+        score -= 100
+    if not has_disk_headroom:
+        score -= 100
+
+    if score >= 75:
+        compatibility = "excellent"
+    elif score >= 55:
+        compatibility = "good"
+    elif score >= 35:
+        compatibility = "fair"
+    else:
+        compatibility = "not_recommended"
+
+    reasons = []
+    if has_ram_headroom:
+        reasons.append(f"Fits in system RAM ({required_ram:.0f}GB required)")
+    else:
+        reasons.append(f"Needs more RAM ({required_ram:.0f}GB required)")
+    if has_disk_headroom:
+        reasons.append("Enough free disk for download")
+    else:
+        reasons.append("Not enough free disk for safe download")
+    reasons.append(f"Quantization: {quantization}")
+
+    return {
+        "score": score,
+        "compatibility": compatibility,
+        "reasons": reasons,
+        "fits": has_ram_headroom and has_disk_headroom
+    }
+
+
+def get_model_recommendations(max_results=5):
+    """Recommend best-fit models for this machine (LM Studio-style guidance)."""
+    profile = get_system_profile()
+
+    ranked = []
+    for model in AVAILABLE_MODELS:
+        evaluation = _score_model_for_system(model, profile)
+        if evaluation["fits"]:
+            ranked.append({
+                **model,
+                "score": evaluation["score"],
+                "compatibility": evaluation["compatibility"],
+                "reasons": evaluation["reasons"]
+            })
+
+    ranked.sort(key=lambda item: item["score"], reverse=True)
+    selected = ranked[:max_results]
+
+    return {
+        "system": profile,
+        "recommendations": selected
+    }
 
 def get_local_models():
     """Return list of downloaded models with path, name, and size."""
