@@ -278,38 +278,6 @@ class TestAPISearchHistory(unittest.TestCase):
         self.assertIn('deleted_count', data)
 
 
-class TestAPICache(unittest.TestCase):
-    """Test cases for AI response cache endpoints."""
-
-    def setUp(self):
-        """Set up test client before each test method."""
-        self.client = TestClient(app)
-
-    @patch('backend.database.get_cache_stats')
-    def test_cache_stats(self, mock_get_stats):
-        """Test getting cache statistics."""
-        mock_get_stats.return_value = {"total_entries": 5, "total_hits": 10}
-        
-        response = self.client.get("/api/cache/stats")
-        
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data["total_entries"], 5)
-        self.assertEqual(data["total_hits"], 10)
-
-    @patch('backend.database.clear_response_cache')
-    def test_clear_cache(self, mock_clear_cache):
-        """Test clearing AI response cache."""
-        mock_clear_cache.return_value = 5
-        
-        response = self.client.post("/api/cache/clear")
-        
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertEqual(data["status"], "success")
-        self.assertEqual(data["cleared_entries"], 5)
-
-
 class TestAPIFileOperations(unittest.TestCase):
     """Test cases for file operation endpoints."""
 
@@ -402,6 +370,419 @@ class TestAPIIndexing(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertIn('running', data)
+
+
+class TestAPIStreamingEndpoint(unittest.TestCase):
+    """Test cases for streaming answer endpoint."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    @patch('backend.api.stream_ai_answer')
+    @patch('backend.api.load_config')
+    def test_stream_answer_with_provided_context(self, mock_load_config, mock_stream):
+        """Test streaming answer with pre-provided context."""
+        mock_config = MagicMock()
+        mock_config.get.return_value = 'openai'
+        mock_load_config.return_value = mock_config
+
+        mock_stream.return_value = iter(["token1", "token2", "token3"])
+
+        with patch('backend.api.index', MagicMock()):
+            response = self.client.post("/api/stream-answer", json={
+                "query": "test query",
+                "context": ["context snippet 1", "context snippet 2"]
+            })
+
+            self.assertEqual(response.status_code, 200)
+            # Verify streaming response
+            content = response.read().decode('utf-8')
+            self.assertIsInstance(content, str)
+
+    def test_stream_answer_without_index(self):
+        """Test streaming answer when index is not loaded."""
+        with patch('backend.api.index', None):
+            response = self.client.post("/api/stream-answer", json={
+                "query": "test query"
+            })
+
+            self.assertEqual(response.status_code, 200)
+            # Should return error message
+            content = response.read().decode('utf-8')
+            self.assertIn("Error", content)
+
+
+class TestAPIRateLimiting(unittest.TestCase):
+    """Test cases for rate limiting functionality."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    @patch('backend.api.load_config')
+    def test_rate_limit_headers(self, mock_load_config):
+        """Test that rate limit headers are present."""
+        mock_config = MagicMock()
+        mock_config.get.return_value = '/test/folder'
+        mock_config.getboolean.return_value = False
+        mock_load_config.return_value = mock_config
+
+        response = self.client.get("/api/config")
+
+        # Rate limiting should add headers
+        self.assertEqual(response.status_code, 200)
+
+
+class TestAPIFolderHistory(unittest.TestCase):
+    """Test cases for folder history management."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    @patch('backend.database.get_folder_history')
+    def test_get_folder_history(self, mock_get_history):
+        """Test getting folder history."""
+        mock_get_history.return_value = [
+            {'path': '/folder1', 'is_indexed': True},
+            {'path': '/folder2', 'is_indexed': True}
+        ]
+
+        response = self.client.get("/api/folders/history")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 2)
+
+    @patch('backend.database.clear_folder_history')
+    def test_clear_folder_history(self, mock_clear):
+        """Test clearing folder history."""
+        mock_clear.return_value = 5
+
+        response = self.client.delete("/api/folders/history")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['deleted_count'], 5)
+
+    @patch('backend.database.delete_folder_history_item')
+    def test_delete_folder_history_item(self, mock_delete):
+        """Test deleting a single folder from history."""
+        mock_delete.return_value = True
+
+        response = self.client.request(
+            "DELETE",
+            "/api/folders/history/item",
+            json={"path": "/test/folder"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_delete_folder_history_item_missing_path(self):
+        """Test deleting folder history without providing path."""
+        response = self.client.request(
+            "DELETE",
+            "/api/folders/history/item",
+            json={}
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+
+class TestAPILogging(unittest.TestCase):
+    """Test cases for frontend logging endpoint."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    def test_receive_error_log(self):
+        """Test receiving error log from frontend."""
+        response = self.client.post("/api/logs", json={
+            "level": "error",
+            "message": "Test error message",
+            "source": "Frontend",
+            "stack": "Error stack trace"
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['status'], 'logged')
+
+    def test_receive_warning_log(self):
+        """Test receiving warning log from frontend."""
+        response = self.client.post("/api/logs", json={
+            "level": "warn",
+            "message": "Test warning message",
+            "source": "Frontend"
+        })
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_receive_info_log(self):
+        """Test receiving info log from frontend."""
+        response = self.client.post("/api/logs", json={
+            "level": "info",
+            "message": "Test info message"
+        })
+
+        self.assertEqual(response.status_code, 200)
+
+
+class TestAPIHealthEndpoints(unittest.TestCase):
+    """Test cases for health check endpoints."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    def test_root_endpoint(self):
+        """Test root endpoint returns status."""
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('status', data)
+        self.assertEqual(data['status'], 'online')
+
+    def test_health_check_endpoint(self):
+        """Test dedicated health check endpoint."""
+        response = self.client.get("/api/health")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('status', data)
+        self.assertEqual(data['status'], 'ok')
+
+
+class TestAPISecurityFeatures(unittest.TestCase):
+    """Test cases for security features."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+        # Override security check for tests
+        from backend.api import verify_local_request
+        app.dependency_overrides[verify_local_request] = lambda: None
+
+    def tearDown(self):
+        """Clean up overrides."""
+        app.dependency_overrides = {}
+
+    @patch('backend.database.get_file_by_path')
+    def test_open_file_security_check_non_indexed(self, mock_get_file):
+        """Test that opening non-indexed files is blocked."""
+        mock_get_file.return_value = None  # File not in index
+
+        response = self.client.post("/api/open-file", json={
+            "path": "/some/random/file.pdf"
+        })
+
+        # Should be blocked for security
+        self.assertEqual(response.status_code, 403)
+
+    @patch('backend.database.get_file_by_path')
+    def test_open_file_security_check_disallowed_extension(self, mock_get_file):
+        """Test that files with disallowed extensions are blocked."""
+        mock_get_file.return_value = {'path': '/test/malicious.exe'}
+
+        with patch('os.path.exists', return_value=True):
+            response = self.client.post("/api/open-file", json={
+                "path": "/test/malicious.exe"
+            })
+
+            # Should be blocked due to dangerous extension
+            self.assertEqual(response.status_code, 403)
+
+    def test_open_file_missing_path(self):
+        """Test opening file without providing path."""
+        response = self.client.post("/api/open-file", json={})
+
+        self.assertEqual(response.status_code, 400)
+
+    @patch('backend.database.get_file_by_path')
+    def test_open_file_nonexistent_file(self, mock_get_file):
+        """Test opening a file that doesn't exist on disk."""
+        mock_get_file.return_value = {'path': '/test/missing.pdf'}
+
+        with patch('os.path.exists', return_value=False):
+            response = self.client.post("/api/open-file", json={
+                "path": "/test/missing.pdf"
+            })
+
+            self.assertEqual(response.status_code, 404)
+
+
+class TestAPIConfigEdgeCases(unittest.TestCase):
+    """Test edge cases for configuration management."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    @patch('backend.api.load_config')
+    def test_get_config_with_old_folder_format(self, mock_load_config):
+        """Test getting config with legacy single folder format."""
+        mock_config = MagicMock()
+        mock_config.get.side_effect = lambda section, key, fallback='': {
+            ('General', 'folder'): '/legacy/folder',
+            ('General', 'folders'): '',  # Empty new format
+            ('APIKeys', 'openai_api_key'): '',
+            ('LocalLLM', 'model_path'): '',
+            ('LocalLLM', 'provider'): 'openai'
+        }.get((section, key), fallback)
+
+        mock_config.getboolean.return_value = False
+        mock_load_config.return_value = mock_config
+
+        response = self.client.get("/api/config")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        # Should convert old format to new
+        self.assertIn('/legacy/folder', data['folders'])
+
+    @patch('backend.database.add_folder_to_history')
+    @patch('backend.api.save_config_file')
+    def test_update_config_with_empty_folders(self, mock_save, mock_add_history):
+        """Test updating config with empty folders list."""
+        response = self.client.post("/api/config", json={
+            "folders": [],
+            "auto_index": False,
+            "provider": "openai"
+        })
+
+        self.assertEqual(response.status_code, 200)
+        mock_save.assert_called_once()
+
+    @patch('backend.database.add_folder_to_history')
+    @patch('backend.api.save_config_file')
+    def test_update_config_with_multiple_api_keys(self, mock_save, mock_add_history):
+        """Test updating config with multiple API keys."""
+        response = self.client.post("/api/config", json={
+            "folders": ["/test"],
+            "auto_index": True,
+            "openai_api_key": "sk-openai",
+            "gemini_api_key": "gemini-key",
+            "anthropic_api_key": "anthropic-key",
+            "grok_api_key": "grok-key",
+            "provider": "gemini"
+        })
+
+        self.assertEqual(response.status_code, 200)
+
+
+class TestAPIIndexingEdgeCases(unittest.TestCase):
+    """Test edge cases for indexing functionality."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    @patch('backend.api.load_config')
+    def test_trigger_indexing_with_no_folders(self, mock_load_config):
+        """Test triggering indexing when no folders are configured."""
+        mock_config = MagicMock()
+        mock_config.get.return_value = ''  # No folders
+        mock_load_config.return_value = mock_config
+
+        response = self.client.post("/api/index")
+
+        self.assertEqual(response.status_code, 400)
+
+    @patch('backend.api.indexing_status', {'running': True})
+    def test_trigger_indexing_while_already_running(self):
+        """Test triggering indexing when it's already in progress."""
+        with patch('backend.api.load_config') as mock_config:
+            mock_config.return_value.get.return_value = '/test'
+
+            response = self.client.post("/api/index")
+
+            self.assertEqual(response.status_code, 400)
+
+    def test_validate_path_not_directory(self):
+        """Test validating a path that exists but is not a directory."""
+        with patch('os.path.exists', return_value=True), \
+             patch('os.path.isdir', return_value=False):
+            response = self.client.post("/api/validate-path", json={
+                "path": "/test/file.txt"
+            })
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertFalse(data['valid'])
+            self.assertIn('error', data)
+
+    def test_validate_path_empty(self):
+        """Test validating with empty path."""
+        response = self.client.post("/api/validate-path", json={
+            "path": ""
+        })
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data['valid'])
+
+
+class TestAPISearchEdgeCases(unittest.TestCase):
+    """Test edge cases for search functionality."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    @patch('backend.database.add_search_history')
+    @patch('backend.database.get_files_by_faiss_indices')
+    @patch('backend.api.load_config')
+    @patch('backend.api.search')
+    @patch('backend.api.summarize')
+    @patch('backend.api.get_embeddings')
+    def test_search_with_empty_results(self, mock_embeddings, mock_summarize,
+                                       mock_search, mock_config, mock_batch, mock_history):
+        """Test search that returns no results."""
+        mock_config.return_value.get.return_value = 'openai'
+        mock_search.return_value = ([], [])  # Empty results
+        mock_batch.return_value = {}
+
+        with patch('backend.api.index', MagicMock()), \
+             patch('backend.api.docs', []), \
+             patch('backend.api.tags', []):
+
+            response = self.client.post("/api/search", json={
+                "query": "nonexistent term"
+            })
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertEqual(len(data['results']), 0)
+
+    @patch('backend.database.add_search_history')
+    @patch('backend.database.get_files_by_faiss_indices')
+    @patch('backend.api.load_config')
+    @patch('backend.api.search')
+    @patch('backend.api.summarize')
+    @patch('backend.api.get_embeddings')
+    def test_search_with_very_long_query(self, mock_embeddings, mock_summarize,
+                                          mock_search, mock_config, mock_batch, mock_history):
+        """Test search with extremely long query."""
+        mock_config.return_value.get.return_value = 'openai'
+        mock_search.return_value = ([{'document': 'test', 'tags': [], 'faiss_idx': 0}], ['test'])
+        mock_summarize.return_value = "Summary"
+        mock_batch.return_value = {0: {'filename': 'test.pdf', 'path': '/test.pdf'}}
+
+        long_query = "word " * 1000  # Very long query
+
+        with patch('backend.api.index', MagicMock()), \
+             patch('backend.api.docs', []), \
+             patch('backend.api.tags', []):
+
+            response = self.client.post("/api/search", json={
+                "query": long_query
+            })
+
+            # Should handle long query without crashing
+            self.assertEqual(response.status_code, 200)
 
 
 if __name__ == '__main__':

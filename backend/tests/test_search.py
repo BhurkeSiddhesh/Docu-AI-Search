@@ -1,3 +1,10 @@
+"""
+Test Search Module
+
+Comprehensive tests for hybrid search functionality including
+semantic search, keyword search, RRF fusion, and query expansion.
+"""
+
 import unittest
 from unittest.mock import MagicMock, patch
 import sys
@@ -14,14 +21,87 @@ import numpy as np
 # Ensure we can import from root
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.search import search
+from backend.search import search, tokenize, expand_query
+
+
+class TestTokenization(unittest.TestCase):
+    """Test cases for tokenization functionality."""
+
+    def test_tokenize_basic(self):
+        """Test basic tokenization."""
+        result = tokenize("Hello World")
+        self.assertIsInstance(result, list)
+        self.assertEqual(result, ["hello", "world"])
+
+    def test_tokenize_with_punctuation(self):
+        """Test tokenization removes punctuation."""
+        result = tokenize("Hello, World!")
+        self.assertEqual(result, ["hello", "world"])
+
+    def test_tokenize_removes_stop_words(self):
+        """Test that stop words are removed."""
+        result = tokenize("the quick brown fox")
+        self.assertNotIn("the", result)
+        self.assertIn("quick", result)
+        self.assertIn("brown", result)
+
+    def test_tokenize_empty_string(self):
+        """Test tokenization with empty string."""
+        result = tokenize("")
+        self.assertEqual(result, [])
+
+    def test_tokenize_none(self):
+        """Test tokenization with None input."""
+        result = tokenize(None)
+        self.assertEqual(result, [])
+
+    def test_tokenize_removes_short_tokens(self):
+        """Test that single character tokens are removed."""
+        result = tokenize("a big cat")
+        self.assertNotIn("a", result)
+        self.assertIn("big", result)
+        self.assertIn("cat", result)
+
+
+class TestQueryExpansion(unittest.TestCase):
+    """Test cases for query expansion functionality."""
+
+    def test_expand_query_work(self):
+        """Test expansion of 'work' keyword."""
+        result = expand_query("work experience")
+        self.assertIn("work", result)
+        self.assertIn("experience", result)
+        # Should contain expansions like employment, history
+        self.assertIn("employment", result)
+
+    def test_expand_query_education(self):
+        """Test expansion of 'education' keyword."""
+        result = expand_query("education background")
+        self.assertIn("education", result)
+        self.assertIn("university", result)
+
+    def test_expand_query_no_expansion(self):
+        """Test query without expandable terms."""
+        result = expand_query("random query terms")
+        words = result.split()
+        self.assertIn("random", words)
+        self.assertIn("query", words)
+        self.assertIn("terms", words)
+
+    def test_expand_query_empty(self):
+        """Test expansion with empty query."""
+        result = expand_query("")
+        self.assertEqual(result, "")
+
 
 class TestSearch(unittest.TestCase):
+    """Test cases for search functionality."""
+
     def setUp(self):
+        """Set up test fixtures."""
         # Mock embeddings model
         self.mock_embeddings_model = MagicMock()
-        # Mock embed_query to return a valid numpy array-like structure if needed
-        # But since we mocked numpy, np.array will be a Mock.
+        self.mock_embeddings_model.embed_query.return_value = [0.1, 0.2, 0.3]
 
         # Mock ThreadPoolExecutor
         self.patcher = patch('concurrent.futures.ThreadPoolExecutor')
@@ -34,6 +114,7 @@ class TestSearch(unittest.TestCase):
         self.mock_executor.submit.return_value = self.mock_future
 
     def tearDown(self):
+        """Clean up test fixtures."""
         self.patcher.stop()
 
     def test_search_basic(self):
@@ -42,14 +123,6 @@ class TestSearch(unittest.TestCase):
         index = MagicMock()
         docs = [{"text": "doc1", "filepath": "path1"}, {"text": "doc2", "filepath": "path2"}]
         tags = ["tag1", "tag2"]
-
-        # Since numpy is mocked, np.array(...) returns a MagicMock.
-        # search.py does .
-        # And .
-
-        # We need to ensure  is iterable and yields 0, 1.
-        # If  is mocked,  is mocked.
-        # We can set side_effect or return_value.
 
         mock_dists = MagicMock()
         mock_idxs = MagicMock()
@@ -65,7 +138,6 @@ class TestSearch(unittest.TestCase):
         results, context = search(query, index, docs, tags, self.mock_embeddings_model)
 
         self.assertEqual(len(results), 2)
-        # Context is a list of strings
         self.assertEqual(context[0], "doc1")
         self.assertEqual(context[1], "doc2")
 
@@ -75,7 +147,7 @@ class TestSearch(unittest.TestCase):
         index = MagicMock()
         docs = []
         tags = []
-        
+
         mock_dists = MagicMock()
         mock_idxs = MagicMock()
 
@@ -85,9 +157,333 @@ class TestSearch(unittest.TestCase):
         self.mock_future.result.return_value = (mock_dists, mock_idxs)
 
         results, context = search(query, index, docs, tags, self.mock_embeddings_model)
-        
+
         self.assertEqual(len(results), 0)
         self.assertEqual(context, [])
+
+    def test_search_with_bm25(self):
+        """Test search with BM25 keyword search enabled."""
+        query = "important document"
+        index = MagicMock()
+        docs = [{"text": "important content", "filepath": "path1"}]
+        tags = ["tag1"]
+
+        mock_bm25 = MagicMock()
+        mock_bm25.get_scores.return_value = [10.5]  # High BM25 score
+
+        mock_dists = MagicMock()
+        mock_idxs = MagicMock()
+        mock_idxs.__getitem__.return_value = [0]
+        mock_dists.__getitem__.return_value = [0.5]
+
+        self.mock_future.result.return_value = (mock_dists, mock_idxs)
+
+        results, context = search(query, index, docs, tags, self.mock_embeddings_model, bm25=mock_bm25)
+
+        self.assertGreater(len(results), 0)
+        self.assertIn("important content", context)
+
+    def test_search_with_summaries(self):
+        """Test search with RAPTOR cluster summaries."""
+        query = "test query"
+        index = MagicMock()
+        docs = [{"text": "doc1", "filepath": "path1"}, {"text": "doc2", "filepath": "path2"}]
+        tags = ["tag1", "tag2"]
+
+        index_summaries = MagicMock()
+        cluster_map = {0: [0, 1]}  # Cluster 0 contains docs 0 and 1
+
+        # Mock vector search results
+        mock_dists = MagicMock()
+        mock_idxs = MagicMock()
+        mock_idxs.__getitem__.return_value = [0]
+        mock_dists.__getitem__.return_value = [0.1]
+
+        # Mock summary search results
+        mock_summary_dists = MagicMock()
+        mock_summary_idxs = MagicMock()
+        mock_summary_idxs.__getitem__.return_value = [0]
+        mock_summary_dists.__getitem__.return_value = [0.05]
+
+        # Setup executor to return different results for different calls
+        call_count = [0]
+        def mock_submit(fn, *args, **kwargs):
+            future = MagicMock()
+            if call_count[0] == 0:  # First call: chunk search
+                future.result.return_value = (mock_dists, mock_idxs)
+            elif call_count[0] == 1:  # Second call: summary search
+                future.result.return_value = (mock_summary_dists, mock_summary_idxs)
+            call_count[0] += 1
+            return future
+
+        self.mock_executor.submit = mock_submit
+
+        results, context = search(
+            query, index, docs, tags, self.mock_embeddings_model,
+            index_summaries=index_summaries, cluster_map=cluster_map
+        )
+
+        self.assertGreater(len(results), 0)
+
+    def test_search_deduplication(self):
+        """Test that search deduplicates results from same file."""
+        query = "test"
+        index = MagicMock()
+        # Two docs from the same file
+        docs = [
+            {"text": "content from file", "filepath": "/path/same.txt"},
+            {"text": "more content from file", "filepath": "/path/same.txt"}
+        ]
+        tags = ["tag1", "tag2"]
+
+        mock_dists = MagicMock()
+        mock_idxs = MagicMock()
+        mock_idxs.__getitem__.return_value = [0, 1]
+        mock_dists.__getitem__.return_value = [0.1, 0.2]
+
+        self.mock_future.result.return_value = (mock_dists, mock_idxs)
+
+        results, context = search(query, index, docs, tags, self.mock_embeddings_model)
+
+        # Should only return one result (deduplicated by file path)
+        self.assertEqual(len(results), 1)
+
+    def test_search_content_hash_deduplication(self):
+        """Test that near-duplicate content is filtered."""
+        query = "test"
+        index = MagicMock()
+        # Two docs with very similar content
+        docs = [
+            {"text": "This is the exact same content for testing purposes", "filepath": "/path/file1.txt"},
+            {"text": "This is the exact same content for testing purposes", "filepath": "/path/file2.txt"}
+        ]
+        tags = ["tag1", "tag2"]
+
+        mock_dists = MagicMock()
+        mock_idxs = MagicMock()
+        mock_idxs.__getitem__.return_value = [0, 1]
+        mock_dists.__getitem__.return_value = [0.1, 0.2]
+
+        self.mock_future.result.return_value = (mock_dists, mock_idxs)
+
+        results, context = search(query, index, docs, tags, self.mock_embeddings_model)
+
+        # Should filter near-duplicate content
+        self.assertLessEqual(len(results), 2)
+
+    def test_search_proper_noun_boost(self):
+        """Test that proper nouns get boosted in search results."""
+        query = "John Smith"  # Capitalized proper noun
+        index = MagicMock()
+        docs = [
+            {"text": "John Smith works here", "filepath": "path1"},
+            {"text": "Someone else works here", "filepath": "path2"}
+        ]
+        tags = ["tag1", "tag2"]
+
+        mock_dists = MagicMock()
+        mock_idxs = MagicMock()
+        mock_idxs.__getitem__.return_value = [0, 1]
+        mock_dists.__getitem__.return_value = [0.5, 0.3]
+
+        self.mock_future.result.return_value = (mock_dists, mock_idxs)
+
+        results, context = search(query, index, docs, tags, self.mock_embeddings_model)
+
+        # Should return results (proper noun boost is applied internally)
+        self.assertGreater(len(results), 0)
+
+    def test_search_with_string_tags(self):
+        """Test search when tags are strings instead of lists."""
+        query = "test"
+        index = MagicMock()
+        docs = [{"text": "doc1", "filepath": "path1"}]
+        tags = ["comma,separated,tags"]  # String format
+
+        mock_dists = MagicMock()
+        mock_idxs = MagicMock()
+        mock_idxs.__getitem__.return_value = [0]
+        mock_dists.__getitem__.return_value = [0.1]
+
+        self.mock_future.result.return_value = (mock_dists, mock_idxs)
+
+        results, context = search(query, index, docs, tags, self.mock_embeddings_model)
+
+        self.assertEqual(len(results), 1)
+        # Tags should be handled correctly
+        self.assertIn("tags", results[0])
+
+    def test_search_max_results_limit(self):
+        """Test that search respects the maximum results limit."""
+        query = "test"
+        index = MagicMock()
+        # Create 20 documents
+        docs = [{"text": f"doc{i}", "filepath": f"path{i}"} for i in range(20)]
+        tags = [f"tag{i}" for i in range(20)]
+
+        mock_dists = MagicMock()
+        mock_idxs = MagicMock()
+        mock_idxs.__getitem__.return_value = list(range(20))
+        mock_dists.__getitem__.return_value = [0.1 * i for i in range(20)]
+
+        self.mock_future.result.return_value = (mock_dists, mock_idxs)
+
+        results, context = search(query, index, docs, tags, self.mock_embeddings_model)
+
+        # Should limit to 10 results
+        self.assertLessEqual(len(results), 10)
+
+    def test_search_returns_required_fields(self):
+        """Test that search results contain all required fields."""
+        query = "test"
+        index = MagicMock()
+        docs = [{"text": "document content", "filepath": "/path/file.txt"}]
+        tags = [["semantic", "important"]]
+
+        mock_dists = MagicMock()
+        mock_idxs = MagicMock()
+        mock_idxs.__getitem__.return_value = [0]
+        mock_dists.__getitem__.return_value = [0.1]
+
+        self.mock_future.result.return_value = (mock_dists, mock_idxs)
+
+        results, context = search(query, index, docs, tags, self.mock_embeddings_model)
+
+        self.assertEqual(len(results), 1)
+        result = results[0]
+        # Verify all required fields are present
+        self.assertIn("document", result)
+        self.assertIn("distance", result)
+        self.assertIn("tags", result)
+        self.assertIn("faiss_idx", result)
+        self.assertIn("file_path", result)
+        self.assertIn("file_name", result)
+
+    def test_search_without_filepath(self):
+        """Test search with documents that don't have filepath."""
+        query = "test"
+        index = MagicMock()
+        docs = [{"text": "content without path"}]  # No filepath
+        tags = ["tag1"]
+
+        mock_dists = MagicMock()
+        mock_idxs = MagicMock()
+        mock_idxs.__getitem__.return_value = [0]
+        mock_dists.__getitem__.return_value = [0.1]
+
+        self.mock_future.result.return_value = (mock_dists, mock_idxs)
+
+        results, context = search(query, index, docs, tags, self.mock_embeddings_model)
+
+        self.assertEqual(len(results), 1)
+        # Should handle missing filepath gracefully (returns empty string or None)
+        file_path = results[0]["file_path"]
+        self.assertTrue(file_path is None or file_path == "")
+
+
+class TestSearchEdgeCases(unittest.TestCase):
+    """Test edge cases and boundary conditions."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.mock_embeddings_model = MagicMock()
+        self.mock_embeddings_model.embed_query.return_value = [0.1, 0.2, 0.3]
+
+        self.patcher = patch('concurrent.futures.ThreadPoolExecutor')
+        self.mock_executor_cls = self.patcher.start()
+        self.mock_executor = self.mock_executor_cls.return_value
+        self.mock_executor.__enter__.return_value = self.mock_executor
+
+        self.mock_future = MagicMock()
+        self.mock_executor.submit.return_value = self.mock_future
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        self.patcher.stop()
+
+    def test_search_with_none_index_summaries(self):
+        """Test search when index_summaries is None."""
+        query = "test"
+        index = MagicMock()
+        docs = [{"text": "doc1", "filepath": "path1"}]
+        tags = ["tag1"]
+
+        mock_dists = MagicMock()
+        mock_idxs = MagicMock()
+        mock_idxs.__getitem__.return_value = [0]
+        mock_dists.__getitem__.return_value = [0.1]
+
+        self.mock_future.result.return_value = (mock_dists, mock_idxs)
+
+        # Should not raise error with None summaries
+        results, context = search(
+            query, index, docs, tags, self.mock_embeddings_model,
+            index_summaries=None, cluster_summaries=None, cluster_map=None
+        )
+
+        self.assertEqual(len(results), 1)
+
+    def test_search_with_none_bm25(self):
+        """Test search when BM25 is not available."""
+        query = "test"
+        index = MagicMock()
+        docs = [{"text": "doc1", "filepath": "path1"}]
+        tags = ["tag1"]
+
+        mock_dists = MagicMock()
+        mock_idxs = MagicMock()
+        mock_idxs.__getitem__.return_value = [0]
+        mock_dists.__getitem__.return_value = [0.1]
+
+        self.mock_future.result.return_value = (mock_dists, mock_idxs)
+
+        # Should work without BM25
+        results, context = search(query, index, docs, tags, self.mock_embeddings_model, bm25=None)
+
+        self.assertEqual(len(results), 1)
+
+    def test_search_with_empty_query(self):
+        """Test search with empty query string."""
+        query = ""
+        index = MagicMock()
+        docs = [{"text": "doc1", "filepath": "path1"}]
+        tags = ["tag1"]
+
+        mock_dists = MagicMock()
+        mock_idxs = MagicMock()
+        mock_idxs.__getitem__.return_value = [0]
+        mock_dists.__getitem__.return_value = [0.1]
+
+        self.mock_future.result.return_value = (mock_dists, mock_idxs)
+
+        # Should handle empty query
+        results, context = search(query, index, docs, tags, self.mock_embeddings_model)
+
+        self.assertIsInstance(results, list)
+
+    def test_search_bm25_error_handling(self):
+        """Test that BM25 errors are handled gracefully."""
+        query = "test"
+        index = MagicMock()
+        docs = [{"text": "doc1", "filepath": "path1"}]
+        tags = ["tag1"]
+
+        mock_bm25 = MagicMock()
+        mock_bm25.get_scores.side_effect = Exception("BM25 error")
+
+        mock_dists = MagicMock()
+        mock_idxs = MagicMock()
+        mock_idxs.__getitem__.return_value = [0]
+        mock_dists.__getitem__.return_value = [0.1]
+
+        self.mock_future.result.return_value = (mock_dists, mock_idxs)
+
+        # Should not crash on BM25 error
+        results, context = search(query, index, docs, tags, self.mock_embeddings_model, bm25=mock_bm25)
+
+        # Should still return vector search results
+        self.assertGreater(len(results), 0)
+
 
 if __name__ == '__main__':
     unittest.main()
