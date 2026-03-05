@@ -402,6 +402,20 @@ AVAILABLE_MODELS = [
         "recommended": True,
         "url": "https://huggingface.co/Qwen/Qwen2-7B-Instruct-GGUF/resolve/main/qwen2-7b-instruct-q5_k_m.gguf"
     }
+,
+    {
+        "id": "Qwen3.5-35B-A3B-UD-Q4_K_M",
+        "name": "Qwen 3.5 35B A3B",
+        "description": "Alibaba's latest Qwen3.5 35B model. Highly capable and efficient.",
+        "size": "19.3 GB",
+        "size_bytes": 20700000000,
+        "ram_required": 24,
+        "category": "extra-large",
+        "quantization": "Q4_K_M",
+        "use_case": "Advanced Reasoning, Complex Instruction Following, Code",
+        "recommended": True,
+        "url": "https://huggingface.co/unsloth/Qwen3.5-35B-A3B-GGUF/resolve/main/Qwen3.5-35B-A3B-UD-Q4_K_M.gguf"
+    }
 ]
 
 download_status = {
