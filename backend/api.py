@@ -94,6 +94,10 @@ def get_download_status(*args, **kwargs):
     from backend.model_manager import get_download_status as _get_download_status
     return _get_download_status(*args, **kwargs)
 
+def get_model_recommendations(*args, **kwargs):
+    from backend.model_manager import get_model_recommendations as _get_model_recommendations
+    return _get_model_recommendations(*args, **kwargs)
+
 # -----------------------------
 from backend import database
 
@@ -220,6 +224,10 @@ async def list_available_models(request: Request):
 @app.get("/api/models/local")
 async def list_local_models(request: Request):
     return get_local_models()
+
+@app.get("/api/models/recommendations")
+async def list_model_recommendations(request: Request):
+    return get_model_recommendations()
 
 @app.post("/api/models/download/{model_id}")
 async def download_model_endpoint(model_id: str, request: Request):
@@ -743,13 +751,14 @@ async def open_file(request: dict, req: Request, _=Depends(verify_local_request)
     try:
         import subprocess
         import platform
-        
-        if platform.system() == 'Windows':
+
+        # Prefer os.startfile when available (and test-mocked), otherwise use OS-specific command.
+        if hasattr(os, 'startfile'):
             os.startfile(file_path)
         elif platform.system() == 'Darwin':  # macOS
-            subprocess.run(['open', file_path])
-        else:  # Linux
-            subprocess.run(['xdg-open', file_path])
+            subprocess.run(['open', file_path], check=False)
+        else:  # Linux/other
+            subprocess.run(['xdg-open', file_path], check=False)
         
         return {"status": "success", "message": f"Opened {os.path.basename(file_path)}"}
     except Exception as e:

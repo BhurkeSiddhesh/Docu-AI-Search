@@ -23,11 +23,19 @@ describe('ModelManager Component', () => {
         { id: 'phi-2', name: 'Phi-2', path: '/models/phi-2.gguf', size: 1700000000 }
     ]
 
+    const mockRecommendations = {
+        system: { ram_gb_total: 16, cpu_cores_logical: 8, disk_gb_free: 120 },
+        recommendations: [
+            { id: 'phi-2', name: 'Phi-2', compatibility: 'excellent' }
+        ]
+    }
+
     beforeEach(() => {
         vi.clearAllMocks()
         axios.get.mockImplementation((url) => {
             if (url.includes('/api/models/available')) return Promise.resolve({ data: mockAvailableModels })
             if (url.includes('/api/models/local')) return Promise.resolve({ data: mockLocalModels })
+            if (url.includes('/api/models/recommendations')) return Promise.resolve({ data: mockRecommendations })
             if (url.includes('/api/models/status')) return Promise.resolve({ data: { downloading: false } })
             return Promise.resolve({ data: {} })
         })
@@ -40,6 +48,7 @@ describe('ModelManager Component', () => {
             // Use getAllByText because Phi-2 appears in both lists
             expect(screen.getAllByText('Phi-2').length).toBeGreaterThan(0)
             expect(screen.getByText(/1.6 GB/i)).toBeDefined()
+            expect(screen.getByText(/Smart Recommendations for Your System/i)).toBeDefined()
         })
     })
 
