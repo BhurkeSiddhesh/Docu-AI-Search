@@ -624,6 +624,13 @@ python scripts/verify_golden_set.py
 
   - **Files**: `backend/api.py`, `backend/llm_integration.py`, `backend/search.py`, `backend/tests/test_security_logging.py`
 
+### 2026-03-06 (Licensing)
+- **Added MIT LICENSE and aligned package metadata**
+  - **feat**: Added `LICENSE` file with MIT license for 2026, copyright Siddhesh Bhurke.
+  - **feat**: Updated root `package.json` `author` field to "Siddhesh Bhurke" and `license` to "MIT".
+  - **feat**: Updated `frontend/package.json` `author` to "Siddhesh Bhurke" and `license` to "MIT" to align with root package.
+  - **Files**: `LICENSE`, `package.json`, `frontend/package.json`
+
 ### 2026-02-23 (Performance)
 - **Optimized Search Result Streaming** - Instant response by reusing search context
   - **perf**: Modified `stream_answer_endpoint` in `backend/api.py` to accept and use provided context, skipping redundant search.
