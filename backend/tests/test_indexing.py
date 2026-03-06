@@ -52,9 +52,9 @@ class TestIndexing(unittest.TestCase):
     """Test cases for indexing functionality."""
 
     def setUp(self):
+        """Set up test fixtures."""
         from backend import database
         database.init_database()
-        """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         self.test_folder = os.path.join(self.temp_dir, "test_docs")
         os.makedirs(self.test_folder, exist_ok=True)
@@ -62,8 +62,10 @@ class TestIndexing(unittest.TestCase):
             f.write("This is a test document.")
 
     def tearDown(self):
+        from backend import database
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
+        database.cleanup_test_data()
 
     @patch('backend.indexing.concurrent.futures.as_completed', side_effect=lambda fs: fs)
     @patch('backend.indexing.concurrent.futures.ThreadPoolExecutor', return_value=DummyExecutor())
@@ -83,7 +85,7 @@ class TestIndexing(unittest.TestCase):
         mock_summary.return_value = "Cluster Summary"
 
         res = create_index(self.test_folder, "openai", "fake_key")
-        index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+        index, docs, _tags, _idx_sum, _clus_sum, _clus_map, _bm25 = res
 
         self.assertIsNotNone(index)
         self.assertEqual(len(docs), 1)
@@ -138,6 +140,8 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         with open(os.path.join(self.folder2, "doc2.txt"), 'w') as f: f.write("C2")
 
     def tearDown(self):
+        from backend import database
+        database.cleanup_test_data()
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
@@ -173,11 +177,25 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         mock_get_embeddings.return_value.embed_documents.return_value = [[0.1]]
         mock_clustering.return_value = {0:[0]}
         mock_summary.return_value = "Sum"
-        
+
         calls = []
-        def cb(c, t, m=None): calls.append(c)
+        def cb(current, total, msg=None):
+            calls.append(current)
+
         create_index(self.folder1, "openai", "k", progress_callback=cb)
-        self.assertTrue(len(calls) > 0)
+
+        # Check that callback was called
+        self.assertGreater(len(calls), 0, "Progress callback should be called at least once")
+
+        # Check that progress values are within valid range
+        for progress in calls:
+            self.assertGreaterEqual(progress, 0, f"Progress value {progress} should be >= 0")
+            self.assertLessEqual(progress, 100, f"Progress value {progress} should be <= 100")
+
+        # Check that progress is monotonically non-decreasing
+        for i in range(1, len(calls)):
+            self.assertGreaterEqual(calls[i], calls[i-1],
+                f"Progress should be monotonically non-decreasing: {calls[i]} < {calls[i-1]} at index {i}")
 
     def test_create_index_nonexistent_folder(self):
         res = create_index("/nonexistent/folder/path", "openai", "fake_key")
@@ -203,7 +221,8 @@ class TestSaveIndex(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
     def tearDown(self):
-        shutil.rmtree(self.temp_dir)
+        if hasattr(self, 'temp_dir') and self.temp_dir and os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
 
     @patch('backend.indexing.faiss.write_index')
     def test_save_index_creates_all_files(self, mock_write_index):
