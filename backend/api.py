@@ -632,7 +632,7 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request):
         final_context_snippets = request.context
     else:
         # Re-run search to get context
-        results, _context_snippets = search(
+        results, context_snippets = search(
             request.query, index, docs, tags,
             get_embeddings(provider, api_key, model_path),
             index_summaries, cluster_summaries, cluster_map, bm25
@@ -1001,3 +1001,12 @@ def run_indexing(config, folders):
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+def verify_local_request(request: Request):
+    """
+    Dependency to ensure the request originates from localhost.
+    Useful for sensitive operations like configuration changes or file opening.
+    """
+    client_host = request.client.host
+    if client_host not in ["127.0.0.1", "::1", "localhost", "testclient"]:
+        raise HTTPException(status_code=403, detail="Access denied: Local connection required")

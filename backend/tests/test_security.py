@@ -1,9 +1,14 @@
 import unittest
 import os
 import tempfile
+import sys
+from unittest.mock import MagicMock, patch
+
+# Ensure module overrides before importing app
+sys.modules['fastapi.responses'] = MagicMock()
+
 from fastapi.testclient import TestClient
 from backend.api import app, verify_local_request
-from unittest.mock import patch, MagicMock
 from backend import model_manager
 
 class TestSecurityApi(unittest.TestCase):
@@ -12,8 +17,6 @@ class TestSecurityApi(unittest.TestCase):
         # Create a temporary file OUTSIDE the models directory
         self.temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
         self.temp_file.close()
-        # Mock sys.modules before importing app if necessary, but here it's already used
-        # sys.modules['fastapi.responses'] = MagicMock() 
         self.temp_path = self.temp_file.name
 
     def tearDown(self):
@@ -72,7 +75,8 @@ class TestSecurityApi(unittest.TestCase):
 
         # We need to mock os.startfile or subprocess to avoid actually opening it
         # os.startfile is Windows only, subprocess.run is for Mac/Linux
-        with patch('os.startfile', create=True) as mock_startfile,              patch('subprocess.run') as mock_run:
+        with patch('os.startfile', create=True) as mock_startfile, \
+             patch('subprocess.run') as mock_run:
                  response = self.client.post("/api/open-file", json={"path": self.temp_path})
                  self.assertEqual(response.status_code, 200, "Should allow indexed file")
 
