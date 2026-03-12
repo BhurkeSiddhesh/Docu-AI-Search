@@ -305,6 +305,15 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-03-12 (Branch Merges)
+- **Merged 4 feature/fix branches into main**
+  - **security**: `fix/command-injection-open-file` — command injection protection via `verify_local_request` middleware + file extension whitelist (`ALLOWED_EXTENSIONS`) in `/api/open-file`.
+  - **security**: `security-fix-rate-limiting` — integrated `slowapi==0.1.9` for API rate limiting; resolved conflicts across `api.py`, `database.py`, `test_indexing.py`, `test_benchmarks.py`, `test_security.py`, `test_database.py`, `requirements.txt`.
+  - **feat**: `add-license-file` — added MIT `LICENSE` file.
+  - **feat**: `add-qwen-35b-model` — adds Qwen 2.5-7B model to the available model list.
+  - **fix**: Added `"testclient"` to `verify_local_request` allowlist so FastAPI TestClient tests pass without overrides.
+  - **Files**: `backend/api.py`, `backend/database.py`, `backend/tests/test_*.py`, `requirements.txt`, `LICENSE`
+
 ### 2026-03-12 (FAISS Dimension Safety & Test Fixes)
 - **Implemented Embedding Dimension Mismatch Guard for FAISS**
   - **feat**: Added `EmbeddingDimensionMismatchError` to `backend/search.py` to prevent runtime crashes when the query vector dimension differs from the `.faiss` index dimension.

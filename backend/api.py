@@ -109,8 +109,8 @@ def verify_local_request(request: Request):
     if not request.client:
         return # Allow for test client if needed
     client_host = request.client.host
-    # Support both IPv4 and IPv6 localhost
-    if client_host not in ("127.0.0.1", "::1", "localhost", "testserver"):
+    # Support both IPv4 and IPv6 localhost, and FastAPI TestClient
+    if client_host not in ("127.0.0.1", "::1", "localhost", "testserver", "testclient"):
         logger.warning(f"Security: Blocked remote request to sensitive endpoint from {client_host}")
         raise HTTPException(status_code=403, detail="Access denied: Only local connections allowed")
 
