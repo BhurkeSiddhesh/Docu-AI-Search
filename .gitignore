@@ -37,6 +37,8 @@ models/
 *.db
 index_docs.pkl
 index_tags.pkl
+index_meta.json
+*.index
 
 # Configuration and Local Files
 config.ini
