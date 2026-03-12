@@ -924,5 +924,288 @@ class TestProgressCallbackBehavior(unittest.TestCase):
                 pass
 
 
+class TestIndexingWithEmbeddingClient(unittest.TestCase):
+    """Test indexing with injected embedding client."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        from backend import database
+        database.init_database()
+        self.temp_dir = tempfile.mkdtemp()
+
+        # Create test file
+        with open(os.path.join(self.temp_dir, "test.txt"), 'w') as f:
+            f.write("Test content for embedding")
+
+        # Global patches for executors
+        self.pp_patcher = patch('concurrent.futures.ProcessPoolExecutor', side_effect=MockExecutor)
+        self.tp_patcher = patch('concurrent.futures.ThreadPoolExecutor', side_effect=MockExecutor)
+        self.ac_patcher = patch('concurrent.futures.as_completed', side_effect=lambda fs: fs)
+        self.pp_patcher.start()
+        self.tp_patcher.start()
+        self.ac_patcher.start()
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        self.pp_patcher.stop()
+        self.tp_patcher.stop()
+        self.ac_patcher.stop()
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
+    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.extract_text')
+    def test_create_index_with_embedding_client(self, mock_extract_text, mock_splitter_cls):
+        """Test create_index with embedding_client parameter."""
+        # Mock text splitting
+        mock_splitter_instance = mock_splitter_cls.return_value
+        mock_splitter_instance.split_text.return_value = ["chunk1"]
+
+        mock_extract_text.return_value = "Test content"
+
+        # Create a mock embedding client
+        mock_embedding_client = MagicMock()
+        mock_embedding_client.embed_documents.return_value = [[0.1, 0.2, 0.3]]
+        mock_embedding_client.model_name = "test-embedding-model"
+
+        with patch('backend.indexing.get_tags', return_value="test"), \
+             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
+             patch('backend.indexing.smart_summary', return_value="Summary"):
+
+            res = create_index(
+                self.temp_dir,
+                provider="openai",
+                api_key="fake_key",
+                embedding_client=mock_embedding_client
+            )
+            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+
+            self.assertIsNotNone(index)
+            # Verify embedding client was used (not get_embeddings)
+            mock_embedding_client.embed_documents.assert_called()
+
+    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.extract_text')
+    @patch('backend.indexing.get_embeddings')
+    def test_create_index_fallback_to_get_embeddings(self, mock_get_embeddings,
+                                                       mock_extract_text, mock_splitter_cls):
+        """Test create_index falls back to get_embeddings when embedding_client is None."""
+        # Mock text splitting
+        mock_splitter_instance = mock_splitter_cls.return_value
+        mock_splitter_instance.split_text.return_value = ["chunk1"]
+
+        mock_extract_text.return_value = "Test content"
+
+        mock_embeddings_model = MagicMock()
+        mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3]]
+        mock_get_embeddings.return_value = mock_embeddings_model
+
+        with patch('backend.indexing.get_tags', return_value="test"), \
+             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
+             patch('backend.indexing.smart_summary', return_value="Summary"):
+
+            res = create_index(
+                self.temp_dir,
+                provider="openai",
+                api_key="fake_key",
+                embedding_client=None  # Explicitly None
+            )
+            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+
+            self.assertIsNotNone(index)
+            # Verify get_embeddings was called as fallback
+            mock_get_embeddings.assert_called_once()
+
+
+class TestSaveIndexWithMetadata(unittest.TestCase):
+    """Test save_index with metadata sidecar."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        from backend import database
+        database.init_database()
+        self.temp_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
+    @patch('backend.indexing.faiss.write_index')
+    def test_save_index_writes_metadata_sidecar(self, mock_write_index):
+        """Test that save_index creates metadata sidecar file."""
+        def side_effect_write(index, filepath):
+            with open(filepath, 'w') as f:
+                f.write("dummy")
+        mock_write_index.side_effect = side_effect_write
+
+        import faiss
+        index = faiss.IndexFlatL2(384)
+        index.d = 384
+        embeddings = np.array([[1.0] * 384], dtype='float32')
+        index.add(embeddings)
+
+        docs = [{"text": "Test"}]
+        tags = [["tag"]]
+
+        index_path = os.path.join(self.temp_dir, "test.faiss")
+        save_index(index, docs, tags, index_path,
+                   model_name="test-model", embedding_dim=384)
+
+        # Check metadata file exists
+        meta_path = os.path.join(self.temp_dir, "test_meta.json")
+        self.assertTrue(os.path.exists(meta_path))
+
+        # Verify metadata content
+        import json
+        with open(meta_path, 'r') as f:
+            meta = json.load(f)
+        self.assertEqual(meta['model_name'], "test-model")
+        self.assertEqual(meta['embedding_dim'], 384)
+
+
+class TestLoadIndexWithMetadata(unittest.TestCase):
+    """Test load_index returns metadata."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        from backend import database
+        database.init_database()
+        self.temp_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
+    @patch('backend.indexing.faiss.write_index')
+    @patch('backend.indexing.faiss.read_index')
+    def test_load_index_returns_metadata(self, mock_read_index, mock_write_index):
+        """Test that load_index returns metadata as 8th element."""
+        def side_effect_write(index, filepath):
+            with open(filepath, 'w') as f:
+                f.write("dummy")
+        mock_write_index.side_effect = side_effect_write
+
+        import faiss
+        index = faiss.IndexFlatL2(768)
+        index.d = 768
+        embeddings = np.array([[1.0] * 768], dtype='float32')
+        index.add(embeddings)
+
+        docs = [{"text": "Test"}]
+        tags = [["tag"]]
+
+        index_path = os.path.join(self.temp_dir, "test.faiss")
+        save_index(index, docs, tags, index_path,
+                   model_name="gpt-embedding", embedding_dim=768)
+
+        # Mock read to return same index
+        mock_read_index.return_value = index
+
+        # Load it back
+        result = load_index(index_path)
+        self.assertEqual(len(result), 8)  # Should be 8-tuple
+
+        meta = result[7]
+        self.assertIsInstance(meta, dict)
+        self.assertEqual(meta['model_name'], "gpt-embedding")
+        self.assertEqual(meta['embedding_dim'], 768)
+
+
+class TestIndexingProgressCallback(unittest.TestCase):
+    """Test progress callback behavior in detail."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        from backend import database
+        database.init_database()
+        self.temp_dir = tempfile.mkdtemp()
+
+        # Create multiple test files
+        for i in range(3):
+            with open(os.path.join(self.temp_dir, f"file{i}.txt"), 'w') as f:
+                f.write(f"Content {i}")
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
+    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.get_embeddings')
+    @patch('backend.indexing.extract_text')
+    def test_progress_callback_receives_correct_stages(self, mock_extract_text,
+                                                         mock_get_embeddings, mock_splitter_cls):
+        """Test that progress callback is called for different stages."""
+        # Mock text splitting
+        mock_splitter_instance = mock_splitter_cls.return_value
+        mock_splitter_instance.split_text.return_value = ["chunk1"]
+
+        mock_extract_text.return_value = "Test content"
+
+        mock_embeddings_model = MagicMock()
+        mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3]]
+        mock_get_embeddings.return_value = mock_embeddings_model
+
+        progress_calls = []
+
+        def progress_callback(current, total, message=None):
+            progress_calls.append({
+                'current': current,
+                'total': total,
+                'message': message
+            })
+
+        with patch('backend.indexing.get_tags', return_value="test"), \
+             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
+             patch('backend.indexing.smart_summary', return_value="Summary"):
+
+            create_index(
+                self.temp_dir,
+                "openai",
+                "fake_key",
+                progress_callback=progress_callback
+            )
+
+            # Verify progress was reported
+            self.assertGreater(len(progress_calls), 0)
+
+            # Check that messages describe different stages
+            messages = [call['message'] for call in progress_calls if call['message']]
+            stage_keywords = ['Extracting', 'Chunking', 'Embedding', 'Keyword', 'Clustering', 'Summarizing', 'Finalizing']
+            found_stages = [kw for kw in stage_keywords if any(kw.lower() in str(msg).lower() for msg in messages)]
+            self.assertGreater(len(found_stages), 2)  # At least a few stages
+
+
+class TestIndexingErrorRecovery(unittest.TestCase):
+    """Test indexing error recovery and edge cases."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        from backend import database
+        database.init_database()
+        self.temp_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        """Clean up test fixtures."""
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
+    @patch('backend.indexing.get_embeddings')
+    def test_create_index_handles_embedding_failure_gracefully(self, mock_get_embeddings):
+        """Test that indexing handles embedding failures."""
+        # Create a file
+        with open(os.path.join(self.temp_dir, "test.txt"), 'w') as f:
+            f.write("Test")
+
+        # Make embeddings fail
+        mock_get_embeddings.side_effect = Exception("Embedding API error")
+
+        # Should raise the exception (not silently fail)
+        with self.assertRaises(Exception):
+            create_index(self.temp_dir, "openai", "fake_key")
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -463,5 +463,348 @@ class TestDatabaseConnection(unittest.TestCase):
         conn2.close()
 
 
+class TestDatabaseResponseCache(unittest.TestCase):
+    """Test response cache functionality."""
+
+    def setUp(self):
+        """Clean cache before each test."""
+        from backend import database
+        database.init_database()
+        conn = database.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM response_cache")
+        conn.commit()
+        conn.close()
+
+    def test_cache_response(self):
+        """Test caching a response."""
+        from backend import database
+        database.cache_response(
+            query_hash="hash1",
+            context_hash="ctx1",
+            model_id="model1",
+            response_type="summary",
+            response_text="Test response"
+        )
+
+        # Verify cached
+        cached = database.get_cached_response("hash1", "ctx1", "model1", "summary")
+        self.assertEqual(cached, "Test response")
+
+    def test_cache_hit_increments_count(self):
+        """Test that cache hits increment the hit count."""
+        from backend import database
+        database.cache_response("hash2", "ctx2", "model2", "answer", "Answer text")
+
+        # First hit
+        database.get_cached_response("hash2", "ctx2", "model2", "answer")
+        # Second hit
+        database.get_cached_response("hash2", "ctx2", "model2", "answer")
+
+        # Verify hit count increased
+        stats = database.get_cache_stats()
+        self.assertGreater(stats['total_hits'], 0)
+
+    def test_cache_miss_returns_none(self):
+        """Test that cache miss returns None."""
+        from backend import database
+        cached = database.get_cached_response("nonexistent", "ctx", "model", "type")
+        self.assertIsNone(cached)
+
+    def test_clear_response_cache(self):
+        """Test clearing the cache."""
+        from backend import database
+        # Add entries
+        database.cache_response("h1", "c1", "m1", "t1", "text1")
+        database.cache_response("h2", "c2", "m2", "t2", "text2")
+
+        # Clear
+        count = database.clear_response_cache()
+        self.assertEqual(count, 2)
+
+        # Verify empty
+        stats = database.get_cache_stats()
+        self.assertEqual(stats['total_entries'], 0)
+
+
+class TestDatabaseClusters(unittest.TestCase):
+    """Test cluster (RAPTOR) functionality."""
+
+    def setUp(self):
+        """Clean clusters before each test."""
+        from backend import database
+        database.init_database()
+        database.clear_clusters()
+
+    def test_add_cluster(self):
+        """Test adding a single cluster."""
+        from backend import database
+        cluster_id = database.add_cluster("Test cluster summary", level=1)
+        self.assertIsInstance(cluster_id, int)
+        self.assertGreater(cluster_id, 0)
+
+    def test_get_clusters_by_level(self):
+        """Test retrieving clusters by level."""
+        from backend import database
+        database.add_cluster("Level 1 cluster", level=1)
+        database.add_cluster("Another level 1", level=1)
+        database.add_cluster("Level 2 cluster", level=2)
+
+        level1_clusters = database.get_clusters_by_level(1)
+        self.assertEqual(len(level1_clusters), 2)
+
+        level2_clusters = database.get_clusters_by_level(2)
+        self.assertEqual(len(level2_clusters), 1)
+
+    def test_add_clusters_batch(self):
+        """Test batch adding clusters."""
+        from backend import database
+        clusters_data = [
+            ("Cluster 1", 1),
+            ("Cluster 2", 1),
+            ("Cluster 3", 2)
+        ]
+
+        database.add_clusters_batch(clusters_data)
+
+        all_level1 = database.get_clusters_by_level(1)
+        self.assertEqual(len(all_level1), 2)
+
+    def test_clear_clusters(self):
+        """Test clearing all clusters."""
+        from backend import database
+        database.add_cluster("Cluster to clear", level=1)
+        database.clear_clusters()
+
+        clusters = database.get_clusters_by_level(1)
+        self.assertEqual(len(clusters), 0)
+
+
+class TestDatabaseCleanup(unittest.TestCase):
+    """Test cleanup functionality."""
+
+    def test_cleanup_test_data(self):
+        """Test cleaning up test data from production database."""
+        from backend import database
+        from datetime import datetime
+
+        database.init_database()
+
+        # Add some test-like paths
+        database.add_file(
+            path='/test/path/file.pdf',
+            filename='file.pdf',
+            extension='.pdf',
+            size_bytes=1024,
+            modified_date=datetime.now(),
+            chunk_count=1,
+            faiss_start_idx=0,
+            faiss_end_idx=0
+        )
+
+        database.add_folder_to_history('/test/folder')
+        database.add_search_history('test query', 0, 100)
+
+        # Run cleanup
+        counts = database.cleanup_test_data()
+
+        # Verify cleanup happened
+        self.assertIsInstance(counts, dict)
+        self.assertIn('files', counts)
+        self.assertIn('folders', counts)
+        self.assertIn('search_history', counts)
+
+
+class TestDatabaseConcurrency(unittest.TestCase):
+    """Test thread safety of database connections."""
+
+    def test_multiple_connections_different_threads(self):
+        """Test that connections work across threads."""
+        from backend import database
+        import threading
+
+        database.init_database()
+        results = []
+
+        def worker():
+            conn = database.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            result = cursor.fetchone()
+            results.append(result[0])
+            conn.close()
+
+        threads = [threading.Thread(target=worker) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # All threads should succeed
+        self.assertEqual(len(results), 5)
+        self.assertTrue(all(r == 1 for r in results))
+
+
+class TestDatabaseMarkFolderIndexed(unittest.TestCase):
+    """Test marking folders as indexed."""
+
+    def setUp(self):
+        """Clean folder history before each test."""
+        from backend import database
+        database.init_database()
+        database.clear_folder_history()
+
+    def test_mark_folder_indexed_new_folder(self):
+        """Test marking a new folder as indexed."""
+        from backend import database
+
+        database.mark_folder_indexed('/new/folder')
+
+        history = database.get_folder_history(indexed_only=True)
+        paths = [item['path'] for item in history]
+        self.assertIn('/new/folder', paths)
+
+    def test_mark_folder_indexed_existing_folder(self):
+        """Test marking an existing folder as indexed."""
+        from backend import database
+
+        database.add_folder_to_history('/existing/folder')
+        database.mark_folder_indexed('/existing/folder')
+
+        history = database.get_folder_history(indexed_only=True)
+        paths = [item['path'] for item in history]
+        self.assertIn('/existing/folder', paths)
+
+
+class TestDatabaseBatchOperations(unittest.TestCase):
+    """Test batch database operations performance."""
+
+    def setUp(self):
+        """Set up test environment."""
+        from backend import database
+        database.init_database()
+        database.clear_all_files()
+
+    def test_add_files_batch_performance(self):
+        """Test that batch insert is efficient."""
+        from backend import database
+        from datetime import datetime
+
+        # Create 100 file records
+        files_data = [
+            {
+                'path': f'/test/file{i}.txt',
+                'filename': f'file{i}.txt',
+                'extension': '.txt',
+                'size_bytes': 1024,
+                'modified_date': datetime.now(),
+                'chunk_count': 1,
+                'faiss_start_idx': i * 10,
+                'faiss_end_idx': i * 10 + 9
+            }
+            for i in range(100)
+        ]
+
+        # Should complete without error
+        database.add_files_batch(files_data)
+
+        # Verify all added
+        all_files = database.get_all_files()
+        self.assertGreaterEqual(len(all_files), 100)
+
+
+class TestDatabaseFileByName(unittest.TestCase):
+    """Test file lookup by name functionality."""
+
+    def setUp(self):
+        """Set up test environment."""
+        from backend import database
+        database.init_database()
+        database.clear_all_files()
+
+    def test_get_file_by_name_exists(self):
+        """Test getting file by name when it exists."""
+        from backend import database
+        from datetime import datetime
+
+        database.add_file(
+            path='/test/unique_file.pdf',
+            filename='unique_file.pdf',
+            extension='.pdf',
+            size_bytes=2048,
+            modified_date=datetime.now(),
+            chunk_count=1,
+            faiss_start_idx=0,
+            faiss_end_idx=0
+        )
+
+        file_info = database.get_file_by_name('unique_file.pdf')
+        self.assertIsNotNone(file_info)
+        self.assertEqual(file_info['filename'], 'unique_file.pdf')
+
+    def test_get_file_by_name_not_exists(self):
+        """Test getting file by name when it doesn't exist."""
+        from backend import database
+
+        file_info = database.get_file_by_name('nonexistent_file.pdf')
+        self.assertIsNone(file_info)
+
+
+class TestDatabaseEdgeCases(unittest.TestCase):
+    """Test database edge cases and boundary conditions."""
+
+    def test_get_files_with_limit_and_offset(self):
+        """Test pagination with limit and offset."""
+        from backend import database
+        from datetime import datetime
+
+        database.init_database()
+        database.clear_all_files()
+
+        # Add 10 files
+        for i in range(10):
+            database.add_file(
+                path=f'/test/file{i}.txt',
+                filename=f'file{i}.txt',
+                extension='.txt',
+                size_bytes=100,
+                modified_date=datetime.now(),
+                chunk_count=1,
+                faiss_start_idx=i,
+                faiss_end_idx=i
+            )
+
+        # Test limit
+        files = database.get_all_files(limit=5)
+        self.assertEqual(len(files), 5)
+
+        # Test offset
+        files_offset = database.get_all_files(limit=5, offset=5)
+        self.assertEqual(len(files_offset), 5)
+
+    def test_add_file_with_special_characters_in_path(self):
+        """Test adding file with special characters in path."""
+        from backend import database
+        from datetime import datetime
+
+        database.init_database()
+
+        special_path = "/test/folder (2024) [data]/file & name.pdf"
+        database.add_file(
+            path=special_path,
+            filename='file & name.pdf',
+            extension='.pdf',
+            size_bytes=1024,
+            modified_date=datetime.now(),
+            chunk_count=1,
+            faiss_start_idx=0,
+            faiss_end_idx=0
+        )
+
+        file_info = database.get_file_by_path(special_path)
+        self.assertIsNotNone(file_info)
+        self.assertEqual(file_info['path'], special_path)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

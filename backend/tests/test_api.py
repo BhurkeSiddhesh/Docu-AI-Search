@@ -785,5 +785,308 @@ class TestAPISearchEdgeCases(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
 
 
+class TestAPIEmbeddingSettings(unittest.TestCase):
+    """Test cases for embedding settings endpoints."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    @patch('backend.settings.get_embedding_config_from_ini')
+    def test_get_embedding_settings(self, mock_get_config):
+        """Test getting embedding settings."""
+        mock_get_config.return_value = {
+            'provider_type': 'local',
+            'model_name': 'test-model',
+            'api_key_set': False
+        }
+
+        response = self.client.get("/api/settings/embeddings")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('provider_type', data)
+        self.assertIn('model_name', data)
+        self.assertIn('api_key_set', data)
+
+    @patch('backend.settings.save_embedding_config')
+    def test_update_embedding_settings_local(self, mock_save):
+        """Test updating embedding settings to local provider."""
+        mock_save.return_value = None
+
+        response = self.client.post("/api/settings/embeddings", json={
+            "provider_type": "local",
+            "model_name": "new-local-model"
+        })
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+
+    @patch('backend.settings.save_embedding_config')
+    def test_update_embedding_settings_commercial(self, mock_save):
+        """Test updating embedding settings with API key."""
+        mock_save.return_value = None
+
+        response = self.client.post("/api/settings/embeddings", json={
+            "provider_type": "commercial_api",
+            "model_name": "text-embedding-ada-002",
+            "api_key": "sk-test-key"
+        })
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_update_embedding_settings_missing_api_key(self):
+        """Test updating embedding settings without required API key."""
+        response = self.client.post("/api/settings/embeddings", json={
+            "provider_type": "commercial_api",
+            "model_name": "text-embedding-ada-002"
+        })
+
+        # Should fail validation
+        self.assertIn(response.status_code, [400, 422])
+
+    def test_update_embedding_settings_invalid_provider(self):
+        """Test updating with invalid provider type."""
+        response = self.client.post("/api/settings/embeddings", json={
+            "provider_type": "invalid_provider",
+            "model_name": "some-model"
+        })
+
+        # Should fail validation
+        self.assertIn(response.status_code, [400, 422])
+
+
+class TestAPIBrowseFolder(unittest.TestCase):
+    """Test cases for folder browse endpoint."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    @patch('tkinter.filedialog.askdirectory')
+    @patch('tkinter.Tk')
+    def test_browse_folder_selected(self, mock_tk, mock_dialog):
+        """Test browsing and selecting a folder."""
+        mock_root = MagicMock()
+        mock_tk.return_value = mock_root
+        mock_dialog.return_value = "/selected/folder"
+
+        response = self.client.get("/api/browse")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['folder'], "/selected/folder")
+
+    @patch('tkinter.filedialog.askdirectory')
+    @patch('tkinter.Tk')
+    def test_browse_folder_cancelled(self, mock_tk, mock_dialog):
+        """Test browsing when user cancels."""
+        mock_root = MagicMock()
+        mock_tk.return_value = mock_root
+        mock_dialog.return_value = ""  # Empty when cancelled
+
+        response = self.client.get("/api/browse")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIsNone(data['folder'])
+
+
+class TestAPICacheEndpoints(unittest.TestCase):
+    """Test cases for AI response cache endpoints."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    @patch('backend.database.get_cache_stats')
+    def test_get_cache_stats(self, mock_stats):
+        """Test getting cache statistics."""
+        mock_stats.return_value = {
+            'total_entries': 42,
+            'total_hits': 128
+        }
+
+        response = self.client.get("/api/cache/stats")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['total_entries'], 42)
+        self.assertEqual(data['total_hits'], 128)
+
+    @patch('backend.database.clear_response_cache')
+    def test_clear_cache(self, mock_clear):
+        """Test clearing AI response cache."""
+        mock_clear.return_value = 15
+
+        response = self.client.post("/api/cache/clear")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['status'], 'success')
+        self.assertEqual(data['cleared_entries'], 15)
+
+
+class TestAPISearchDimensionMismatch(unittest.TestCase):
+    """Test cases for embedding dimension mismatch handling."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    @patch('backend.database.add_search_history')
+    @patch('backend.api.load_config')
+    @patch('backend.api.search')
+    @patch('backend.api.get_embeddings')
+    def test_search_dimension_mismatch_error(self, mock_embeddings, mock_search,
+                                              mock_config, mock_history):
+        """Test search when embedding dimension doesn't match index."""
+        from backend.search import EmbeddingDimensionMismatchError
+
+        mock_config.return_value.get.return_value = 'openai'
+        mock_search.side_effect = EmbeddingDimensionMismatchError(
+            "Query dimension (384) != Index dimension (768)"
+        )
+
+        with patch('backend.api.index', MagicMock()), \
+             patch('backend.api.docs', []), \
+             patch('backend.api.tags', []):
+
+            response = self.client.post("/api/search", json={
+                "query": "test query"
+            })
+
+            # Should return 409 Conflict
+            self.assertEqual(response.status_code, 409)
+            self.assertIn("dimension", response.json()['detail'].lower())
+
+
+class TestAPIModelDownloadEdgeCases(unittest.TestCase):
+    """Test edge cases for model download functionality."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    @patch('backend.api.start_download')
+    def test_download_model_failure(self, mock_start_download):
+        """Test model download failure."""
+        mock_start_download.return_value = (False, "Download failed: Network error")
+
+        response = self.client.post("/api/models/download/invalid-model")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('detail', response.json())
+
+    @patch('backend.model_manager.delete_model')
+    def test_delete_model_not_found(self, mock_delete):
+        """Test deleting a model that doesn't exist."""
+        mock_delete.return_value = False
+
+        response = self.client.request(
+            "DELETE",
+            "/api/models/delete",
+            json={"path": "/models/nonexistent.gguf"}
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_delete_model_missing_path(self):
+        """Test deleting model without providing path."""
+        response = self.client.request(
+            "DELETE",
+            "/api/models/delete",
+            json={}
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+
+class TestAPIBenchmarkEdgeCases(unittest.TestCase):
+    """Test edge cases for benchmark functionality."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    @patch('backend.api.benchmark_status', {'running': True})
+    def test_run_benchmarks_while_already_running(self):
+        """Test running benchmarks when already in progress."""
+        response = self.client.post("/api/benchmarks/run")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('already running', response.json()['detail'])
+
+    @patch('backend.api.benchmark_results', None)
+    @patch('os.path.exists')
+    def test_get_benchmark_results_no_data(self, mock_exists):
+        """Test getting results when no benchmarks have been run."""
+        mock_exists.return_value = False
+
+        response = self.client.get("/api/benchmarks/results")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn('message', data)
+
+
+class TestAPIMultipleFoldersIndexing(unittest.TestCase):
+    """Test indexing with multiple folders."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    @patch('backend.api.load_config')
+    @patch('backend.api.BackgroundTasks.add_task')
+    def test_index_multiple_folders(self, mock_add_task, mock_load_config):
+        """Test indexing multiple folders at once."""
+        mock_config = MagicMock()
+        mock_config.get.side_effect = lambda section, key, fallback='': {
+            ('General', 'folders'): '/folder1,/folder2,/folder3'
+        }.get((section, key), fallback)
+        mock_load_config.return_value = mock_config
+
+        response = self.client.post("/api/index")
+
+        self.assertEqual(response.status_code, 200)
+        mock_add_task.assert_called_once()
+
+
+class TestAPIStreamingEdgeCases(unittest.TestCase):
+    """Test edge cases for streaming endpoint."""
+
+    def setUp(self):
+        """Set up test client before each test method."""
+        self.client = TestClient(app)
+
+    @patch('backend.api.stream_ai_answer')
+    @patch('backend.api.search')
+    @patch('backend.api.summarize')
+    @patch('backend.api.load_config')
+    def test_stream_answer_rerun_search(self, mock_config, mock_summarize,
+                                        mock_search, mock_stream):
+        """Test streaming answer when context not provided (re-runs search)."""
+        mock_config.return_value.get.return_value = 'openai'
+        mock_search.return_value = ([{'document': 'test', 'tags': [], 'faiss_idx': 0}], ['context'])
+        mock_summarize.return_value = "Summary"
+        mock_stream.return_value = iter(["token1", "token2"])
+
+        with patch('backend.api.index', MagicMock()), \
+             patch('backend.api.docs', []), \
+             patch('backend.api.tags', []), \
+             patch('backend.database.get_files_by_faiss_indices', return_value={}):
+
+            response = self.client.post("/api/stream-answer", json={
+                "query": "test query"
+                # No context provided
+            })
+
+            self.assertEqual(response.status_code, 200)
+            # Verify search was called
+            mock_search.assert_called_once()
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -206,4 +206,285 @@ describe('SettingsModal Component', () => {
             expect(screen.getByText('api_key is required for huggingface_api')).toBeDefined()
         })
     })
+
+    // ── Additional comprehensive tests ──────────────────────────────────────
+
+    it('navigates between different settings sections', async () => {
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('Settings'))
+
+        // Default section is folders
+        expect(screen.getByText('Indexed Folders')).toBeDefined()
+
+        // Navigate to AI Provider
+        fireEvent.click(screen.getByText('AI Provider'))
+        await waitFor(() => expect(screen.getByText('OpenAI (ChatGPT)')).toBeDefined())
+
+        // Navigate to Local Models
+        fireEvent.click(screen.getByText('Local Models'))
+        await waitFor(() => expect(screen.getByTestId('model-manager')).toBeDefined())
+
+        // Navigate to Data Management
+        fireEvent.click(screen.getByText('Data Management'))
+        await waitFor(() => expect(screen.getByText('AI Response Cache')).toBeDefined())
+    })
+
+    it('displays active model badge when activeModel prop is provided', async () => {
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="GPT-4" />)
+        await waitFor(() => screen.getByText('Settings'))
+
+        fireEvent.click(screen.getByText('Local Models'))
+        await waitFor(() => {
+            expect(screen.getByText('GPT-4')).toBeDefined()
+            expect(screen.getByText('Active')).toBeDefined()
+        })
+    })
+
+    it('shows indexing progress bar when indexing is running', async () => {
+        axios.get.mockImplementation((url) => {
+            if (url.includes('/api/config')) return Promise.resolve({ data: mockConfig })
+            if (url.includes('/api/index/status')) return Promise.resolve({
+                data: { running: true, progress: 50, current_file: 'test.pdf' }
+            })
+            if (url.includes('/api/folders/history')) return Promise.resolve({ data: mockFolderHistory })
+            if (url.includes('/api/cache/stats')) return Promise.resolve({ data: { total_entries: 0, total_hits: 0 } })
+            if (url.includes('/api/settings/embeddings')) return Promise.resolve({ data: mockEmbeddingConfig })
+            return Promise.resolve({ data: {} })
+        })
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+
+        await waitFor(() => {
+            expect(screen.getByText('Indexing...')).toBeDefined()
+            expect(screen.getByText('50%')).toBeDefined()
+            expect(screen.getByText('test.pdf')).toBeDefined()
+        })
+    })
+
+    it('shows indexing error when indexing fails', async () => {
+        axios.get.mockImplementation((url) => {
+            if (url.includes('/api/config')) return Promise.resolve({ data: mockConfig })
+            if (url.includes('/api/index/status')) return Promise.resolve({
+                data: { running: false, error: 'Failed to index: Permission denied' }
+            })
+            if (url.includes('/api/folders/history')) return Promise.resolve({ data: mockFolderHistory })
+            if (url.includes('/api/cache/stats')) return Promise.resolve({ data: { total_entries: 0, total_hits: 0 } })
+            if (url.includes('/api/settings/embeddings')) return Promise.resolve({ data: mockEmbeddingConfig })
+            return Promise.resolve({ data: {} })
+        })
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+
+        await waitFor(() => {
+            expect(screen.getByText('Failed to index: Permission denied')).toBeDefined()
+        })
+    })
+
+    it('triggers rebuild index when button is clicked', async () => {
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('Settings'))
+
+        fireEvent.click(screen.getByText('Rebuild Index'))
+
+        await waitFor(() => {
+            // Should save config first
+            expect(axios.post).toHaveBeenCalledWith(
+                'http://localhost:8000/api/config',
+                expect.anything()
+            )
+            // Then trigger indexing
+            expect(axios.post).toHaveBeenCalledWith('http://localhost:8000/api/index')
+        })
+    })
+
+    it('clears AI response cache when button is clicked', async () => {
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('Settings'))
+
+        fireEvent.click(screen.getByText('Data Management'))
+        await waitFor(() => screen.getByText('Clear Cache'))
+
+        fireEvent.click(screen.getByText('Clear Cache'))
+
+        expect(global.confirm).toHaveBeenCalled()
+        await waitFor(() => {
+            expect(axios.post).toHaveBeenCalledWith('http://localhost:8000/api/cache/clear')
+        })
+    })
+
+    it('displays cache statistics', async () => {
+        axios.get.mockImplementation((url) => {
+            if (url.includes('/api/config')) return Promise.resolve({ data: mockConfig })
+            if (url.includes('/api/index/status')) return Promise.resolve({ data: { running: false } })
+            if (url.includes('/api/folders/history')) return Promise.resolve({ data: mockFolderHistory })
+            if (url.includes('/api/cache/stats')) return Promise.resolve({
+                data: { total_entries: 42, total_hits: 128 }
+            })
+            if (url.includes('/api/settings/embeddings')) return Promise.resolve({ data: mockEmbeddingConfig })
+            return Promise.resolve({ data: {} })
+        })
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('Settings'))
+
+        fireEvent.click(screen.getByText('Data Management'))
+
+        await waitFor(() => {
+            expect(screen.getByText(/42 entries/)).toBeDefined()
+            expect(screen.getByText(/128 hits saved/)).toBeDefined()
+        })
+    })
+
+    it('changes model name in embedding config', async () => {
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('Settings'))
+
+        fireEvent.click(screen.getByText('Embedding Provider'))
+        await waitFor(() => screen.getByLabelText('Model Name / Repo ID'))
+
+        const modelInput = screen.getByLabelText('Model Name / Repo ID')
+        fireEvent.change(modelInput, { target: { value: 'new-model-name' } })
+
+        expect(modelInput.value).toBe('new-model-name')
+    })
+
+    it('disables save button while saving', async () => {
+        // Make save take longer
+        axios.post.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve({ data: { status: 'success' } }), 100)))
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('Settings'))
+
+        const saveButton = screen.getByText('Save Changes')
+        fireEvent.click(saveButton)
+
+        // Button should be disabled during save
+        expect(saveButton.closest('button').disabled).toBe(true)
+    })
+
+    it('does not send placeholder API key when saving', async () => {
+        axios.get.mockImplementation((url) => {
+            if (url.includes('/api/config')) return Promise.resolve({ data: mockConfig })
+            if (url.includes('/api/index/status')) return Promise.resolve({ data: { running: false } })
+            if (url.includes('/api/folders/history')) return Promise.resolve({ data: mockFolderHistory })
+            if (url.includes('/api/cache/stats')) return Promise.resolve({ data: { total_entries: 0, total_hits: 0 } })
+            if (url.includes('/api/settings/embeddings')) return Promise.resolve({
+                data: { provider_type: 'commercial_api', model_name: 'test', api_key_set: true }
+            })
+            return Promise.resolve({ data: {} })
+        })
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('Settings'))
+
+        fireEvent.click(screen.getByText('Embedding Provider'))
+        await waitFor(() => screen.getByLabelText(/API Key/i))
+
+        // API key should show placeholder
+        const apiKeyInput = screen.getByLabelText(/API Key/i)
+        expect(apiKeyInput.value).toBe('••••••••')
+
+        // Save without changing the API key
+        fireEvent.click(screen.getByText('Save Changes'))
+
+        await waitFor(() => {
+            // Should not send the placeholder
+            const embeddingCall = axios.post.mock.calls.find(call =>
+                call[0] === 'http://localhost:8000/api/settings/embeddings'
+            )
+            expect(embeddingCall[1].api_key).toBeUndefined()
+        })
+    })
+
+    it('handles browse folder error gracefully', async () => {
+        axios.get.mockImplementation((url) => {
+            if (url.includes('/api/browse')) return Promise.reject(new Error('Failed to open dialog'))
+            if (url.includes('/api/config')) return Promise.resolve({ data: mockConfig })
+            if (url.includes('/api/index/status')) return Promise.resolve({ data: { running: false } })
+            if (url.includes('/api/folders/history')) return Promise.resolve({ data: mockFolderHistory })
+            if (url.includes('/api/cache/stats')) return Promise.resolve({ data: { total_entries: 0, total_hits: 0 } })
+            if (url.includes('/api/settings/embeddings')) return Promise.resolve({ data: mockEmbeddingConfig })
+            return Promise.resolve({ data: {} })
+        })
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('Settings'))
+
+        // Click add folder (should not crash)
+        fireEvent.click(screen.getByText('Add Folder'))
+
+        // Should handle error gracefully (no crash)
+        await waitFor(() => expect(axios.get).toHaveBeenCalled())
+    })
+
+    it('updates API keys for different providers', async () => {
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('Settings'))
+
+        fireEvent.click(screen.getByText('AI Provider'))
+        await waitFor(() => screen.getByText('OpenAI (ChatGPT)'))
+
+        // Find all API key inputs
+        const inputs = screen.getAllByPlaceholderText(/sk-|AIza|xai-/i)
+        expect(inputs.length).toBeGreaterThan(0)
+
+        // Change first one
+        fireEvent.change(inputs[0], { target: { value: 'new-api-key' } })
+        expect(inputs[0].value).toBe('new-api-key')
+    })
+
+    it('shows folder history dropdown when Recent History button is clicked', async () => {
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('Settings'))
+
+        const historyButton = screen.getByText('Recent History')
+        fireEvent.click(historyButton)
+
+        await waitFor(() => {
+            expect(screen.getByText('Previously Indexed')).toBeDefined()
+            expect(screen.getByText('C:/Old/Folder')).toBeDefined()
+        })
+    })
+
+    it('handles empty folder history', async () => {
+        axios.get.mockImplementation((url) => {
+            if (url.includes('/api/config')) return Promise.resolve({ data: mockConfig })
+            if (url.includes('/api/index/status')) return Promise.resolve({ data: { running: false } })
+            if (url.includes('/api/folders/history')) return Promise.resolve({ data: [] })  // Empty
+            if (url.includes('/api/cache/stats')) return Promise.resolve({ data: { total_entries: 0, total_hits: 0 } })
+            if (url.includes('/api/settings/embeddings')) return Promise.resolve({ data: mockEmbeddingConfig })
+            return Promise.resolve({ data: {} })
+        })
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('Settings'))
+
+        fireEvent.click(screen.getByText('Recent History'))
+
+        await waitFor(() => {
+            expect(screen.getByText('No indexed folders yet.')).toBeDefined()
+        })
+    })
+
+    it('dismisses toast after 3 seconds', async () => {
+        vi.useFakeTimers()
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('Settings'))
+
+        fireEvent.click(screen.getByText('Save Changes'))
+
+        await waitFor(() => {
+            expect(screen.getByText('Settings saved successfully!')).toBeDefined()
+        })
+
+        // Fast-forward 3 seconds
+        vi.advanceTimersByTime(3000)
+
+        await waitFor(() => {
+            expect(screen.queryByText('Settings saved successfully!')).toBeNull()
+        })
+
+        vi.useRealTimers()
+    })
 })
