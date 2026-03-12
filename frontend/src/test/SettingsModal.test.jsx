@@ -95,6 +95,7 @@ describe('SettingsModal Component', () => {
     it('clears search history when button is clicked', async () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
         await waitFor(() => screen.getByText('Settings'))
+        fireEvent.click(screen.getByText('Data Management'))
         fireEvent.click(screen.getByText('Clear Search History'))
         expect(global.confirm).toHaveBeenCalled()
         expect(axios.delete).toHaveBeenCalledWith('http://localhost:8000/api/search/history')

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { X, Settings, FolderOpen, Loader2, Save, ChevronDown, ChevronUp, Key, Cpu, Trash2, CheckCircle2, Database } from 'lucide-react';
+import { X, Settings, FolderOpen, Loader2, Save, Key, Cpu, Trash2, CheckCircle2, Database } from 'lucide-react';
 import ModelManager from './ModelManager';
 
 const API = 'http://localhost:8000';
@@ -71,7 +71,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
         total_files: 0,
         processed_files: 0
     });
-    const [expandedSection, setExpandedSection] = useState(null);
+    const [activeSection, setActiveSection] = useState('folders');
     const [folderHistory, setFolderHistory] = useState([]);
     const [showHistory, setShowHistory] = useState(false);
     const [cacheStats, setCacheStats] = useState({ total_entries: 0, total_hits: 0 });
@@ -299,10 +299,6 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
         }
     };
 
-    const toggleSection = (section) => {
-        setExpandedSection(expandedSection === section ? null : section);
-    };
-
     const apiProviders = [
         { id: 'openai', name: 'OpenAI (ChatGPT)', key: 'openai_api_key', placeholder: 'sk-...' },
         { id: 'gemini', name: 'Google Gemini', key: 'gemini_api_key', placeholder: 'AIza...' },
@@ -310,244 +306,258 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
         { id: 'grok', name: 'xAI (Grok)', key: 'grok_api_key', placeholder: 'xai-...' },
     ];
 
-    const localModels = [
-        { id: 'llamacpp', name: 'LlamaCpp (GGUF)', desc: 'Run .gguf model files directly' },
-    ];
-
     if (!isOpen) return null;
+
+    const settingsSections = [
+        { id: 'folders', label: 'Indexed Folders', icon: FolderOpen },
+        { id: 'providers', label: 'AI Provider', icon: Key },
+        { id: 'embeddings', label: 'Embedding Provider', icon: Database },
+        { id: 'local', label: 'Local Models', icon: Cpu },
+        { id: 'data', label: 'Data Management', icon: Trash2 },
+    ];
 
     return (
         <>
             <div
-                className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
                 onClick={(e) => {
                     if (e.target === e.currentTarget) onClose();
                 }}
             >
-            <div className="glass-overlay w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-2xl shadow-2xl">
-                {/* Header */}
-                <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b border-border/30 bg-background/80 backdrop-blur-md">
-                    <h2 className="text-lg font-bold flex items-center gap-3">
-                        <div className="p-2 rounded-xl bg-primary/10">
-                            <Settings className="w-5 h-5 text-primary" />
-                        </div>
-                        Settings
-                    </h2>
-                    <button
-                        onClick={onClose}
-                        className="p-2 rounded-xl hover:bg-secondary transition-colors"
-                        aria-label="Close settings"
-                    >
-                        <X className="w-4 h-4" />
-                    </button>
-                </div>
+                <div className="glass-overlay w-[96vw] max-w-6xl h-[88vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+                    <div className="sticky top-0 z-20 flex items-center justify-between p-4 border-b border-border/30 bg-background/85 backdrop-blur-md">
+                        <h2 className="text-lg font-bold flex items-center gap-3">
+                            <div className="p-2 rounded-xl bg-primary/10">
+                                <Settings className="w-5 h-5 text-primary" />
+                            </div>
+                            Settings
+                        </h2>
+                        <button
+                            onClick={onClose}
+                            className="p-2 rounded-xl hover:bg-secondary transition-colors"
+                            aria-label="Close settings"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    </div>
 
-                <div className="p-4 space-y-4">
-                    {/* Indexing Progress */}
-                    {indexingStatus.running && (
-                        <div className="p-4 rounded-xl glass-v2 border border-primary/20 bg-primary/5">
-                            <div className="flex justify-between items-center mb-2">
-                                <span className="text-sm font-bold text-primary flex items-center gap-2">
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    Indexing...
-                                </span>
-                                <span className="text-xs font-mono font-bold text-primary">
-                                    {indexingStatus.progress}%
-                                </span>
-                            </div>
-                            <div className="w-full bg-primary/10 rounded-full h-2 overflow-hidden">
-                                <div
-                                    className="bg-primary h-full transition-all duration-300"
-                                    style={{ width: `${indexingStatus.progress}%` }}
-                                />
-                            </div>
-                            <div className="text-[10px] text-muted-foreground truncate opacity-80 font-mono mt-1">
-                                {indexingStatus.current_file}
-                            </div>
-                        </div>
-                    )}
+                    <div className="flex-1 overflow-hidden grid grid-cols-1 md:grid-cols-[260px_1fr]">
+                        <aside className="border-r border-border/30 bg-card/30 p-3 overflow-y-auto">
+                            <nav className="space-y-1">
+                                {settingsSections.map((section) => {
+                                    const Icon = section.icon;
+                                    const isActive = activeSection === section.id;
+                                    return (
+                                        <button
+                                            key={section.id}
+                                            onClick={() => setActiveSection(section.id)}
+                                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm transition-colors ${
+                                                isActive
+                                                    ? 'bg-primary/15 text-primary font-semibold border border-primary/20'
+                                                    : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'
+                                            }`}
+                                        >
+                                            <Icon className="w-4 h-4" />
+                                            {section.label}
+                                        </button>
+                                    );
+                                })}
+                            </nav>
+                        </aside>
 
-                    {/* Indexing Error */}
-                    {indexingStatus.error && !indexingStatus.running && (
-                        <div className="p-4 rounded-xl glass-v2 border border-destructive/20 bg-destructive/5 flex items-center gap-3">
-                            <div className="p-2 rounded-full bg-destructive/10 text-destructive">
-                                <X className="w-4 h-4" />
-                            </div>
-                            <div className="text-sm font-medium text-destructive">
-                                {indexingStatus.error}
-                            </div>
-                        </div>
-                    )}
+                        <main className="overflow-y-auto p-5 space-y-5">
+                            {indexingStatus.running && (
+                                <div className="p-4 rounded-xl glass-v2 border border-primary/20 bg-primary/5">
+                                    <div className="flex justify-between items-center mb-2">
+                                        <span className="text-sm font-bold text-primary flex items-center gap-2">
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            Indexing...
+                                        </span>
+                                        <span className="text-xs font-mono font-bold text-primary">
+                                            {indexingStatus.progress}%
+                                        </span>
+                                    </div>
+                                    <div className="w-full bg-primary/10 rounded-full h-2 overflow-hidden">
+                                        <div
+                                            className="bg-primary h-full transition-all duration-300"
+                                            style={{ width: `${indexingStatus.progress}%` }}
+                                        />
+                                    </div>
+                                    <div className="text-[10px] text-muted-foreground truncate opacity-80 font-mono mt-1">
+                                        {indexingStatus.current_file}
+                                    </div>
+                                </div>
+                            )}
 
-                    {/* Folder Section */}
-                    <section className="space-y-3">
-                        <div className="flex justify-between items-center">
-                            <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                                Indexed Folders
-                            </h3>
-                            <button
-                                onClick={handleAddFolder}
-                                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-primary/10 text-primary text-xs font-bold hover:bg-primary/20 transition-colors"
-                            >
-                                <FolderOpen className="w-3.5 h-3.5" />
-                                Add Folder
-                            </button>
+                            {indexingStatus.error && !indexingStatus.running && (
+                                <div className="p-4 rounded-xl glass-v2 border border-destructive/20 bg-destructive/5 flex items-center gap-3">
+                                    <div className="p-2 rounded-full bg-destructive/10 text-destructive">
+                                        <X className="w-4 h-4" />
+                                    </div>
+                                    <div className="text-sm font-medium text-destructive">{indexingStatus.error}</div>
+                                </div>
+                            )}
 
-                            {/* History Dropdown */}
-                            {folderHistory.length > 0 && (
-                                <div className="relative">
-                                    <button
-                                        onClick={() => setShowHistory(!showHistory)}
-                                        className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-secondary/20 text-secondary-foreground text-xs font-bold hover:bg-secondary/30 transition-colors ml-2"
-                                        title="Previously indexed folders"
-                                    >
-                                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                                        Recently Indexed
-                                        {showHistory ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                                    </button>
+                            {activeSection === 'folders' && (
+                                <section className="space-y-4">
+                                    <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Indexed Folders</h3>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={handleAddFolder}
+                                            className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
+                                        >
+                                            Add Folder
+                                        </button>
+                                        <button
+                                            title="Previously indexed folders"
+                                            onClick={() => setShowHistory((prev) => !prev)}
+                                            className="px-3 py-2 rounded-lg border border-border text-sm hover:bg-secondary"
+                                        >
+                                            Recent History
+                                        </button>
+                                    </div>
 
                                     {showHistory && (
-                                        <div className="absolute right-0 top-full mt-2 w-72 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden">
-                                            <div className="p-2 border-b border-border bg-muted/30 flex justify-between items-center">
-                                                <h4 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Recently Indexed</h4>
+                                        <div className="p-3 rounded-lg border border-border bg-card/50 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <h4 className="text-sm font-medium">Previously Indexed</h4>
                                                 <button
                                                     onClick={handleClearAllHistory}
-                                                    className="text-[10px] text-destructive hover:text-destructive/80 font-medium"
-                                                    title="Clear all folder history"
+                                                    className="text-xs text-destructive hover:underline"
                                                 >
                                                     Clear All
                                                 </button>
                                             </div>
-                                            <div className="max-h-48 overflow-y-auto py-1">
-                                                {folderHistory.length > 0 ? (
-                                                    folderHistory.map((folder, idx) => {
-                                                        const isAdded = config.folders.includes(folder);
-                                                        return (
-                                                            <div
-                                                                key={idx}
-                                                                className={`flex items-center gap-1 px-2 py-1.5 group ${isAdded ? 'opacity-50' : 'hover:bg-accent'}`}
-                                                            >
-                                                                <button
-                                                                    onClick={() => !isAdded && handleAddFromHistory(folder)}
-                                                                    disabled={isAdded}
-                                                                    className="flex-1 text-left text-xs truncate flex items-center gap-2"
-                                                                    title={isAdded ? "Already added" : `Add: ${folder}`}
-                                                                >
-                                                                    <FolderOpen className="w-3 h-3 opacity-50 flex-shrink-0" />
-                                                                    <span className="truncate">{folder}</span>
-                                                                    {isAdded && <span className="text-[10px] bg-green-500/10 text-green-600 px-1 rounded ml-auto">Added</span>}
-                                                                </button>
-                                                                <button
-                                                                    onClick={(e) => handleRemoveFromHistory(folder, e)}
-                                                                    className="p-1 rounded hover:bg-destructive/20 hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                                                                    title="Remove from history"
-                                                                    aria-label={`Remove ${folder} from history`}
-                                                                >
-                                                                    <Trash2 className="w-3 h-3" />
-                                                                </button>
-                                                            </div>
-                                                        );
-                                                    })
-                                                ) : (
-                                                    <div className="px-3 py-4 text-center text-xs text-muted-foreground italic">
-                                                        No indexed folders found
-                                                    </div>
-                                                )}
-                                            </div>
+                                            {folderHistory.length === 0 ? (
+                                                <p className="text-xs text-muted-foreground">No indexed folders yet.</p>
+                                            ) : (
+                                                folderHistory.map((folder) => (
+                                                    <button
+                                                        key={folder}
+                                                        onClick={() => handleAddFromHistory(folder)}
+                                                        className="w-full flex items-center justify-between gap-3 px-2 py-1.5 rounded-md hover:bg-secondary text-left"
+                                                    >
+                                                        <span className="text-xs truncate">{folder}</span>
+                                                        <Trash2
+                                                            className="w-3.5 h-3.5 text-destructive flex-shrink-0"
+                                                            onClick={(e) => handleRemoveFromHistory(folder, e)}
+                                                        />
+                                                    </button>
+                                                ))
+                                            )}
                                         </div>
                                     )}
-                                </div>
-                            )}
-                        </div>
 
-                        <div className="space-y-2">
-                            {config.folders.length > 0 ? (
-                                config.folders.map((folder, idx) => (
-                                    <div key={idx} className="flex items-center gap-2 group p-2 rounded-lg border border-border bg-card/50">
-                                        <div className="flex-1 min-w-0 flex items-center gap-2">
-                                            <div className="p-1 rounded-full bg-green-500/10 text-green-500">
-                                                <CheckCircle2 className="w-3 h-3" />
-                                            </div>
-                                            <p className="text-xs font-medium truncate opacity-80">{folder}</p>
-                                        </div>
+                                    <div className="space-y-2">
+                                        {config.folders.length === 0 ? (
+                                            <p className="text-sm text-muted-foreground">No folders selected. Add a folder to build your index.</p>
+                                        ) : (
+                                            config.folders.map((folder) => (
+                                                <div key={folder} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border bg-card/30">
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        <FolderOpen className="w-4 h-4 text-primary flex-shrink-0" />
+                                                        <span className="text-sm truncate">{folder}</span>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleRemoveFolder(folder)}
+                                                        aria-label={`Remove ${folder} from index`}
+                                                        className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+
+                                    <div className="pt-2">
                                         <button
-                                            onClick={() => handleRemoveFolder(folder)}
-                                            className="p-1.5 rounded-md hover:bg-destructive/10 hover:text-destructive opacity-0 group-hover:opacity-100 transition-all"
-                                            aria-label={`Remove ${folder} from index`}
+                                            onClick={handleIndex}
+                                            disabled={isLoading || indexingStatus.running}
+                                            className="px-4 py-2 rounded-lg btn-cosmic text-sm font-medium disabled:opacity-60"
                                         >
-                                            <Trash2 className="w-3.5 h-3.5" />
+                                            Rebuild Index
                                         </button>
                                     </div>
-                                ))
-                            ) : (
-                                <div className="text-center py-6 border-2 border-dashed border-border rounded-xl">
-                                    <p className="text-sm text-muted-foreground">No folders selected</p>
-                                </div>
+                                </section>
                             )}
-                        </div>
 
-                        <button
-                            onClick={handleIndex}
-                            disabled={config.folders.length === 0 || indexingStatus.running}
-                            className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 text-sm font-bold shadow-lg shadow-primary/20 transition-all active:scale-[0.98] mt-2"
-                        >
-                            {indexingStatus.running ? 'Indexing...' : 'Rebuild Index'}
-                        </button>
+                            {activeSection === 'providers' && (
+                                <section className="space-y-4">
+                                    <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">API Keys</h3>
+                                    {apiProviders.map(provider => (
+                                        <div key={provider.id} className="space-y-1">
+                                            <label className="text-sm font-medium">{provider.name}</label>
+                                            <input
+                                                type="password"
+                                                value={config[provider.key] || ''}
+                                                onChange={(e) => setConfig({ ...config, [provider.key]: e.target.value })}
+                                                className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
+                                                placeholder={provider.placeholder}
+                                            />
+                                        </div>
+                                    ))}
+                                    <p className="text-xs text-muted-foreground">API keys are stored locally and used only when that provider is selected.</p>
+                                </section>
+                            )}
 
-                        {/* Indexing Progress Bar */}
-                        {indexingStatus.running && (
-                            <div className="mt-3 space-y-1.5 animate-in fade-in duration-300">
-                                <div className="flex justify-between text-xs font-medium text-muted-foreground">
-                                    <span>Processing: {indexingStatus.current_file ? indexingStatus.current_file.split('/').pop() : 'Initializing...'}</span>
-                                    <span>{indexingStatus.progress}%</span>
-                                </div>
-                                <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-primary transition-all duration-300 ease-out"
-                                        style={{ width: `${indexingStatus.progress}%` }}
-                                    />
-                                </div>
-                            </div>
-                        )}
-                    </section>
+                            {activeSection === 'embeddings' && (
+                                <section className="space-y-4" id="embedding-config-panel">
+                                    <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Embedding Provider</h3>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground" htmlFor="embedding-provider-select">Provider Type</label>
+                                        <select
+                                            id="embedding-provider-select"
+                                            value={embeddingConfig.provider_type}
+                                            onChange={(e) => setEmbeddingConfig(prev => ({ ...prev, provider_type: e.target.value, api_key: '' }))}
+                                            className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
+                                        >
+                                            {EMBEDDING_PROVIDER_TYPES.map(pt => (
+                                                <option key={pt.value} value={pt.value}>{pt.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
 
-                    {/* AI Provider Selection */}
-                    <section className="space-y-3">
-                        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                            AI Provider
-                        </h3>
-                        <select
-                            value={config.provider}
-                            onChange={(e) => setConfig({ ...config, provider: e.target.value })}
-                            className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
-                        >
-                            <option value="local">Local Models (Free)</option>
-                            <option value="openai">OpenAI (ChatGPT)</option>
-                            <option value="gemini">Google Gemini</option>
-                            <option value="anthropic">Anthropic (Claude)</option>
-                            <option value="grok">xAI (Grok)</option>
-                        </select>
-                    </section>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground" htmlFor="embedding-model-name">Model Name / Repo ID</label>
+                                        <input
+                                            id="embedding-model-name"
+                                            type="text"
+                                            value={embeddingConfig.model_name}
+                                            onChange={(e) => setEmbeddingConfig(prev => ({ ...prev, model_name: e.target.value }))}
+                                            className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background font-mono"
+                                            placeholder="e.g. Alibaba-NLP/gte-Qwen2-1.5B-instruct"
+                                        />
+                                    </div>
 
-                    {/* Local Model Options */}
-                    {config.provider === 'local' && (
-                        <section className="space-y-3">
-                            <button
-                                onClick={() => toggleSection('local')}
-                                className="w-full flex items-center justify-between text-sm font-medium text-muted-foreground uppercase tracking-wide"
-                            >
-                                <span className="flex items-center gap-2">
-                                    <Cpu className="w-4 h-4" />
-                                    Local Model Settings
-                                </span>
-                                {expandedSection === 'local' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                            </button>
+                                    {EMBEDDING_PROVIDER_TYPES.find(pt => pt.value === embeddingConfig.provider_type)?.needsKey && (
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-medium text-muted-foreground" htmlFor="embedding-api-key">
+                                                API Key
+                                                {embeddingConfig.api_key === '••••••••' && (
+                                                    <span className="ml-2 text-[10px] bg-green-500/10 text-green-600 px-1.5 py-0.5 rounded font-semibold">Stored</span>
+                                                )}
+                                            </label>
+                                            <input
+                                                id="embedding-api-key"
+                                                type="password"
+                                                value={embeddingConfig.api_key}
+                                                onChange={(e) => setEmbeddingConfig(prev => ({ ...prev, api_key: e.target.value }))}
+                                                className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
+                                                placeholder={embeddingConfig.api_key === '••••••••' ? 'Leave blank to keep current key' : 'Paste your API key'}
+                                            />
+                                        </div>
+                                    )}
 
-                            {expandedSection === 'local' && (
-                                <div className="space-y-3 pl-2 border-l-2 border-border ml-2">
-                                    {/* Active Model Banner */}
+                                    <p className="text-[11px] text-muted-foreground leading-relaxed">The embedding provider is used to convert documents and queries into vectors for semantic search. Changes take effect on the next index rebuild.</p>
+                                </section>
+                            )}
+
+                            {activeSection === 'local' && (
+                                <section className="space-y-4">
+                                    <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Local Model Settings</h3>
                                     {activeModel && (
-                                        <div className="p-4 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-between mb-4">
+                                        <div className="p-4 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-between">
                                             <div>
                                                 <div className="text-[10px] uppercase font-bold text-primary tracking-wider mb-0.5">Currently Active</div>
                                                 <div className="text-sm font-bold flex items-center gap-2">
@@ -555,211 +565,63 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                                     {activeModel}
                                                 </div>
                                             </div>
-                                            <div className="px-2 py-0.5 bg-primary text-primary-foreground text-[10px] rounded-md font-bold uppercase tracking-widest">
-                                                Active
-                                            </div>
+                                            <div className="px-2 py-0.5 bg-primary text-primary-foreground text-[10px] rounded-md font-bold uppercase tracking-widest">Active</div>
                                         </div>
                                     )}
-
-                                    {localModels.length > 1 && (
-                                        <div className="space-y-2">
-                                            <label className="text-sm">Model Type</label>
-                                            <div className="space-y-2">
-                                                {localModels.map(model => (
-                                                    <label key={model.id} className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-accent cursor-pointer">
-                                                        <input
-                                                            type="radio"
-                                                            name="localModelType"
-                                                            value={model.id}
-                                                            checked={config.local_model_type === model.id}
-                                                            onChange={(e) => setConfig({ ...config, local_model_type: e.target.value })}
-                                                            className="mt-0.5"
-                                                        />
-                                                        <div>
-                                                            <div className="font-medium text-sm">{model.name}</div>
-                                                            <div className="text-xs text-muted-foreground">{model.desc}</div>
-                                                        </div>
-                                                    </label>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
                                     <ModelManager
                                         onSelectModel={(path) => setConfig({ ...config, local_model_path: path })}
                                         activeModel={activeModel}
                                         selectedPath={config.local_model_path}
                                     />
-                                </div>
+                                </section>
                             )}
-                        </section>
-                    )}
 
-                    {/* API Keys Section */}
-                    <section className="space-y-3">
-                        <button
-                            onClick={() => toggleSection('apikeys')}
-                            className="w-full flex items-center justify-between text-sm font-medium text-muted-foreground uppercase tracking-wide"
-                        >
-                            <span className="flex items-center gap-2">
-                                <Key className="w-4 h-4" />
-                                API Keys
-                            </span>
-                            {expandedSection === 'apikeys' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                        </button>
-
-                        {expandedSection === 'apikeys' && (
-                            <div className="space-y-3 pl-2 border-l-2 border-border ml-2">
-                                {apiProviders.map(provider => (
-                                    <div key={provider.id} className="space-y-1">
-                                        <label className="text-sm font-medium">{provider.name}</label>
-                                        <input
-                                            type="password"
-                                            value={config[provider.key] || ''}
-                                            onChange={(e) => setConfig({ ...config, [provider.key]: e.target.value })}
-                                            className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
-                                            placeholder={provider.placeholder}
-                                        />
+                            {activeSection === 'data' && (
+                                <section className="space-y-4">
+                                    <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Data Management</h3>
+                                    <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-card/50">
+                                        <div>
+                                            <div className="text-sm font-semibold flex items-center gap-2"><span className="text-primary">⚡</span> AI Response Cache</div>
+                                            <div className="text-xs text-muted-foreground">{cacheStats.total_entries} entries • {cacheStats.total_hits} hits saved</div>
+                                        </div>
+                                        <button
+                                            onClick={handleClearCache}
+                                            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+                                        >
+                                            Clear Cache
+                                        </button>
                                     </div>
-                                ))}
-                                <p className="text-xs text-muted-foreground">
-                                    API keys are stored locally and used only when that provider is selected.
-                                </p>
-                            </div>
-                        )}
-                    </section>
-
-                    {/* ── Embedding Provider Section ───────────────────────────────── */}
-                    <section className="space-y-3">
-                        <button
-                            id="embedding-section-toggle"
-                            onClick={() => toggleSection('embedding')}
-                            className="w-full flex items-center justify-between text-sm font-medium text-muted-foreground uppercase tracking-wide"
-                        >
-                            <span className="flex items-center gap-2">
-                                <Database className="w-4 h-4" />
-                                Embedding Provider
-                            </span>
-                            {expandedSection === 'embedding' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                        </button>
-
-                        {expandedSection === 'embedding' && (
-                            <div id="embedding-config-panel" className="space-y-3 pl-2 border-l-2 border-border ml-2">
-                                {/* Provider type */}
-                                <div className="space-y-1">
-                                    <label className="text-xs font-medium text-muted-foreground" htmlFor="embedding-provider-select">
-                                        Provider Type
-                                    </label>
-                                    <select
-                                        id="embedding-provider-select"
-                                        value={embeddingConfig.provider_type}
-                                        onChange={(e) => setEmbeddingConfig(prev => ({ ...prev, provider_type: e.target.value, api_key: '' }))}
-                                        className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
+                                    <button
+                                        onClick={handleDeleteAllHistory}
+                                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"
                                     >
-                                        {EMBEDDING_PROVIDER_TYPES.map(pt => (
-                                            <option key={pt.value} value={pt.value}>{pt.label}</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                        <Trash2 className="w-4 h-4" />
+                                        Clear Search History
+                                    </button>
+                                </section>
+                            )}
+                        </main>
+                    </div>
 
-                                {/* Model name */}
-                                <div className="space-y-1">
-                                    <label className="text-xs font-medium text-muted-foreground" htmlFor="embedding-model-name">
-                                        Model Name / Repo ID
-                                    </label>
-                                    <input
-                                        id="embedding-model-name"
-                                        type="text"
-                                        value={embeddingConfig.model_name}
-                                        onChange={(e) => setEmbeddingConfig(prev => ({ ...prev, model_name: e.target.value }))}
-                                        className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background font-mono"
-                                        placeholder="e.g. Alibaba-NLP/gte-Qwen2-1.5B-instruct"
-                                    />
-                                </div>
-
-                                {/* API Key — only shown for API-based providers */}
-                                {EMBEDDING_PROVIDER_TYPES.find(pt => pt.value === embeddingConfig.provider_type)?.needsKey && (
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground" htmlFor="embedding-api-key">
-                                            API Key
-                                            {embeddingConfig.api_key === '••••••••' && (
-                                                <span className="ml-2 text-[10px] bg-green-500/10 text-green-600 px-1.5 py-0.5 rounded font-semibold">Stored</span>
-                                            )}
-                                        </label>
-                                        <input
-                                            id="embedding-api-key"
-                                            type="password"
-                                            value={embeddingConfig.api_key}
-                                            onChange={(e) => setEmbeddingConfig(prev => ({ ...prev, api_key: e.target.value }))}
-                                            className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
-                                            placeholder={embeddingConfig.api_key === '••••••••' ? 'Leave blank to keep current key' : 'Paste your API key'}
-                                        />
-                                    </div>
-                                )}
-
-                                <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                    The embedding provider is used to convert documents and queries into
-                                    vectors for semantic search. Changes take effect on the next index rebuild.
-                                </p>
-                            </div>
-                        )}
-                    </section>
-
-                    {/* Data Management */}
-                    <section className="space-y-3 pt-3 border-t border-border">
-                        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                            Data Management
-                        </h3>
-
-                        {/* Cache Stats */}
-                        <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-card/50">
-                            <div>
-                                <div className="text-sm font-semibold flex items-center gap-2">
-                                    <span className="text-primary">⚡</span> AI Response Cache
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                    {cacheStats.total_entries} entries • {cacheStats.total_hits} hits saved
-                                </div>
-                            </div>
-                            <button
-                                onClick={handleClearCache}
-                                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
-                            >
-                                Clear Cache
-                            </button>
-                        </div>
-
+                    <div className="sticky bottom-0 p-4 border-t border-border/30 bg-background/85 backdrop-blur-md flex justify-end gap-3">
                         <button
-                            onClick={handleDeleteAllHistory}
-                            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"
+                            onClick={onClose}
+                            className="px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-secondary transition-colors"
                         >
-                            <Trash2 className="w-4 h-4" />
-                            Clear Search History
+                            Cancel
                         </button>
-                    </section>
-                </div>
-
-                {/* Footer */}
-                <div className="sticky bottom-0 p-4 border-t border-border/30 bg-background/80 backdrop-blur-md flex justify-end gap-3">
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-secondary transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={isLoading}
-                        className="px-5 py-2.5 rounded-xl btn-cosmic text-sm font-semibold flex items-center gap-2 disabled:opacity-50"
-                    >
-                        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                        Save Changes
-                    </button>
+                        <button
+                            onClick={handleSave}
+                            disabled={isLoading}
+                            className="px-5 py-2.5 rounded-xl btn-cosmic text-sm font-semibold flex items-center gap-2 disabled:opacity-50"
+                        >
+                            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                            Save Changes
+                        </button>
+                    </div>
                 </div>
             </div>
-            </div>
 
-            {/* Toast notification */}
             {toast && (
                 <Toast
                     message={toast.message}

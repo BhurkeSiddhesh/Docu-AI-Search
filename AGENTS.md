@@ -305,6 +305,14 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-03-12 (Settings UX Redesign)
+- **Redesigned Settings Modal to a Sidebar + Detail Pane Layout**
+  - **feat**: Reworked `frontend/src/components/SettingsModal.jsx` from stacked collapsible sections to a two-column settings experience inspired by desktop settings UX.
+  - **feat**: Added left navigation sections (`Indexed Folders`, `AI Provider`, `Embedding Provider`, `Local Models`, `Data Management`) with active state styling.
+  - **feat**: Split content into focused section panels to reduce scrolling and improve discoverability of settings.
+  - **ui**: Increased modal footprint (`max-w-6xl`, fixed height) and refined overlay/header/footer behavior for better usability.
+  - **Files**: `frontend/src/components/SettingsModal.jsx`
+
 ### 2026-03-12 (FAISS Dimension Safety & Test Fixes)
 - **Implemented Embedding Dimension Mismatch Guard for FAISS**
   - **feat**: Added `EmbeddingDimensionMismatchError` to `backend/search.py` to prevent runtime crashes when the query vector dimension differs from the `.faiss` index dimension.
