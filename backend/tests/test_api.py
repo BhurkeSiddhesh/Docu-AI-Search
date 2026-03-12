@@ -881,7 +881,9 @@ class TestAPIBrowseFolder(unittest.TestCase):
     @patch('tkinter.filedialog.askdirectory')
     @patch('tkinter.Tk')
     def test_browse_folder_cancelled(self, mock_tk, mock_dialog):
-        """Test browsing when user cancels."""
+        """
+        Verify GET /api/browse returns folder=None when the user cancels the folder selection dialog.
+        """
         mock_root = MagicMock()
         mock_tk.return_value = mock_root
         mock_dialog.return_value = ""  # Empty when cancelled

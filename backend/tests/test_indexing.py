@@ -928,7 +928,11 @@ class TestIndexingWithEmbeddingClient(unittest.TestCase):
     """Test indexing with injected embedding client."""
 
     def setUp(self):
-        """Set up test fixtures."""
+        """
+        Prepare an isolated test environment for indexing tests.
+        
+        Initializes the test database, creates a temporary directory with a sample test file ("test.txt"), and patches concurrent.futures ProcessPoolExecutor, ThreadPoolExecutor, and as_completed to use synchronous MockExecutor behaviour for deterministic, single-threaded execution during tests.
+        """
         from backend import database
         database.init_database()
         self.temp_dir = tempfile.mkdtemp()
@@ -1021,13 +1025,19 @@ class TestSaveIndexWithMetadata(unittest.TestCase):
     """Test save_index with metadata sidecar."""
 
     def setUp(self):
-        """Set up test fixtures."""
+        """
+        Prepare the test environment by reinitializing the test database and creating a per-test temporary directory.
+        """
         from backend import database
         database.init_database()
         self.temp_dir = tempfile.mkdtemp()
 
     def tearDown(self):
-        """Clean up test fixtures."""
+        """
+        Remove the per-test temporary directory created in setUp.
+        
+        If the directory referenced by self.temp_dir exists, delete it and all its contents.
+        """
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
@@ -1035,6 +1045,13 @@ class TestSaveIndexWithMetadata(unittest.TestCase):
     def test_save_index_writes_metadata_sidecar(self, mock_write_index):
         """Test that save_index creates metadata sidecar file."""
         def side_effect_write(index, filepath):
+            """
+            Write a small dummy file at the given filepath to simulate writing a FAISS index.
+            
+            Parameters:
+                index: Ignored; present to match the faiss.write_index signature.
+                filepath (str or Path): Filesystem path where a file containing the text "dummy" will be created or overwritten.
+            """
             with open(filepath, 'w') as f:
                 f.write("dummy")
         mock_write_index.side_effect = side_effect_write
@@ -1068,13 +1085,19 @@ class TestLoadIndexWithMetadata(unittest.TestCase):
     """Test load_index returns metadata."""
 
     def setUp(self):
-        """Set up test fixtures."""
+        """
+        Prepare the test environment by reinitializing the test database and creating a per-test temporary directory.
+        """
         from backend import database
         database.init_database()
         self.temp_dir = tempfile.mkdtemp()
 
     def tearDown(self):
-        """Clean up test fixtures."""
+        """
+        Remove the per-test temporary directory created in setUp.
+        
+        If the directory referenced by self.temp_dir exists, delete it and all its contents.
+        """
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
@@ -1083,6 +1106,13 @@ class TestLoadIndexWithMetadata(unittest.TestCase):
     def test_load_index_returns_metadata(self, mock_read_index, mock_write_index):
         """Test that load_index returns metadata as 8th element."""
         def side_effect_write(index, filepath):
+            """
+            Write a small dummy file at the given filepath to simulate writing a FAISS index.
+            
+            Parameters:
+                index: Ignored; present to match the faiss.write_index signature.
+                filepath (str or Path): Filesystem path where a file containing the text "dummy" will be created or overwritten.
+            """
             with open(filepath, 'w') as f:
                 f.write("dummy")
         mock_write_index.side_effect = side_effect_write
@@ -1117,7 +1147,11 @@ class TestIndexingProgressCallback(unittest.TestCase):
     """Test progress callback behavior in detail."""
 
     def setUp(self):
-        """Set up test fixtures."""
+        """
+        Prepare test environment by initializing the test database and creating a temporary directory with three sample text files.
+        
+        Initializes the application's test database, assigns a new temporary directory path to `self.temp_dir`, and creates three files named `file0.txt`, `file1.txt`, and `file2.txt` inside that directory containing "Content 0", "Content 1", and "Content 2" respectively.
+        """
         from backend import database
         database.init_database()
         self.temp_dir = tempfile.mkdtemp()
@@ -1128,7 +1162,11 @@ class TestIndexingProgressCallback(unittest.TestCase):
                 f.write(f"Content {i}")
 
     def tearDown(self):
-        """Clean up test fixtures."""
+        """
+        Remove the per-test temporary directory created in setUp.
+        
+        If the directory referenced by self.temp_dir exists, delete it and all its contents.
+        """
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
@@ -1151,6 +1189,17 @@ class TestIndexingProgressCallback(unittest.TestCase):
         progress_calls = []
 
         def progress_callback(current, total, message=None):
+            """
+            Record a progress update by appending a structured entry to the enclosing `progress_calls` list.
+            
+            Parameters:
+                current (int): The current progress count or step.
+                total (int): The total number of steps or items.
+                message (str | None): Optional human-readable status or stage description.
+            
+            Notes:
+                This function has a side effect of mutating the outer-scope `progress_calls` list by appending a dict with keys `'current'`, `'total'`, and `'message'`.
+            """
             progress_calls.append({
                 'current': current,
                 'total': total,
@@ -1182,13 +1231,19 @@ class TestIndexingErrorRecovery(unittest.TestCase):
     """Test indexing error recovery and edge cases."""
 
     def setUp(self):
-        """Set up test fixtures."""
+        """
+        Prepare the test environment by reinitializing the test database and creating a per-test temporary directory.
+        """
         from backend import database
         database.init_database()
         self.temp_dir = tempfile.mkdtemp()
 
     def tearDown(self):
-        """Clean up test fixtures."""
+        """
+        Remove the per-test temporary directory created in setUp.
+        
+        If the directory referenced by self.temp_dir exists, delete it and all its contents.
+        """
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 

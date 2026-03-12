@@ -584,7 +584,12 @@ class TestDatabaseCleanup(unittest.TestCase):
     """Test cleanup functionality."""
 
     def test_cleanup_test_data(self):
-        """Test cleaning up test data from production database."""
+        """
+        Verifies cleanup_test_data removes test-like entries and reports cleanup counts.
+        
+        Asserts that after inserting a test file, a folder history entry, and a search history entry,
+        calling cleanup_test_data returns a dict containing the keys 'files', 'folders', and 'search_history'.
+        """
         from backend import database
         from datetime import datetime
 
@@ -627,6 +632,11 @@ class TestDatabaseConcurrency(unittest.TestCase):
         results = []
 
         def worker():
+            """
+            Execute a simple database query and append the returned integer to the shared `results` list.
+            
+            Executes the SQL query "SELECT 1" using a new database connection, appends the first column of the fetched row (an integer) to the module-scoped `results` list, and closes the connection.
+            """
             conn = database.get_connection()
             cursor = conn.cursor()
             cursor.execute("SELECT 1")
@@ -680,7 +690,9 @@ class TestDatabaseBatchOperations(unittest.TestCase):
     """Test batch database operations performance."""
 
     def setUp(self):
-        """Set up test environment."""
+        """
+        Prepare a clean database state for each test by initializing the database schema and removing all file records.
+        """
         from backend import database
         database.init_database()
         database.clear_all_files()
@@ -717,7 +729,9 @@ class TestDatabaseFileByName(unittest.TestCase):
     """Test file lookup by name functionality."""
 
     def setUp(self):
-        """Set up test environment."""
+        """
+        Prepare a clean database state for each test by initializing the database schema and removing all file records.
+        """
         from backend import database
         database.init_database()
         database.clear_all_files()
