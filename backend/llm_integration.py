@@ -16,9 +16,9 @@ try:
     from langchain_openai import OpenAIEmbeddings, ChatOpenAI
     from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
     from langchain_anthropic import ChatAnthropic
-    from langchain_huggingface import HuggingFaceEmbeddings
+    from langchain_huggingface import HuggingFaceEmbeddings, HuggingFaceEndpointEmbeddings
 except ImportError:
-    # These will be handled individually in functions if needed, 
+    # These will be handled individually in functions if needed,
     # but having them here as None allows tests to patch them.
     OpenAIEmbeddings = None
     ChatOpenAI = None
@@ -26,6 +26,7 @@ except ImportError:
     ChatGoogleGenerativeAI = None
     ChatAnthropic = None
     HuggingFaceEmbeddings = None
+    HuggingFaceEndpointEmbeddings = None
 
 _local_llm_lock = threading.Lock()
 
@@ -108,6 +109,114 @@ def get_embeddings(provider, api_key=None, model_path=None):
     print("Embeddings loaded!")
     _embeddings_cache[cache_key] = embeddings
     return embeddings
+
+# ---------------------------------------------------------------------------
+# Embedding Factory (Factory Pattern)
+# ---------------------------------------------------------------------------
+
+_DEFAULT_LOCAL_EMBEDDING_MODEL = "Alibaba-NLP/gte-Qwen2-1.5B-instruct"
+
+def get_embedding_client(provider_type: str, model_name: str = None, api_key: str = None):
+    """
+    Factory that returns a LangChain embedding object for the requested provider.
+
+    Args:
+        provider_type: One of:
+            'local'           – HuggingFaceEmbeddings (runs on-device, no key needed).
+            'huggingface_api' – HuggingFaceEndpointEmbeddings via the Inference API.
+            'commercial_api'  – OpenAI or Google Gemini, selected by model_name.
+        model_name: The embedding model identifier.
+            - 'local':           defaults to _DEFAULT_LOCAL_EMBEDDING_MODEL.
+            - 'huggingface_api': the repo_id (e.g. 'BAAI/bge-large-en-v1.5').
+            - 'commercial_api':  any string containing 'gpt' / 'text-embedding' →
+                                 OpenAI; anything containing 'gemini' / 'embedding-001'
+                                 → Google; raises ValueError otherwise.
+        api_key: Required for 'huggingface_api' and 'commercial_api'.
+
+    Returns:
+        A LangChain embeddings object ready to call .embed_documents() / .embed_query().
+
+    Raises:
+        ValueError: On unsupported provider_type or unrecognised commercial model.
+        ImportError: If the required LangChain package is not installed.
+    """
+    provider_type = provider_type.strip().lower()
+
+    # ------------------------------------------------------------------ local
+    if provider_type == 'local':
+        if HuggingFaceEmbeddings is None:
+            raise ImportError(
+                "langchain-huggingface is not installed. "
+                "Run: pip install langchain-huggingface"
+            )
+        resolved_model = model_name or _DEFAULT_LOCAL_EMBEDDING_MODEL
+        logger.info(f"[EmbeddingFactory] local → {resolved_model}")
+        return HuggingFaceEmbeddings(
+            model_name=resolved_model,
+            model_kwargs={'device': 'cpu'},
+            encode_kwargs={'normalize_embeddings': True},
+        )
+
+    # -------------------------------------------------------- huggingface_api
+    if provider_type == 'huggingface_api':
+        if HuggingFaceEndpointEmbeddings is None:
+            raise ImportError(
+                "langchain-huggingface is not installed. "
+                "Run: pip install langchain-huggingface"
+            )
+        if not api_key:
+            raise ValueError("'huggingface_api' requires an api_key (HuggingFace token).")
+        if not model_name:
+            raise ValueError("'huggingface_api' requires a model_name (repo_id).")
+        logger.info(f"[EmbeddingFactory] huggingface_api → {model_name}")
+        return HuggingFaceEndpointEmbeddings(
+            huggingfacehub_api_token=api_key,
+            repo_id=model_name,
+        )
+
+    # --------------------------------------------------------- commercial_api
+    if provider_type == 'commercial_api':
+        if not api_key:
+            raise ValueError("'commercial_api' requires an api_key.")
+        if not model_name:
+            raise ValueError("'commercial_api' requires a model_name.")
+
+        model_lower = model_name.lower()
+
+        # OpenAI: model names like 'text-embedding-3-small', 'text-embedding-ada-002', 'gpt-…'
+        if any(kw in model_lower for kw in ('text-embedding', 'gpt')):
+            if OpenAIEmbeddings is None:
+                raise ImportError(
+                    "langchain-openai is not installed. "
+                    "Run: pip install langchain-openai"
+                )
+            logger.info(f"[EmbeddingFactory] commercial_api/OpenAI → {model_name}")
+            return OpenAIEmbeddings(model=model_name, api_key=api_key)
+
+        # Google Gemini: model names like 'models/embedding-001', 'gemini-…'
+        if any(kw in model_lower for kw in ('gemini', 'embedding-001')):
+            if GoogleGenerativeAIEmbeddings is None:
+                raise ImportError(
+                    "langchain-google-genai is not installed. "
+                    "Run: pip install langchain-google-genai"
+                )
+            logger.info(f"[EmbeddingFactory] commercial_api/Gemini → {model_name}")
+            return GoogleGenerativeAIEmbeddings(
+                model=model_name,
+                google_api_key=api_key,
+            )
+
+        raise ValueError(
+            f"Unrecognised commercial model_name '{model_name}'. "
+            "Use a name containing 'text-embedding' / 'gpt' for OpenAI, "
+            "or 'gemini' / 'embedding-001' for Google."
+        )
+
+    raise ValueError(
+        f"Unknown provider_type '{provider_type}'. "
+        "Choose from: 'local', 'huggingface_api', 'commercial_api'."
+    )
+
 
 def get_local_llm(model_path, tensor_split=None):
     """Load and cache the GGUF model directly with LlamaCpp."""

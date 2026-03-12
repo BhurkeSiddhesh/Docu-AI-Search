@@ -21,7 +21,7 @@ import numpy as np
 # Ensure we can import from root
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.search import search, tokenize, expand_query
+from backend.search import search, tokenize, expand_query, EmbeddingDimensionMismatchError
 
 
 class TestTokenization(unittest.TestCase):
@@ -101,9 +101,17 @@ class TestSearch(unittest.TestCase):
         """Set up test fixtures."""
         # Mock embeddings model
         self.mock_embeddings_model = MagicMock()
+        # Mock ThreadPoolExecutor
         self.mock_embeddings_model.embed_query.return_value = [0.1, 0.2, 0.3]
 
-        # Mock ThreadPoolExecutor
+        # Since numpy is globally mocked, configure the full call chain so the
+        # dimension guard ( query_embedding.shape[1] == index.d ) is controllable.
+        #   np.array([...]).astype('float32')  → mock_array
+        #   mock_array.shape[1]               → 128
+        mock_array = MagicMock()
+        mock_array.shape.__getitem__ = MagicMock(return_value=128)  # dim = 128
+        np.array.return_value.astype.return_value = mock_array
+
         self.patcher = patch('concurrent.futures.ThreadPoolExecutor')
         self.mock_executor_cls = self.patcher.start()
         self.mock_executor = self.mock_executor_cls.return_value
@@ -121,6 +129,7 @@ class TestSearch(unittest.TestCase):
         """Test basic search functionality."""
         query = "test query"
         index = MagicMock()
+        index.d = 128  # Match the mocked query embedding dim
         docs = [{"text": "doc1", "filepath": "path1"}, {"text": "doc2", "filepath": "path2"}]
         tags = ["tag1", "tag2"]
 
@@ -145,6 +154,7 @@ class TestSearch(unittest.TestCase):
         """Test search with an empty index."""
         query = "test query"
         index = MagicMock()
+        index.d = 128  # Match the mocked query embedding dim
         docs = []
         tags = []
 
@@ -165,6 +175,7 @@ class TestSearch(unittest.TestCase):
         """Test search with BM25 keyword search enabled."""
         query = "important document"
         index = MagicMock()
+        index.d = 128
         docs = [{"text": "important content", "filepath": "path1"}]
         tags = ["tag1"]
 
@@ -187,6 +198,7 @@ class TestSearch(unittest.TestCase):
         """Test search with RAPTOR cluster summaries."""
         query = "test query"
         index = MagicMock()
+        index.d = 128
         docs = [{"text": "doc1", "filepath": "path1"}, {"text": "doc2", "filepath": "path2"}]
         tags = ["tag1", "tag2"]
 
@@ -229,6 +241,7 @@ class TestSearch(unittest.TestCase):
         """Test that search deduplicates results from same file."""
         query = "test"
         index = MagicMock()
+        index.d = 128
         # Two docs from the same file
         docs = [
             {"text": "content from file", "filepath": "/path/same.txt"},
@@ -252,6 +265,7 @@ class TestSearch(unittest.TestCase):
         """Test that near-duplicate content is filtered."""
         query = "test"
         index = MagicMock()
+        index.d = 128
         # Two docs with very similar content
         docs = [
             {"text": "This is the exact same content for testing purposes", "filepath": "/path/file1.txt"},
@@ -275,6 +289,7 @@ class TestSearch(unittest.TestCase):
         """Test that proper nouns get boosted in search results."""
         query = "John Smith"  # Capitalized proper noun
         index = MagicMock()
+        index.d = 128
         docs = [
             {"text": "John Smith works here", "filepath": "path1"},
             {"text": "Someone else works here", "filepath": "path2"}
@@ -297,6 +312,7 @@ class TestSearch(unittest.TestCase):
         """Test search when tags are strings instead of lists."""
         query = "test"
         index = MagicMock()
+        index.d = 128
         docs = [{"text": "doc1", "filepath": "path1"}]
         tags = ["comma,separated,tags"]  # String format
 
@@ -317,6 +333,7 @@ class TestSearch(unittest.TestCase):
         """Test that search respects the maximum results limit."""
         query = "test"
         index = MagicMock()
+        index.d = 128
         # Create 20 documents
         docs = [{"text": f"doc{i}", "filepath": f"path{i}"} for i in range(20)]
         tags = [f"tag{i}" for i in range(20)]
@@ -337,6 +354,7 @@ class TestSearch(unittest.TestCase):
         """Test that search results contain all required fields."""
         query = "test"
         index = MagicMock()
+        index.d = 128
         docs = [{"text": "document content", "filepath": "/path/file.txt"}]
         tags = [["semantic", "important"]]
 
@@ -363,6 +381,7 @@ class TestSearch(unittest.TestCase):
         """Test search with documents that don't have filepath."""
         query = "test"
         index = MagicMock()
+        index.d = 128
         docs = [{"text": "content without path"}]  # No filepath
         tags = ["tag1"]
 
@@ -374,11 +393,23 @@ class TestSearch(unittest.TestCase):
         self.mock_future.result.return_value = (mock_dists, mock_idxs)
 
         results, context = search(query, index, docs, tags, self.mock_embeddings_model)
-
         self.assertEqual(len(results), 1)
-        # Should handle missing filepath gracefully (returns empty string or None)
-        file_path = results[0]["file_path"]
-        self.assertTrue(file_path is None or file_path == "")
+
+    def test_search_dimension_mismatch(self):
+        """Test that mismatched model/index dimensions raise EmbeddingDimensionMismatchError."""
+        query = "test query"
+        index = MagicMock()
+        index.d = 768  # Different from mocked embed dim (128) — triggers guard
+        docs = [{"text": "doc", "filepath": "p"}]
+        tags = ["t"]
+
+        with self.assertRaises(EmbeddingDimensionMismatchError) as ctx:
+            search(query, index, docs, tags, self.mock_embeddings_model)
+
+        err = ctx.exception
+        self.assertEqual(err.query_dim, 128)
+        self.assertEqual(err.index_dim, 768)
+        self.assertIn("re-index documents", str(err))
 
 
 class TestSearchEdgeCases(unittest.TestCase):
@@ -388,6 +419,14 @@ class TestSearchEdgeCases(unittest.TestCase):
         """Set up test fixtures."""
         self.mock_embeddings_model = MagicMock()
         self.mock_embeddings_model.embed_query.return_value = [0.1, 0.2, 0.3]
+
+        # Since numpy is globally mocked, configure the full call chain so the
+        # dimension guard ( query_embedding.shape[1] == index.d ) is controllable.
+        #   np.array([...]).astype('float32')  → mock_array
+        #   mock_array.shape[1]               → 128
+        mock_array = MagicMock()
+        mock_array.shape.__getitem__ = MagicMock(return_value=128)  # dim = 128
+        np.array.return_value.astype.return_value = mock_array
 
         self.patcher = patch('concurrent.futures.ThreadPoolExecutor')
         self.mock_executor_cls = self.patcher.start()
@@ -405,6 +444,7 @@ class TestSearchEdgeCases(unittest.TestCase):
         """Test search when index_summaries is None."""
         query = "test"
         index = MagicMock()
+        index.d = 128
         docs = [{"text": "doc1", "filepath": "path1"}]
         tags = ["tag1"]
 
@@ -427,6 +467,7 @@ class TestSearchEdgeCases(unittest.TestCase):
         """Test search when BM25 is not available."""
         query = "test"
         index = MagicMock()
+        index.d = 128
         docs = [{"text": "doc1", "filepath": "path1"}]
         tags = ["tag1"]
 
@@ -446,6 +487,7 @@ class TestSearchEdgeCases(unittest.TestCase):
         """Test search with empty query string."""
         query = ""
         index = MagicMock()
+        index.d = 128
         docs = [{"text": "doc1", "filepath": "path1"}]
         tags = ["tag1"]
 
@@ -465,6 +507,7 @@ class TestSearchEdgeCases(unittest.TestCase):
         """Test that BM25 errors are handled gracefully."""
         query = "test"
         index = MagicMock()
+        index.d = 128
         docs = [{"text": "doc1", "filepath": "path1"}]
         tags = ["tag1"]
 

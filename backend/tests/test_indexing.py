@@ -169,6 +169,7 @@ class TestIndexing(unittest.TestCase):
         import faiss
         dimension = 3
         index = faiss.IndexFlatL2(dimension)
+        index.d = dimension  # explicitly set in case faiss is globally mocked
         embeddings = np.array([[1.0, 2.0, 3.0]], dtype='float32')
         index.add(embeddings)
         
@@ -187,9 +188,9 @@ class TestIndexing(unittest.TestCase):
         # Setup mock for load_index
         mock_read_index.return_value = index # Return the mock index
 
-        # Load the index
+        # Load the index (now returns 8-tuple; unpack first 7)
         res = load_index(index_path)
-        loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res
+        loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
         
         # Verify the loaded data matches the original
         self.assertIsNotNone(loaded_index)
@@ -219,7 +220,7 @@ class TestIndexing(unittest.TestCase):
         ]
         
         res = load_index(index_path)
-        loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res
+        loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
         
         # Verify the functions were called: faiss, docs.pkl, tags.pkl, bm25.pkl
         mock_read_index.assert_called_once_with(index_path)
@@ -378,6 +379,7 @@ class TestSaveIndex(unittest.TestCase):
         import faiss
         
         index = faiss.IndexFlatL2(3)
+        index.d = 3  # explicitly set in case faiss is globally mocked
         embeddings = np.array([[1.0, 2.0, 3.0]], dtype='float32')
         index.add(embeddings)
         
@@ -390,6 +392,8 @@ class TestSaveIndex(unittest.TestCase):
         self.assertTrue(os.path.exists(index_path))
         self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_docs.pkl")))
         self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_tags.pkl")))
+        # Verify that the metadata sidecar is also written
+        self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_meta.json")))
 
 
 class TestLoadIndex(unittest.TestCase):
@@ -420,6 +424,7 @@ class TestLoadIndex(unittest.TestCase):
         
         # Create and save
         original_index = faiss.IndexFlatL2(3)
+        original_index.d = 3  # explicitly set in case faiss is globally mocked
         embeddings = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], dtype='float32')
         original_index.add(embeddings)
         
@@ -432,9 +437,10 @@ class TestLoadIndex(unittest.TestCase):
         # Mock load_index return
         mock_read_index.return_value = original_index
 
-        # Load and verify
+        # Load and verify (now returns 8-tuple)
         res = load_index(index_path)
-        loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res
+        loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
+        meta = res[7] if len(res) > 7 else {}
         
         # We can't check ntotal on a mock object unless we set it.
         # But if we use the same mock object "original_index", it should have whatever we set on it.

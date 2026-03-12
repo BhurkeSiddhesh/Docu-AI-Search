@@ -305,6 +305,37 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-03-12 (FAISS Dimension Safety & Test Fixes)
+- **Implemented Embedding Dimension Mismatch Guard for FAISS**
+  - **feat**: Added `EmbeddingDimensionMismatchError` to `backend/search.py` to prevent runtime crashes when the query vector dimension differs from the `.faiss` index dimension.
+  - **feat**: Catch mismatch in `/api/search` (`backend/api.py`) and return a `409 Conflict` prompting the user to re-index.
+  - **feat**: Modified `save_index` (`backend/indexing.py`) to persist `_meta.json` containing `model_name` and `embedding_dim`.
+  - **feat**: Updated `load_index` to return the new metadata dictionary as the 8th element in the tuple.
+  - **fix**: Fixed numpy mock chain in `backend/tests/test_search.py` so dimension checks work correctly in isolated and full suite runs.
+  - **fix**: Fixed JSON serialization error (`TypeError: Object of type MagicMock is not JSON serializable`) during suite-run of `test_indexing.py` by mapping `index.d`.
+  - **fix**: Fixed JSX syntax error (missing Fragment wrap) in `SettingsModal.jsx` return block.
+  - **Files**: `backend/search.py`, `backend/indexing.py`, `backend/api.py`, `backend/tests/test_search.py`, `backend/tests/test_indexing.py`, `frontend/src/components/SettingsModal.jsx`
+
+### 2026-03-12 (Embedding Factory)
+- **Added `get_embedding_client` Factory (Factory Pattern)**
+  - **feat**: Implemented `get_embedding_client(provider_type, model_name, api_key)` in `backend/llm_integration.py`.
+  - Supports three `provider_type` values: `'local'` (HuggingFaceEmbeddings, default model `Alibaba-NLP/gte-Qwen2-1.5B-instruct`), `'huggingface_api'` (HuggingFaceEndpointEmbeddings via Inference API), and `'commercial_api'` (OpenAI or Gemini, dispatched by `model_name` keyword matching).
+  - **deps**: Extended `langchain_huggingface` import to also import `HuggingFaceEndpointEmbeddings`.
+  - **Files**: `backend/llm_integration.py`
+
+### 2026-03-12 (Embedding Settings Router)
+- **Created Embedding Settings Router with app.state Caching**
+  - **feat**: Created `backend/settings.py` — a dedicated `APIRouter` with `GET /api/settings/embeddings` and `POST /api/settings/embeddings`.
+  - **feat**: `GET` returns `provider_type`, `model_name`, and `api_key_set` (boolean mask — raw key never sent over the wire).
+  - **feat**: `POST` validates the payload (rejects unknown `provider_type`, enforces `api_key` for non-local providers), persists to `config.ini [Embeddings]`, and hot-updates `app.state.embedding_config`.
+  - **feat**: Added `get_active_embedding_client(app)` helper — resolves state → config.ini → legacy fallback; used by search and indexing paths.
+  - **feat**: Startup event now calls `seed_app_state(app)` to pre-populate cache before the first request.
+  - **config**: Added `[Embeddings]` section to `config.ini` with default `local` provider.
+  - **test**: Added `backend/tests/test_settings.py` — 13 unit tests covering GET, POST success, POST validation failures, and the client helper. All LLM calls mocked.
+  - **Files**: `backend/settings.py` (new), `backend/api.py`, `config.ini`, `backend/tests/test_settings.py` (new)
+
+
+
 ### 2026-02-25 (PR #46 Recovery & Security)
 - **Resolved Regressions and Security Logic from PR #46**
   - **fix**: Fixed `database.py` schema (added `is_indexed` to `folder_history`, `add_files_batch`, `clear_files`).

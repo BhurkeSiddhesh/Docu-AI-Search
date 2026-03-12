@@ -4,6 +4,22 @@ import concurrent.futures
 from typing import List, Dict, Any, Tuple
 import string
 
+
+class EmbeddingDimensionMismatchError(Exception):
+    """
+    Raised when the embedding dimension produced by the current model does not
+    match the dimension of the saved FAISS index.
+    The user must rebuild the index with the new model before searching.
+    """
+    def __init__(self, query_dim: int, index_dim: int):
+        self.query_dim = query_dim
+        self.index_dim = index_dim
+        super().__init__(
+            f"Embedding dimension mismatch: current model produces {query_dim}-dim vectors "
+            f"but the saved FAISS index expects {index_dim}-dim vectors. "
+            f"Please re-index documents using the new model."
+        )
+
 # Optimized stop words list for fast filtering
 STOP_WORDS = {
     'a', 'an', 'the', 'and', 'or', 'but', 'if', 'then', 'else', 'when', 'at', 'by', 'from', 'for', 'with', 'in', 'on', 'to', 'is', 'am', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'but', 'so', 'up', 'down', 'out', 'off', 'over', 'under', 'again', 'further', 'once', 'here', 'there', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'than', 'too', 'very', 'can', 'will', 'just', 'should', 'now'
@@ -76,7 +92,17 @@ def search(query: str, index, docs: List[Dict], tags: List[str], embeddings_mode
 
     # 1. Start Vector Search (Parallel Chunk + Summary)
     query_embedding = np.array([embeddings_model.embed_query(query)]).astype('float32')
-    
+
+    # ── Dimension safety check ──────────────────────────────────────────────
+    # Catch model-vs-index mismatch early rather than letting FAISS crash with
+    # an unhelpful native assertion error.
+    if query_embedding.shape[1] != index.d:
+        raise EmbeddingDimensionMismatchError(
+            query_dim=int(query_embedding.shape[1]),
+            index_dim=int(index.d),
+        )
+    # ───────────────────────────────────────────────────────────────────────
+
     vector_candidates = {} # idx -> score (distance)
     keyword_candidates = {} # idx -> score
     

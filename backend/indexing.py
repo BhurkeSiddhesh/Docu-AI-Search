@@ -6,7 +6,7 @@ import numpy as np
 import concurrent.futures
 import time
 from datetime import datetime
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Optional
 from langchain_text_splitters import CharacterTextSplitter
 from backend.llm_integration import get_embeddings, get_tags, smart_summary, summarize
 from backend.file_processing import extract_text
@@ -14,6 +14,9 @@ from backend import database
 from backend.clustering import perform_global_clustering
 from rank_bm25 import BM25Okapi
 import string
+
+# Metadata sidecar filename suffix
+_META_SUFFIX = '_meta.json'
 
 def tokenize(text):
     """Simple tokenization for BM25."""
@@ -30,10 +33,16 @@ def safe_extract_text(filepath):
         print(f"Error reading {filepath}: {e}")
         return filepath, None
 
-def create_index(folder_paths, provider, api_key=None, model_path=None, progress_callback=None):
+def create_index(folder_paths, provider, api_key=None, model_path=None,
+                 progress_callback=None, embedding_client=None):
     """
     Creates a RAPTOR index (Global Clustering + Recursive Summarization).
-    Optimized with Parallel Execution.
+    Optimised with Parallel Execution.
+
+    ``embedding_client`` (optional): a pre-resolved LangChain embeddings object
+    from ``settings.get_active_embedding_client()``.  When supplied, the legacy
+    ``provider``/``api_key``/``model_path`` parameters are ignored for the
+    embedding step (they are still used for LLM summarisation).
     """
     if isinstance(folder_paths, str):
         folder_paths = [folder_paths]
@@ -138,7 +147,12 @@ def create_index(folder_paths, provider, api_key=None, model_path=None, progress
     # 5. Parallel Embedding (I/O Bound) - 25% to 65%
     if progress_callback: progress_callback(25, 100, "Starting embeddings...")
     print("Step 3/5: Embedding Chunks (Parallel)...")
-    embeddings_model = get_embeddings(provider, api_key, model_path)
+    # Use the injected client when available; fall back to legacy factory
+    if embedding_client is not None:
+        embeddings_model = embedding_client
+        print("[Index] Using pre-resolved embedding client from app.state.")
+    else:
+        embeddings_model = get_embeddings(provider, api_key, model_path)
     
     # Embed in batches to be efficient but safe
     batch_size = 100 
@@ -266,18 +280,37 @@ def create_index(folder_paths, provider, api_key=None, model_path=None, progress
     print(f"Total time: {time.time() - start_time:.2f}s")
     
     # Use empty tags list to maintain return signature
-    tags = [""] * len(chunk_strings) 
-    
+    tags = [""] * len(chunk_strings)
+
+    # Store the embedding dimension so load_index can detect future model mismatches
+    _embedding_dim = int(chunk_emb_np.shape[1])
+    _model_name = getattr(embeddings_model, 'model_name', None) or getattr(embeddings_model, 'model', 'unknown')
+
     # Return both indices packaged (we'll need to modify save_index/load_index too)
     return index_chunks, all_chunks, tags, index_summaries, cluster_summaries, final_cluster_map, bm25
 
-def save_index(index_chunks, all_chunks, tags, filepath, index_summaries=None, cluster_summaries=None, cluster_map=None, bm25=None):
+def save_index(index_chunks, all_chunks, tags, filepath, index_summaries=None,
+               cluster_summaries=None, cluster_map=None, bm25=None,
+               model_name: str = 'unknown', embedding_dim: int = 0):
     """
     Saves the Dual FAISS index (RAPTOR) + BM25 using Pickle (as per AGENTS.md).
+    Also writes a JSON metadata sidecar so load_index can detect model mismatches.
     """
     faiss.write_index(index_chunks, filepath)
     base_path = os.path.splitext(filepath)[0]
-    
+
+    # ── Metadata sidecar ───────────────────────────────────────────────────
+    # Stores the model name and the embedding dimension so the search layer can
+    # detect a mismatch before querying FAISS (rather than crashing at runtime).
+    dim = embedding_dim if embedding_dim else (index_chunks.d if index_chunks else 0)
+    meta = {
+        'model_name': model_name,
+        'embedding_dim': dim,
+    }
+    with open(base_path + _META_SUFFIX, 'w') as f:
+        json.dump(meta, f)
+    # ───────────────────────────────────────────────────────────────────────
+
     # Use .pkl for everything as per AGENTS.md and for BM25 picklability
     with open(base_path + '_docs.pkl', 'wb') as f:
         pickle.dump(all_chunks, f)
@@ -300,14 +333,31 @@ def save_index(index_chunks, all_chunks, tags, filepath, index_summaries=None, c
 def load_index(filepath):
     """
     Loads Dual FAISS index + BM25 with fallback for legacy JSON.
+    Returns an 8-tuple: the original 7 values plus a ``meta`` dict that
+    contains ``model_name`` and ``embedding_dim`` (or empty dict if absent).
     """
     if not os.path.exists(filepath):
-        return None, None, None, None, None, None, None
-        
+        return None, None, None, None, None, None, None, {}
+
     index_chunks = faiss.read_index(filepath)
     base_path = os.path.splitext(filepath)[0]
-    
-    # Check for both .pkl and .json for backward compatibility during migration
+
+    # ── Load metadata sidecar (non-fatal if missing for legacy indices) ────
+    meta = {}
+    meta_path = base_path + _META_SUFFIX
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, 'r') as f:
+                meta = json.load(f)
+        except Exception as e:
+            print(f"[Index] Warning: could not read metadata sidecar: {e}")
+    # If no sidecar, infer dimension from the loaded index
+    if 'embedding_dim' not in meta:
+        meta['embedding_dim'] = index_chunks.d
+    if 'model_name' not in meta:
+        meta['model_name'] = 'unknown'
+    # ───────────────────────────────────────────────────────────────────────
+
     docs_path_pkl = base_path + '_docs.pkl'
     docs_path_json = base_path + '_docs.json'
     tags_path_pkl = base_path + '_tags.pkl'
@@ -385,6 +435,6 @@ def load_index(filepath):
         chunk_strings = [chunk['text'] for chunk in all_chunks]
         tokenized_corpus = [tokenize(doc) for doc in chunk_strings]
         bm25 = BM25Okapi(tokenized_corpus)
-            
+
     print(f"Loaded RAPTOR Index: {len(all_chunks)} chunks, {len(cluster_summaries) if cluster_summaries else 0} clusters.")
-    return index_chunks, all_chunks, tags, index_summaries, cluster_summaries, cluster_map, bm25
+    return index_chunks, all_chunks, tags, index_summaries, cluster_summaries, cluster_map, bm25, meta

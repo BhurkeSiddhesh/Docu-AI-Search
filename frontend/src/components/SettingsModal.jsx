@@ -1,7 +1,51 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { X, Settings, FolderOpen, Loader2, Save, ChevronDown, ChevronUp, Key, Cpu, Trash2, CheckCircle2 } from 'lucide-react';
+import { X, Settings, FolderOpen, Loader2, Save, ChevronDown, ChevronUp, Key, Cpu, Trash2, CheckCircle2, Database } from 'lucide-react';
 import ModelManager from './ModelManager';
+
+const API = 'http://localhost:8000';
+
+// ---------------------------------------------------------------------------
+// Inline toast — no extra npm package needed
+// ---------------------------------------------------------------------------
+const Toast = ({ message, type = 'success', onDismiss }) => {
+    useEffect(() => {
+        const t = setTimeout(onDismiss, 3000);
+        return () => clearTimeout(t);
+    }, [onDismiss]);
+
+    const colours = {
+        success: 'bg-green-500/90 text-white border-green-400/30',
+        error:   'bg-destructive/90 text-white border-destructive/30',
+        info:    'bg-primary/90 text-white border-primary/30',
+    };
+
+    return (
+        <div
+            id="settings-toast"
+            className={`fixed bottom-6 right-6 z-[200] flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border backdrop-blur-md text-sm font-medium animate-in slide-in-from-bottom-4 duration-300 ${colours[type]}`}
+        >
+            {type === 'success' && <CheckCircle2 className="w-4 h-4 flex-shrink-0" />}
+            {type === 'error'   && <X            className="w-4 h-4 flex-shrink-0" />}
+            <span>{message}</span>
+            <button onClick={onDismiss} className="ml-2 opacity-70 hover:opacity-100" aria-label="Dismiss notification">
+                <X className="w-3 h-3" />
+            </button>
+        </div>
+    );
+};
+
+const EMBEDDING_PROVIDER_TYPES = [
+    { value: 'local',           label: 'Local (HuggingFace on-device)',       needsKey: false },
+    { value: 'huggingface_api', label: 'HuggingFace Inference API',           needsKey: true  },
+    { value: 'commercial_api',  label: 'Commercial API (OpenAI / Gemini)',    needsKey: true  },
+];
+
+const DEFAULT_EMBEDDING_CONFIG = {
+    provider_type: 'local',
+    model_name:    'Alibaba-NLP/gte-Qwen2-1.5B-instruct',
+    api_key:       '',
+};
 
 const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
     const [config, setConfig] = useState({
@@ -17,6 +61,8 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
         local_model_path: '',
         local_model_type: 'llamacpp'
     });
+    const [embeddingConfig, setEmbeddingConfig] = useState(DEFAULT_EMBEDDING_CONFIG);
+    const [toast, setToast] = useState(null);  // { message, type }
     const [isLoading, setIsLoading] = useState(false);
     const [indexingStatus, setIndexingStatus] = useState({
         running: false,
@@ -30,9 +76,15 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
     const [showHistory, setShowHistory] = useState(false);
     const [cacheStats, setCacheStats] = useState({ total_entries: 0, total_hits: 0 });
 
+    const showToast = useCallback((message, type = 'success') => {
+        setToast({ message, type });
+    }, []);
+    const dismissToast = useCallback(() => setToast(null), []);
+
     useEffect(() => {
         if (isOpen) {
             fetchConfig();
+            fetchEmbeddingConfig();
         }
     }, [isOpen]);
 
@@ -65,10 +117,26 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
 
     const fetchConfig = async () => {
         try {
-            const response = await axios.get('http://localhost:8000/api/config');
+            const response = await axios.get(`${API}/api/config`);
             setConfig(prev => ({ ...prev, ...response.data }));
         } catch (error) {
             console.error('Failed to fetch config:', error);
+        }
+    };
+
+    const fetchEmbeddingConfig = async () => {
+        try {
+            const response = await axios.get(`${API}/api/settings/embeddings`);
+            // Map api_key_set back to empty string for the input field
+            setEmbeddingConfig(prev => ({
+                ...DEFAULT_EMBEDDING_CONFIG,
+                provider_type: response.data.provider_type,
+                model_name:    response.data.model_name,
+                // If key was set server-side, show placeholder; user can overwrite
+                api_key: response.data.api_key_set ? '••••••••' : '',
+            }));
+        } catch (error) {
+            console.error('Failed to fetch embedding config:', error);
         }
     };
 
@@ -102,11 +170,27 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
     const handleSave = async () => {
         setIsLoading(true);
         try {
-            await axios.post('http://localhost:8000/api/config', config);
+            // 1. Save general config
+            await axios.post(`${API}/api/config`, config);
+
+            // 2. Save embedding config (only send api_key if user typed a new value)
+            const embPayload = {
+                provider_type: embeddingConfig.provider_type,
+                model_name:    embeddingConfig.model_name,
+            };
+            const keyIsPlaceholder = embeddingConfig.api_key === '••••••••';
+            if (!keyIsPlaceholder && embeddingConfig.api_key) {
+                embPayload.api_key = embeddingConfig.api_key;
+            }
+            await axios.post(`${API}/api/settings/embeddings`, embPayload);
+
+            showToast('Settings saved successfully!', 'success');
             onSave();
             onClose();
         } catch (error) {
             console.error('Failed to save config:', error);
+            const detail = error.response?.data?.detail || 'Failed to save settings.';
+            showToast(detail, 'error');
         } finally {
             setIsLoading(false);
         }
@@ -114,7 +198,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
 
     const saveConfigData = async (newConfig) => {
         try {
-            await axios.post('http://localhost:8000/api/config', newConfig);
+            await axios.post(`${API}/api/config`, newConfig);
             // Refresh history after save
             fetchFolderHistory();
         } catch (error) {
@@ -124,7 +208,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
 
     const handleAddFolder = async () => {
         try {
-            const response = await axios.get('http://localhost:8000/api/browse');
+            const response = await axios.get(`${API}/api/browse`);
             if (response.data.folder && !config.folders.includes(response.data.folder)) {
                 const newConfig = {
                     ...config,
@@ -162,7 +246,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
     const handleRemoveFromHistory = async (folder, e) => {
         e.stopPropagation();  // Prevent adding the folder when clicking delete
         try {
-            await axios.delete('http://localhost:8000/api/folders/history/item', {
+            await axios.delete(`${API}/api/folders/history/item`, {
                 data: { path: folder }
             });
             fetchFolderHistory();  // Refresh the list
@@ -174,7 +258,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
     const handleClearAllHistory = async () => {
         if (confirm('Clear all folder history?')) {
             try {
-                await axios.delete('http://localhost:8000/api/folders/history');
+                await axios.delete(`${API}/api/folders/history`);
                 setFolderHistory([]);
                 setShowHistory(false);
             } catch (error) {
@@ -195,7 +279,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
     const handleDeleteAllHistory = async () => {
         if (confirm('Delete all search history?')) {
             try {
-                await axios.delete('http://localhost:8000/api/search/history');
+                await axios.delete(`${API}/api/search/history`);
                 alert('History cleared!');
             } catch (error) {
                 console.error('Failed to clear history:', error);
@@ -206,7 +290,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
     const handleClearCache = async () => {
         if (confirm('Clear all AI response cache? This will reset the learning.')) {
             try {
-                await axios.post('http://localhost:8000/api/cache/clear');
+                await axios.post(`${API}/api/cache/clear`);
                 await fetchCacheStats();
                 alert('Cache cleared!');
             } catch (error) {
@@ -233,12 +317,13 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
     if (!isOpen) return null;
 
     return (
-        <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) onClose();
-            }}
-        >
+        <>
+            <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+                onClick={(e) => {
+                    if (e.target === e.currentTarget) onClose();
+                }}
+            >
             <div className="glass-overlay w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-2xl shadow-2xl">
                 {/* Header */}
                 <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b border-border/30 bg-background/80 backdrop-blur-md">
@@ -544,6 +629,82 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                         )}
                     </section>
 
+                    {/* ── Embedding Provider Section ───────────────────────────────── */}
+                    <section className="space-y-3">
+                        <button
+                            id="embedding-section-toggle"
+                            onClick={() => toggleSection('embedding')}
+                            className="w-full flex items-center justify-between text-sm font-medium text-muted-foreground uppercase tracking-wide"
+                        >
+                            <span className="flex items-center gap-2">
+                                <Database className="w-4 h-4" />
+                                Embedding Provider
+                            </span>
+                            {expandedSection === 'embedding' ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+
+                        {expandedSection === 'embedding' && (
+                            <div id="embedding-config-panel" className="space-y-3 pl-2 border-l-2 border-border ml-2">
+                                {/* Provider type */}
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium text-muted-foreground" htmlFor="embedding-provider-select">
+                                        Provider Type
+                                    </label>
+                                    <select
+                                        id="embedding-provider-select"
+                                        value={embeddingConfig.provider_type}
+                                        onChange={(e) => setEmbeddingConfig(prev => ({ ...prev, provider_type: e.target.value, api_key: '' }))}
+                                        className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
+                                    >
+                                        {EMBEDDING_PROVIDER_TYPES.map(pt => (
+                                            <option key={pt.value} value={pt.value}>{pt.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Model name */}
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium text-muted-foreground" htmlFor="embedding-model-name">
+                                        Model Name / Repo ID
+                                    </label>
+                                    <input
+                                        id="embedding-model-name"
+                                        type="text"
+                                        value={embeddingConfig.model_name}
+                                        onChange={(e) => setEmbeddingConfig(prev => ({ ...prev, model_name: e.target.value }))}
+                                        className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background font-mono"
+                                        placeholder="e.g. Alibaba-NLP/gte-Qwen2-1.5B-instruct"
+                                    />
+                                </div>
+
+                                {/* API Key — only shown for API-based providers */}
+                                {EMBEDDING_PROVIDER_TYPES.find(pt => pt.value === embeddingConfig.provider_type)?.needsKey && (
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground" htmlFor="embedding-api-key">
+                                            API Key
+                                            {embeddingConfig.api_key === '••••••••' && (
+                                                <span className="ml-2 text-[10px] bg-green-500/10 text-green-600 px-1.5 py-0.5 rounded font-semibold">Stored</span>
+                                            )}
+                                        </label>
+                                        <input
+                                            id="embedding-api-key"
+                                            type="password"
+                                            value={embeddingConfig.api_key}
+                                            onChange={(e) => setEmbeddingConfig(prev => ({ ...prev, api_key: e.target.value }))}
+                                            className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
+                                            placeholder={embeddingConfig.api_key === '••••••••' ? 'Leave blank to keep current key' : 'Paste your API key'}
+                                        />
+                                    </div>
+                                )}
+
+                                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                    The embedding provider is used to convert documents and queries into
+                                    vectors for semantic search. Changes take effect on the next index rebuild.
+                                </p>
+                            </div>
+                        )}
+                    </section>
+
                     {/* Data Management */}
                     <section className="space-y-3 pt-3 border-t border-border">
                         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
@@ -596,7 +757,17 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                     </button>
                 </div>
             </div>
-        </div>
+            </div>
+
+            {/* Toast notification */}
+            {toast && (
+                <Toast
+                    message={toast.message}
+                    type={toast.type}
+                    onDismiss={dismissToast}
+                />
+            )}
+        </>
     );
 };
 

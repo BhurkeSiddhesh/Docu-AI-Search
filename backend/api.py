@@ -94,6 +94,10 @@ def get_download_status(*args, **kwargs):
     from backend.model_manager import get_download_status as _get_download_status
     return _get_download_status(*args, **kwargs)
 
+def get_active_embedding_client(*args, **kwargs):
+    from backend.settings import get_active_embedding_client as _get_active
+    return _get_active(*args, **kwargs)
+
 # -----------------------------
 from backend import database
 
@@ -119,6 +123,10 @@ app = FastAPI()
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Register embedding settings router
+from backend.settings import router as embedding_router
+app.include_router(embedding_router)
 
 # Enable CORS for frontend
 app.add_middleware(
@@ -170,6 +178,9 @@ def save_config_file(config):
 async def startup_event():
     logger.info("Application starting up...")
     database.init_database()
+    # Seed embedding config cache from config.ini
+    from backend.settings import seed_app_state
+    seed_app_state(app)
     # Load index in background to not block health checks
     asyncio.create_task(load_initial_index())
 
@@ -180,8 +191,15 @@ async def load_initial_index():
             # load_index is a blocking call, run it in a thread
             logger.info("Loading existing index in background...")
             res = await asyncio.to_thread(load_index, INDEX_PATH)
-            index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25 = res
-            logger.info("Loaded existing index successfully.")
+            # Unpack 8-tuple (7 data items + meta dict added in latest indexing.py)
+            index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25 = res[:7]
+            _index_meta = res[7] if len(res) > 7 else {}
+            logger.info(
+                "Loaded existing index successfully. "
+                "Model: %s, dim: %s",
+                _index_meta.get('model_name', 'unknown'),
+                _index_meta.get('embedding_dim', '?'),
+            )
         except Exception as e:
             logger.error(f"Error loading index: {e}")
             index = None
@@ -481,12 +499,19 @@ async def search_files(request: SearchRequest, req: Request):
             except:
                 pass
 
-        # Run Search
-        results, _context_snippets = search(
-            request.query, index, docs, tags, 
-            get_embeddings(provider, api_key, model_path),
-            index_summaries, cluster_summaries, cluster_map, bm25
-        )
+        # Run Search — use the active embedding client from settings state
+        from backend.search import EmbeddingDimensionMismatchError
+        try:
+            results, _context_snippets = search(
+                request.query, index, docs, tags,
+                get_active_embedding_client(req.app),
+                index_summaries, cluster_summaries, cluster_map, bm25
+            )
+        except EmbeddingDimensionMismatchError as dim_err:
+            raise HTTPException(
+                status_code=409,
+                detail=str(dim_err),
+            )
         
         # OPTIMIZATION: Batch database lookups for missing file info
         indices_to_lookup = list(dict.fromkeys(
@@ -928,13 +953,25 @@ def run_indexing(config, folders):
     
     try:
         logger.info(f"Starting indexing for folders: {folders}")
-        # Unpack 7 values
+
+        # Resolve the active embedding client via settings (falls back to legacy if not configured)
+        from backend.settings import get_active_embedding_client
+        embedding_client = get_active_embedding_client(app)
+        _model_name = getattr(embedding_client, 'model_name', None) or getattr(embedding_client, 'model', 'unknown')
+
+        # Unpack 7 values (create_index still returns 7)
         new_index, new_docs, new_tags, new_summ_index, new_summ_docs, new_cluster_map, new_bm25 = create_index(
-            folders, provider, api_key, model_path, 
-            progress_callback=indexing_progress_callback
+            folders, provider, api_key, model_path,
+            progress_callback=indexing_progress_callback,
+            embedding_client=embedding_client,
         )
         if new_index:
-            save_index(new_index, new_docs, new_tags, INDEX_PATH, new_summ_index, new_summ_docs, new_cluster_map, new_bm25)
+            _embedding_dim = int(new_index.d)
+            save_index(
+                new_index, new_docs, new_tags, INDEX_PATH,
+                new_summ_index, new_summ_docs, new_cluster_map, new_bm25,
+                model_name=_model_name, embedding_dim=_embedding_dim,
+            )
             index, docs, tags = new_index, new_docs, new_tags
             index_summaries, cluster_summaries, cluster_map = new_summ_index, new_summ_docs, new_cluster_map
             bm25 = new_bm25
