@@ -9,19 +9,19 @@ An intelligent, semantic search engine for your local documents powered by AI em
 ## 🌟 Features
 
 - **🔍 Semantic Search**: Find documents using natural language, not just keywords
+- **🧠 Advanced RAG Pipeline**: State-of-the-art Query Rewriting and Cross-Encoder Reranking
 - **📂 Multiple File Types**: Supports PDF, DOCX, XLSX, PPTX, and TXT files
-- **🤖 AI Summaries**: Get instant AI-generated summaries of search results
+- **🤖 AI Insights**: Agentic researcher mode that synthesizes answers across multiple documents
 - **🏠 Fully Local**: Use open-source GGUF models - no API keys required!
-- **☁️ Multi-Provider Cloud**: Supports OpenAI, Gemini, Anthropic, and Grok APIs
-- **📊 Metadata Tracking**: SQLite database tracks files, sizes, dates, and indexing stats
-- **📜 Search History**: View and re-run previous searches
-- **🎨 Modern UI**: Beautiful glassmorphism design with smooth animations (Framer Motion)
+- **🔗 Hybrid Search**: Combines Dense Vector (FAISS) with Sparse Keyword (BM25) search
+- **☁️ Multi-Provider Cloud**: Supports OpenAI, Gemini, Anthropic, Grok, and HuggingFace APIs
+- **🛠️ Embedding Factory**: Choose between local, HuggingFace Inference, or Commercial embeddings
+- **📊 Metadata Tracking**: SQLite database with B-Tree indices for O(log N) lookups
+- **⚡ AI Response Cache**: Persistent SQLite-backed caching for instant repeated queries
+- **🎨 Modern UI**: Premium sidebar-based settings and cosmic glassmorphism design
 - **⬇️ Model Manager**: Download and manage 25+ open-source LLM models directly in the app
-- **💾 Persistent Storage**: Indexed data saved between sessions
-- **⚡ AI Response Cache**: Instant results for repeated queries via SQLite caching
-- **📁 Folder History**: Quick access to recently indexed folders
-- **♿ Accessibility**: Full keyboard navigation and ARIA labels
-- **🔒 Security**: Path traversal protection for file operations
+- **🧪 Golden Dataset**: Standardized "needle-in-a-haystack" verification for retrieval accuracy
+- **🔒 Security**: Built-in path traversal protection and file extension whitelisting
 
 ## 🏗️ Architecture
 
@@ -46,23 +46,27 @@ An intelligent, semantic search engine for your local documents powered by AI em
 ### Data Flow
 
 ```
-User selects folder → Extract text from files → Split into chunks (1000 chars)
+User selects folder → Extract text → Advanced RAG Optimization
      ↓
-Generate embeddings (Local/OpenAI) → Store in FAISS index + SQLite metadata
+Query Rewriting (LLM-based) + Keyword Extraction
      ↓
-User searches → Generate query embedding → Find similar documents → Return results with AI summaries
+Parallel Hybrid Search (FAISS + BM25) → Top 20 Candidates
+     ↓
+Cross-Encoder Reranking (Semantic Scoring) → Final Top 6
+     ↓
+AI Agent Synthesis → Cite Filenames + Generate Answer
 ```
 
 ### Storage
 
 1. **`index.faiss`** - Vector embeddings for similarity search
-2. **`index_docs.pkl`** - Document text chunks
-3. **`index_tags.pkl`** - AI-generated tags
-4. **`metadata.db`** - SQLite database:
-   - File metadata (path, size, modified date, chunks)
-   - Search history (queries, timing, result counts)
-   - User preferences
-5. **`models/`** - Downloaded local LLM models (GGUF format)
+2. **`index_docs.pkl`** - Document text chunks + BM25 context
+3. **`index_tags.pkl`** - AI-generated tags per document
+4. **`metadata.db`** - SQLite database (Indices: `faiss_idx`, `filename`):
+   - File metadata (path, size, hash, content_type)
+   - Search history & AI response cache
+   - Folder history & UX preferences
+5. **`models/`** - GGUF model binaries
 
 ## 📋 Prerequisites
 
@@ -102,7 +106,7 @@ This will:
 **Alternative (Manual Start):**
 ```bash
 # Terminal 1: Backend
-uvicorn api:app --reload
+python -m uvicorn backend.api:app --reload
 
 # Terminal 2: Frontend
 cd frontend && npm run dev
@@ -141,9 +145,10 @@ npm run test:stress   # Performance stress tests
 | Command | Description | Speed |
 |---------|-------------|-------|
 | `npm run test` | Quick unit tests | ~12 sec |
-| `npm run test:full` | All tests (incl. model) | ~10 min |
+| `npm run test:full` | All tests (incl. model/integration) | ~10 min |
 | `npm run test:stress` | Load/stress tests | ~2 min |
-| `python run_tests.py --coverage` | With coverage report | ~15 sec |
+| `python scripts/verify_golden_set.py` | Retrieval accuracy test | ~1 min |
+| `python scripts/run_tests.py --coverage` | With coverage report | ~15 sec |
 
 ### What is Coverage?
 
@@ -173,12 +178,12 @@ python tests/stress_test.py
 
 | File | Tests |
 |------|-------|
-| `test_api.py` | API endpoints (search, config, index) |
-| `test_database.py` | File metadata, search history storage |
-| `test_file_processing.py` | PDF, DOCX, XLSX, PPTX extraction |
-| `test_search.py` | FAISS semantic search |
-| `test_model_comparison.py` | Model ranking by accuracy/speed |
-| `stress_test.py` | Load testing, concurrent requests |
+| `backend/tests/test_api.py` | API endpoints & security guards |
+| `backend/tests/test_database.py` | Metadata storage & SQLite performance |
+| `backend/tests/test_search.py` | Hybrid search & re-ranking logic |
+| `backend/tests/test_rag_optimizers.py` | Query rewriting & Cross-Encoder |
+| `backend/tests/test_security.py` | Path traversal & protection |
+| `scripts/verify_golden_set.py` | Golden Dataset "Needle in Haystack" |
 
 
 ## 💡 Usage Guide
@@ -418,36 +423,32 @@ This verifies:
 
 ```
 Docu-AI-Search/
-├── backend/                  # Python backend code
-│   ├── api.py                # FastAPI server & endpoints
-│   ├── database.py           # SQLite operations
-│   ├── indexing.py           # FAISS indexing logic
-│   ├── search.py             # Semantic search
-│   ├── file_processing.py    # Text extraction
-│   ├── llm_integration.py    # LLM provider abstraction
-│   ├── model_manager.py      # Model downloads (with security validation)
-│   └── tests/                # pytest tests
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx           # Main component
-│   │   ├── components/
-│   │   │   ├── Header.jsx, SearchBar.jsx, SearchResults.jsx
-│   │   │   ├── SettingsModal.jsx, ModelManager.jsx
-│   │   │   └── SearchHistory.jsx, FileList.jsx, BenchmarkResults.jsx
-│   │   └── test/             # Vitest tests
-│   └── package.json
-├── scripts/                  # Utility scripts
-│   ├── start_all.js          # Unified startup script
-│   ├── run_tests.py          # Test runner
-│   └── benchmark_models.py   # Model benchmarking
-├── data/                     # Generated/runtime files
-│   ├── index.faiss           # Vector embeddings
-│   ├── metadata.db           # SQLite database
-│   └── benchmark_results.json
-├── models/                   # Downloaded GGUF models
-├── config.ini                # User configuration
-├── requirements.txt          # Python dependencies
-└── package.json              # Node.js scripts
+├── backend/                   # Python core logic
+│   ├── api.py                 # FastAPI & security layer
+│   ├── settings.py            # Embedding & provider routing
+│   ├── database.py            # SQLite management (B-Tree indices)
+│   ├── indexing.py            # Parallel indexing & extraction
+│   ├── search.py              # Hybrid Dense/Sparse search
+│   ├── rag_optimizers.py      # Cross-Encoders & Rewriting
+│   ├── llm_integration.py     # AI Factory (Local/Cloud)
+│   └── tests/                 # 100+ Unit/Integration tests
+├── frontend/                  # React Application
+│   ├── src/components/        # Cosmic Glassmorphism UI
+│   ├── src/test/              # Vitest suite
+│   └── package.json           # Frontend scripts
+├── scripts/                   # System utilities
+│   ├── start_all.js           # Smart process manager
+│   ├── verify_golden_set.py   # Accuracy verification
+│   └── benchmark_models.py    # Performance profiling
+├── data/                      # Persistent storage
+│   ├── index.faiss            # Vector index (FlatL2)
+│   ├── index_docs.pkl         # Content shards
+│   ├── metadata.db            # Master relational DB
+│   └── app.log                # System audit logs
+├── models/                    # GGUF Binary store
+├── config.ini                 # Global configuration
+├── requirements.txt           # Dependency graph
+└── package.json               # Development task runner
 ```
 
 ## 🔮 Future Enhancements
