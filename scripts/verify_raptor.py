@@ -10,7 +10,15 @@ from backend import database
 from backend.llm_integration import get_embeddings
 
 def test_raptor_pipeline():
-    print("=== Testing RAPTOR Pipeline ===")
+    """
+    Executes an end-to-end integration test of the RAPTOR indexing and search pipeline.
+
+    The test includes:
+    1. Generating synthetic text files for two distinct topics (Space and Ancient Rome).
+    2. Patching the summarization logic to produce deterministic cluster labels.
+    3. Triggering the full indexing process (clustering, embedding, BM25).
+    4. Performing a semantic search to verify that relevant documents are retrieved.
+    """
     
     # Setup test data
     test_dir = "test_data/raptor_test"
@@ -56,12 +64,13 @@ def test_raptor_pipeline():
         # Let's try 'local' (HuggingFace) for embeddings.
         
         
-        index, docs, tags, idx_sum, doc_sum, map_sum, bm25 = create_index(
+        res = create_index(
             test_dir, 
             provider='local', # Forces HF Embeddings
             api_key='test',
             model_path=None
         )
+        index, docs, tags, idx_sum, doc_sum, map_sum, bm25 = res[:7]
         
         print(f"\n[2] Verification:")
         print(f"- Chunks: {len(docs)}")

@@ -8,8 +8,23 @@ _QUERY_REWRITE_CACHE: Dict[str, str] = {}
 
 def rewrite_query(query: str, provider: str, api_key: str, model_path: str = "") -> str:
     """
-    Uses a fast LLM call to rewrite a conversational user query into
-    an optimized, keyword-dense search query.
+    Uses an LLM to transform a conversational query into search keywords.
+
+    This optimization step extracts core entities and intent while removing
+    conversational filler, leading to higher quality vector and BM25 matches.
+
+    Args:
+        query (str): The raw conversational user query.
+        provider (str): The LLM provider to use for rewriting (e.g., 'openai').
+        api_key (str): API key for the LLM provider.
+        model_path (str, optional): Path to the local model if using a local provider.
+
+    Returns:
+        str: An optimized, keyword-dense search query string.
+
+    Note:
+        The function uses a simple memory cache (`_QUERY_REWRITE_CACHE`) to avoid
+        redundant LLM calls for identical queries in the same session.
     """
     if query in _QUERY_REWRITE_CACHE:
         return _QUERY_REWRITE_CACHE[query]
@@ -54,8 +69,23 @@ _RERANKER_CACHE = {}
 
 def rerank_results(query: str, chunks: List[Dict[str, Any]], reranker_model_name: str) -> List[Dict[str, Any]]:
     """
-    Uses a Cross-Encoder to re-score and re-rank the retrieved chunks.
-    It performs deep semantic comparison between the query and each chunk.
+    Re-scores and re-orders search results using a Cross-Encoder model.
+
+    Unlike Bi-Encoders (used for initial search), Cross-Encoders perform a
+    deep semantic comparison between the query and each document chunk
+    simultaneously, providing much higher ranking precision.
+
+    Args:
+        query (str): The search query used for comparison.
+        chunks (List[Dict[str, Any]]): The list of retrieved chunks from initial search.
+        reranker_model_name (str): The model name/HuggingFace ID for the Cross-Encoder.
+
+    Returns:
+        List[Dict[str, Any]]: The re-ordered list of chunks, sorted by `rerank_score`.
+
+    Note:
+        This step is computationally more expensive than initial retrieval.
+        It is typically applied to a small candidate pool (e.g., top 20 results).
     """
     if not chunks:
         return []

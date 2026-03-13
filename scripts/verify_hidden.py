@@ -4,6 +4,15 @@ import os
 API_URL = "http://localhost:8000/api"
 
 def test_hidden_paths():
+    """
+    Verifies that internal test datasets (like 'golden_dataset') are hidden 
+    from the public API endpoints to prevent accidental configuration or display.
+
+    The check covers:
+    - /api/config: Ensures 'golden_dataset' is not in the active folder list.
+    - /api/files: Ensures no indexed files belong to 'golden_dataset'.
+    - /api/folders/history: Ensures 'golden_dataset' is not in the folder history.
+    """
     print("Testing hidden paths...")
     
     # Check /api/config

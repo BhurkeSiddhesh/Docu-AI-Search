@@ -5,6 +5,13 @@ import sys
 API_URL = "http://127.0.0.1:8000/api"
 
 def check_backend():
+    """
+    Checks the availability of the backend API.
+    Attempts to connect multiple times before giving up.
+
+    Returns:
+        bool: True if the backend responds successfully, False otherwise.
+    """
     print("Waiting for backend to start...")
     for i in range(12):  # Try for 60 seconds
         try:
@@ -17,6 +24,13 @@ def check_backend():
     return False
 
 def trigger_indexing():
+    """
+    Starts an indexing job via the API and waits for it to complete.
+    Monitors progress in the background and reports errors if encountered.
+
+    Returns:
+        bool: True if indexing finished without errors, False otherwise.
+    """
     print("Triggering index...")
     requests.post(f"{API_URL}/index")
     
@@ -31,6 +45,14 @@ def trigger_indexing():
         time.sleep(2)
 
 def query_system():
+    """
+    Submits a hardcoded query to the system and validates the AI response.
+    Specifically checks for keywords that prove the system correctly 
+    retrieved and synthesized information from the indexed documents.
+
+    Returns:
+        bool: True if the AI answer contains the expected keywords, False otherwise.
+    """
     query = "did siddhesh work at google?"
     print(f"\nQuerying: {query}")
     
@@ -63,6 +85,10 @@ def query_system():
         return False
 
 def check_history():
+    """
+    Retrieves the indexed folder history from the API.
+    Verifies that the history is being correctly persisted after an indexing operation.
+    """
     print("\nChecking History...")
     resp = requests.get(f"{API_URL}/folders/history")
     folders = resp.json()

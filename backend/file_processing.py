@@ -7,6 +7,20 @@ from openpyxl import load_workbook
 def extract_text(filepath):
     """
     Extracts text from a file based on its extension.
+
+    Supports:
+        - .txt: Plain text files (UTF-8).
+        - .docx: Microsoft Word documents.
+        - .pdf: PDF documents.
+        - .pptx: Microsoft PowerPoint presentations.
+        - .xlsx: Microsoft Excel spreadsheets.
+
+    Args:
+        filepath (str): The absolute path to the file to be processed.
+
+    Returns:
+        str: The extracted text content, or None if extraction fails or 
+             the file type is unsupported.
     """
     ext = os.path.splitext(filepath)[1].lower()
 

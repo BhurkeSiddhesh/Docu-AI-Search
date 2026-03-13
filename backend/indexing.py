@@ -6,7 +6,7 @@ import numpy as np
 import concurrent.futures
 import time
 from datetime import datetime
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Any
 from langchain_text_splitters import CharacterTextSplitter
 from backend.llm_integration import get_embeddings, get_tags, smart_summary, summarize
 from backend.file_processing import extract_text
@@ -18,14 +18,36 @@ import string
 # Metadata sidecar filename suffix
 _META_SUFFIX = '_meta.json'
 
-def tokenize(text):
-    """Simple tokenization for BM25."""
+def tokenize(text: str) -> List[str]:
+    """
+    Simple tokenization for BM25 keyword matching.
+
+    Removes punctuation and converts text to lowercase.
+
+    Args:
+        text (str): Input text string.
+
+    Returns:
+        List[str]: A list of cleaned tokens.
+    """
     # Remove punctuation and lowercase
     translator = str.maketrans('', '', string.punctuation)
     return text.lower().translate(translator).split()
 
-def safe_extract_text(filepath):
-    """Wrapper for parallel execution."""
+def safe_extract_text(filepath: str) -> Tuple[str, Optional[str]]:
+    """
+    Thread-safe wrapper for text extraction.
+
+    Used for parallel execution to catch exceptions and prevent one bad file 
+    from crashing the indexing process.
+
+    Args:
+        filepath (str): Path to the document.
+
+    Returns:
+        Tuple[str, Optional[str]]: A tuple of (path, extracted_text). 
+            Text is None if extraction fails.
+    """
     try:
         text = extract_text(filepath)
         return filepath, text
@@ -33,16 +55,31 @@ def safe_extract_text(filepath):
         print(f"Error reading {filepath}: {e}")
         return filepath, None
 
-def create_index(folder_paths, provider, api_key=None, model_path=None,
-                 progress_callback=None, embedding_client=None):
+def create_index(folder_paths: List[str] | str, provider: str, api_key: str = None, 
+                 model_path: str = None, progress_callback: callable = None, 
+                 embedding_client: Any = None) -> Tuple:
     """
     Creates a RAPTOR index (Global Clustering + Recursive Summarization).
-    Optimised with Parallel Execution.
 
-    ``embedding_client`` (optional): a pre-resolved LangChain embeddings object
-    from ``settings.get_active_embedding_client()``.  When supplied, the legacy
-    ``provider``/``api_key``/``model_path`` parameters are ignored for the
-    embedding step (they are still used for LLM summarisation).
+    This pipeline handles:
+    1. Parallel text extraction from various file types.
+    2. Overlapping sliding-window chunking.
+    3. High-dimensional vector embedding.
+    4. BM25 keyword index construction.
+    5. Hierarchical UMAP/K-Means clustering.
+    6. LLM-based cluster summarization for multi-level RAG.
+
+    Args:
+        folder_paths (List[str] | str): One or more directories to scan.
+        provider (str): LLM provider for summarization.
+        api_key (str, optional): Secret key for cloud providers.
+        model_path (str, optional): Path to GGUF file for local models.
+        progress_callback (callable, optional): function(percent, total, status) for UI updates.
+        embedding_client (Any, optional): A pre-resolved LangChain embedding client.
+
+    Returns:
+        Tuple: (index_chunks, all_chunks, tags, index_summaries, cluster_summaries, final_cluster_map, bm25, meta)
+            Note: Returns an empty state if no files are found.
     """
     if isinstance(folder_paths, str):
         folder_paths = [folder_paths]
@@ -64,7 +101,7 @@ def create_index(folder_paths, provider, api_key=None, model_path=None,
     
     print(f"Found {len(all_files)} total files.")
     if not all_files:
-        return None, None, None, None, None, None, None
+        return None, None, None, None, None, None, None, {}
 
     # Define stage weights
     # Extraction: 20%, Chunking: 5%, Embedding: 40%, Clustering: 5%, Summarization: 25%, Finalizing: 5%
@@ -143,6 +180,10 @@ def create_index(folder_paths, provider, api_key=None, model_path=None,
     if files_to_add:
         database.add_files_batch(files_to_add)
     print(f"Generated {len(chunk_strings)} total chunks.")
+
+    if not chunk_strings:
+        print("Warning: No text chunks found in provided files.")
+        return None, None, None, None, None, None, None, {}
 
     # 5. Parallel Embedding (I/O Bound) - 25% to 65%
     if progress_callback: progress_callback(25, 100, "Starting embeddings...")
@@ -287,14 +328,34 @@ def create_index(folder_paths, provider, api_key=None, model_path=None,
     _model_name = getattr(embeddings_model, 'model_name', None) or getattr(embeddings_model, 'model', 'unknown')
 
     # Return both indices packaged (we'll need to modify save_index/load_index too)
-    return index_chunks, all_chunks, tags, index_summaries, cluster_summaries, final_cluster_map, bm25
+    meta = {
+        'model_name': _model_name,
+        'embedding_dim': _embedding_dim,
+    }
+    return index_chunks, all_chunks, tags, index_summaries, cluster_summaries, final_cluster_map, bm25, meta
 
-def save_index(index_chunks, all_chunks, tags, filepath, index_summaries=None,
-               cluster_summaries=None, cluster_map=None, bm25=None,
-               model_name: str = 'unknown', embedding_dim: int = 0):
+def save_index(index_chunks: faiss.Index, all_chunks: List[Dict], tags: List[str], 
+               filepath: str, index_summaries: faiss.Index = None,
+               cluster_summaries: List[str] = None, cluster_map: Dict = None, 
+               bm25: BM25Okapi = None, model_name: str = 'unknown', 
+               embedding_dim: int = 0):
     """
-    Saves the Dual FAISS index (RAPTOR) + BM25 using Pickle (as per AGENTS.md).
-    Also writes a JSON metadata sidecar so load_index can detect model mismatches.
+    Persists the Dual FAISS + BM25 indices to disk.
+
+    Saves vectors using FAISS binary format and metadata/BM25 using Pickle.
+    A sidecar JSON file is also created to store model metadata for safety checks.
+
+    Args:
+        index_chunks (faiss.Index): The primary vector index.
+        all_chunks (List[Dict]): Text chunks and associated file paths.
+        tags (List[str]): User-defined tags (legacy).
+        filepath (str): Destination path for the main .faiss file.
+        index_summaries (faiss.Index, optional): The cluster summary vector index.
+        cluster_summaries (List[str], optional): The LLM-generated summary texts.
+        cluster_map (Dict, optional): Maps summary indices to chunk indices.
+        bm25 (BM25Okapi, optional): The keyword search index.
+        model_name (str): The name of the embedding model used.
+        embedding_dim (int): The expected vector dimensionality.
     """
     faiss.write_index(index_chunks, filepath)
     base_path = os.path.splitext(filepath)[0]
@@ -330,11 +391,20 @@ def save_index(index_chunks, all_chunks, tags, filepath, index_summaries=None,
             
     print(f"RAPTOR Index saved to {filepath} (Pickle format)")
 
-def load_index(filepath):
+def load_index(filepath: str) -> Tuple:
     """
-    Loads Dual FAISS index + BM25 with fallback for legacy JSON.
-    Returns an 8-tuple: the original 7 values plus a ``meta`` dict that
-    contains ``model_name`` and ``embedding_dim`` (or empty dict if absent).
+    Loads the hierarchical RAG index from disk.
+
+    Attempts to load FAISS indices, documentation chunks, and BM25 data. 
+    Includes fallback logic for legacy JSON metadata and handles potential 
+    PICKLE deserialization errors gracefully.
+
+    Args:
+        filepath (str): Path to the main .faiss index file.
+
+    Returns:
+        Tuple: (index_chunks, all_chunks, tags, index_summaries, cluster_summaries, cluster_map, bm25, meta)
+            Returns empty values and an empty meta dict if the file is missing.
     """
     if not os.path.exists(filepath):
         return None, None, None, None, None, None, None, {}
@@ -375,7 +445,7 @@ def load_index(filepath):
                 all_chunks = json.load(f)
         else:
             print(f"Warning: No docs metadata found at {base_path}")
-            return index_chunks, [], [], None, None, None, None
+            return index_chunks, [], [], None, None, None, None, meta
 
         if os.path.exists(tags_path_pkl):
             with open(tags_path_pkl, 'rb') as f:
@@ -385,7 +455,7 @@ def load_index(filepath):
                 tags = json.load(f)
     except Exception as e:
         print(f"Error loading metadata: {e}")
-        return index_chunks, [], [], None, None, None, None
+        return index_chunks, [], [], None, None, None, None, meta
         
     index_summaries = None
     cluster_summaries = None

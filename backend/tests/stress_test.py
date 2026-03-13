@@ -450,7 +450,8 @@ class StressTest:
         result.add_detail("Index files created successfully")
         
         # Load index
-        loaded_index, loaded_docs, loaded_tags, index_sum, cluster_sum, cluster_map, bm25 = load_index(test_index_path)
+        res = load_index(test_index_path)
+        loaded_index, loaded_docs, loaded_tags, index_sum, cluster_sum, cluster_map, bm25 = res[:7]
         
         # Verify loaded data
         if loaded_index.ntotal != n_vectors:

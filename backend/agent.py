@@ -68,7 +68,31 @@ CRITICAL:
 
 
 class ReActAgent:
+    """
+    An autonomous agent implementation using the ReAct (Reasoning + Acting) pattern.
+
+    The agent iteratively thinks about what information it needs, chooses a tool 
+    to execute, observes the tool's output, and repeat until it arrives at a grounded
+    final answer. It prioritizes information from the indexed knowledge base.
+
+    Attributes:
+        global_state (dict): Reference to shared search objects (index, docs, config, etc.).
+        provider (str): Selected LLM provider (local, openai, gemini, etc.).
+        api_key (str): API key for the provider.
+        model_path (str): File path for local models (GGUF).
+        is_local (bool): True if running with local inference.
+        max_steps (int): Safety limit on the number of thought-action loops.
+        system_prompt (str): Task-specific instructions for the LLM.
+        max_tokens (int): Generation token limit.
+        obs_window (int): Character limit for tool observations in the context history.
+    """
     def __init__(self, global_state: dict):
+        """
+        Initialize the ReActAgent with configuration and global state.
+
+        Args:
+            global_state (dict): Dictionary contains 'config', 'index', 'docs', and other search assets.
+        """
         self.global_state = global_state
 
         config = global_state['config']
@@ -86,7 +110,15 @@ class ReActAgent:
 
     def _extract_final_answer(self, text: str) -> str | None:
         """
-        Flexibly extracts final answer from many surface forms.
+        Flexibly extracts the final answer from various surface forms in the LLM output.
+
+        Attempts to find "Final Answer:", "final answer:", or "^Answer:" prefixes.
+
+        Args:
+            text (str): The raw response text from the LLM.
+
+        Returns:
+            str | None: The extracted answer text, or None if no identifier is found.
         """
         # Standard form
         if "Final Answer:" in text:
@@ -102,9 +134,16 @@ class ReActAgent:
 
     def _is_grounded_direct_answer(self, text: str) -> bool:
         """
-        Returns True ONLY if the response starts with a phrase explicitly
-        referencing a document/search result (i.e. it's grounded, not hallucinated).
-        This is only called AFTER at least one search has happened.
+        Check if a response is grounded in document context without using ReAct formatting.
+
+        Used as a safety net to accept valid natural language answers that skip the 
+        "Final Answer:" token but clearly reference the provided search results.
+
+        Args:
+            text (str): The candidate answer text.
+
+        Returns:
+            bool: True if the answer is grounded and long enough to be meaningful.
         """
         if len(text.strip()) < 60:
             return False
@@ -115,7 +154,16 @@ class ReActAgent:
 
     def _force_search_action(self, user_query: str) -> tuple[str, str]:
         """
-        Extracts key search terms from the user's question to build a forced search.
+        Extract search keywords from a user query to construct a forced search.
+
+        This is used to prevent hallucinations if the LLM tries to answer 
+        before consulting the indexed knowledge base.
+
+        Args:
+            user_query (str): The raw user question.
+
+        Returns:
+            tuple[str, str]: A tuple of (tool_name, search_input).
         """
         # Strip common question words to get the content
         cleaned = re.sub(
@@ -129,8 +177,17 @@ class ReActAgent:
 
     async def stream_chat(self, user_query: str) -> Generator[Dict[str, str], None, None]:
         """
-        Runs the ReAct loop and streams events (thoughts, actions, answer).
-        Yields dicts like: {"type": "thought", "content": "..."}
+        Execute the iterative ReAct loop and stream status/answer events to the client.
+
+        The loop handles LLM generation, regex-based action parsing, tool execution,
+        and result observation. It also implements safety guards against hallucinations
+        and context overflow.
+
+        Args:
+            user_query (str): The question to answer.
+
+        Yields:
+            Dict[str, str]: Event packets for 'thought', 'action', 'observation', and 'answer'.
         """
         history = [f"Question: {user_query}"]
         has_searched = False  # Guard: only allow non-tool answers AFTER a search

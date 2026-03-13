@@ -1,4 +1,10 @@
+"""
+Maintenance Verification Script
 
+Performs a quick health check of the environment after maintenance 
+or project updates. Verifies critical core dependencies (sentence-transformers) 
+and ensures the application logging system is correctly initialized and writable.
+"""
 import os
 import sys
 import logging

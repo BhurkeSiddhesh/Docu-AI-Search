@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import SettingsModal from '../components/SettingsModal'
 import axios from 'axios'
 
@@ -69,24 +69,33 @@ describe('SettingsModal Component', () => {
         expect(container.firstChild).toBeNull()
     })
 
-    it('closes when Escape key is pressed', () => {
+    it('closes when Escape key is pressed', async () => {
         const onClose = vi.fn()
         render(<SettingsModal isOpen={true} onClose={onClose} onSave={vi.fn()} activeModel="" />)
-        fireEvent.keyDown(window, { key: 'Escape' })
+        await waitFor(() => screen.getByText('Settings'))
+        act(() => {
+            fireEvent.keyDown(window, { key: 'Escape' })
+        })
         expect(onClose).toHaveBeenCalled()
     })
 
-    it('closes when clicking outside the modal', () => {
+    it('closes when clicking outside the modal', async () => {
         const onClose = vi.fn()
         const { container } = render(<SettingsModal isOpen={true} onClose={onClose} onSave={vi.fn()} activeModel="" />)
-        fireEvent.click(container.firstChild)
+        await waitFor(() => screen.getByText('Settings'))
+        act(() => {
+            fireEvent.click(container.firstChild)
+        })
         expect(onClose).toHaveBeenCalled()
     })
 
-    it('does not close when clicking inside the modal', () => {
+    it('does not close when clicking inside the modal', async () => {
         const onClose = vi.fn()
         render(<SettingsModal isOpen={true} onClose={onClose} onSave={vi.fn()} activeModel="" />)
-        fireEvent.click(screen.getByText('Settings'))
+        await waitFor(() => screen.getByText('Settings'))
+        act(() => {
+            fireEvent.click(screen.getByText('Settings'))
+        })
         expect(onClose).not.toHaveBeenCalled()
     })
 
@@ -95,7 +104,9 @@ describe('SettingsModal Component', () => {
     it('clears search history when button is clicked', async () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
         await waitFor(() => screen.getByText('Settings'))
-        fireEvent.click(screen.getByText('Clear Search History'))
+        await act(async () => {
+            fireEvent.click(screen.getByText('Clear Search History'))
+        })
         expect(global.confirm).toHaveBeenCalled()
         expect(axios.delete).toHaveBeenCalledWith('http://localhost:8000/api/search/history')
     })
@@ -104,7 +115,9 @@ describe('SettingsModal Component', () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
         await waitFor(() => screen.getByText('C:/Users/test/Documents'))
         const folderRow = screen.getByText('C:/Users/test/Documents').closest('div').parentElement
-        fireEvent.click(folderRow.querySelector('button'))
+        await act(async () => {
+            fireEvent.click(folderRow.querySelector('button'))
+        })
         expect(axios.post).toHaveBeenCalledWith(
             'http://localhost:8000/api/config',
             expect.objectContaining({ folders: [] })
@@ -115,8 +128,12 @@ describe('SettingsModal Component', () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
         await waitFor(() => screen.getByText('Settings'))
         const historyBtn = await screen.findByTitle('Previously indexed folders')
-        fireEvent.click(historyBtn)
-        fireEvent.click(screen.getByText('Clear All'))
+        await act(async () => {
+            fireEvent.click(historyBtn)
+        })
+        await act(async () => {
+            fireEvent.click(screen.getByText('Clear All'))
+        })
         expect(global.confirm).toHaveBeenCalled()
         expect(axios.delete).toHaveBeenCalledWith('http://localhost:8000/api/folders/history')
     })

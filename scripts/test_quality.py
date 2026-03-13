@@ -1,4 +1,9 @@
-"""Compare TinyLlama vs Phi-2 on document search quality"""
+"""
+Model Quality Comparison Script
+
+Compares the output quality and latency of different local LLM models 
+(e.g., TinyLlama vs Phi-2) for document-based question answering.
+"""
 import os
 import time
 from llama_cpp import Llama

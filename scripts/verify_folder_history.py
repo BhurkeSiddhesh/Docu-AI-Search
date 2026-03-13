@@ -6,6 +6,16 @@ import os
 API_URL = "http://localhost:8000/api"
 
 def test_folder_history():
+    """
+    Verifies that folders added to the configuration are correctly persisted in 
+    the folder history database table.
+
+    The verification flow:
+    1. Performs a health check on the /api/config endpoint.
+    2. Retrieves the current folder history.
+    3. Updates the 'folders' configuration with a test path.
+    4. Re-fetches history and asserts that the new path is present.
+    """
     print("0. Checking API health...")
     try:
         resp = requests.get(f"{API_URL}/config")

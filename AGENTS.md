@@ -304,6 +304,17 @@ python scripts/verify_golden_set.py
 ## Change Log
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
+|
+### 2026-03-12 (CI Stability & Structure Fixes)
+- **Resolved React `act()` Warnings & CI Test Failures**
+  - **fix**: Wrapped asynchronous state-updating events in `act()` throughout `ModelManager.test.jsx`, `SettingsModal.test.jsx`, and `SearchBarShortcuts.test.jsx`.
+  - **fix**: Added `waitFor` and `async/await` patterns to ensure UI state stability during multi-step test interactions.
+  - **fix**: Fixed `ModelManager` test regression where the delete button was occasionally not found due to rendering delays.
+- **Enforced Project Structure Compliance**
+  - **clean**: Moved `patch.py` and `check_db.py` from root to `scripts/` to satisfy "No .py files in root" rule.
+  - **clean**: Purged legacy `.log` and `.txt` files from the root directory to pass structure validation.
+  - **fix**: Restored accidentally deleted `requirements.txt` and verified all core project files are correctly placed.
+  - **Files**: `frontend/src/test/*.test.jsx`, `scripts/*.py`, `backend/database.py`, `AGENTS.md`
 
 ### 2026-03-12 (Branch Merges)
 - **Merged 4 feature/fix branches into main**

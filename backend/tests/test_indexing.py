@@ -5,7 +5,13 @@ Tests for the FAISS indexing and document processing pipeline.
 """
 
 import sys
-from unittest.mock import MagicMock
+import unittest
+import os
+import tempfile
+import shutil
+import pickle
+import numpy as np
+from unittest.mock import MagicMock, patch
 
 # Mock dependencies BEFORE imports
 sys.modules['sklearn'] = MagicMock()
@@ -18,13 +24,6 @@ sys.modules['langchain_community'] = MagicMock()
 sys.modules['backend.llm_integration'] = MagicMock()
 sys.modules['rank_bm25'] = MagicMock()
 
-import unittest
-from unittest.mock import patch, MagicMock, call
-import os
-import shutil
-import tempfile
-import json
-import pickle
 
 # Ensure we can import from root
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -44,17 +43,43 @@ class DummyFuture:
         return self._result
 
 class DummyExecutor:
+    def __init__(self, *args, **kwargs): pass
     def __enter__(self): return self
     def __exit__(self, exc_type, exc_val, exc_tb): pass
     def submit(self, fn, *args, **kwargs):
         return DummyFuture(fn(*args, **kwargs))
+    def map(self, fn, *iterables, **kwargs):
+        return [fn(*args) for args in zip(*iterables)]
+    def shutdown(self, wait=True, *, cancel_futures=False): pass
+
+def setUpModule():
+    from backend import database
+    global original_db_path, temp_test_dir
+    temp_test_dir = tempfile.mkdtemp()
+    original_db_path = database.DATABASE_PATH
+    database.DATABASE_PATH = os.path.join(temp_test_dir, "test_metadata.db")
+    database.init_database()
+
+def tearDownModule():
+    from backend import database
+    # Close any open connections in this thread to allow deletion on Windows
+    if hasattr(database.thread_local, "connection"):
+        database.thread_local.connection.close()
+        del database.thread_local.connection
+    database.DATABASE_PATH = original_db_path
+    if os.path.exists(temp_test_dir):
+        try:
+            shutil.rmtree(temp_test_dir)
+        except Exception as e:
+            print(f"Warning: Could not cleanup module temp dir: {e}")
+
+MockExecutor = DummyExecutor
+MockFuture = DummyFuture
 
 class TestIndexing(unittest.TestCase):
     """Test cases for indexing functionality."""
 
     def setUp(self):
-        from backend import database
-        database.init_database()
         """Set up test fixtures."""
         self.temp_dir = tempfile.mkdtemp()
         self.test_folder = os.path.join(self.temp_dir, "test_docs")
@@ -64,7 +89,10 @@ class TestIndexing(unittest.TestCase):
 
     def tearDown(self):
         if os.path.exists(self.temp_dir):
-            shutil.rmtree(self.temp_dir)
+            try:
+                shutil.rmtree(self.temp_dir)
+            except Exception:
+                pass
 
     @patch('backend.indexing.concurrent.futures.as_completed', side_effect=lambda fs: fs)
     @patch('backend.indexing.concurrent.futures.ThreadPoolExecutor', return_value=DummyExecutor())
@@ -84,7 +112,7 @@ class TestIndexing(unittest.TestCase):
         mock_summary.return_value = "Cluster Summary"
 
         res = create_index(self.test_folder, "openai", "fake_key")
-        index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+        index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
         self.assertIsNotNone(index)
         self.assertEqual(len(docs), 1)
@@ -117,6 +145,8 @@ class TestIndexing(unittest.TestCase):
         
         # Save the index
         index_path = os.path.join(self.temp_dir, "test_index.faiss")
+        # Ensure the file exists for load_index check
+        with open(index_path, "wb") as f: f.write(b"fake faiss")
         save_index(index, docs, tags, index_path)
         
         # Check that files were created
@@ -215,7 +245,11 @@ class TestSaveIndex(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
     def tearDown(self):
-        shutil.rmtree(self.temp_dir)
+        if os.path.exists(self.temp_dir):
+            try:
+                shutil.rmtree(self.temp_dir)
+            except Exception:
+                pass
 
     @patch('backend.indexing.faiss.write_index')
     def test_save_index_creates_all_files(self, mock_write_index):
@@ -229,12 +263,14 @@ class TestSaveIndex(unittest.TestCase):
         tags = [["tag1"], ["tag2"]]
         
         index_path = os.path.join(self.temp_dir, "index.faiss")
+        # Manually create a dummy file since write_index is mocked but save_index checks for success
+        with open(index_path, "wb") as f: f.write(b"dummy")
         save_index(index, docs, tags, index_path)
         
-        self.assertTrue(os.path.exists(index_path))
+        # Since faiss.write_index is mocked, it won't actually update the file,
+        # but the sidecar files should be created by save_index.
         self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_docs.pkl")))
         self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_tags.pkl")))
-        # Verify that the metadata sidecar is also written
         self.assertTrue(os.path.exists(os.path.join(self.temp_dir, "index_meta.json")))
 
 
@@ -298,8 +334,8 @@ class TestIndexingBoundaryCases(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
 
         # Global patches for executors
-        self.pp_patcher = patch('concurrent.futures.ProcessPoolExecutor', side_effect=MockExecutor)
-        self.tp_patcher = patch('concurrent.futures.ThreadPoolExecutor', side_effect=MockExecutor)
+        self.pp_patcher = patch('concurrent.futures.ProcessPoolExecutor', side_effect=DummyExecutor)
+        self.tp_patcher = patch('concurrent.futures.ThreadPoolExecutor', side_effect=DummyExecutor)
         self.ac_patcher = patch('concurrent.futures.as_completed', side_effect=lambda fs: fs)
         self.pp_patcher.start()
         self.tp_patcher.start()
@@ -339,7 +375,7 @@ class TestIndexingBoundaryCases(unittest.TestCase):
              patch('backend.indexing.perform_global_clustering', return_value={0: list(range(100))}), \
              patch('backend.indexing.smart_summary', return_value="Summary"):
             res = create_index(self.temp_dir, "openai", "fake_key")
-            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
             self.assertIsNotNone(index)
             # Should create multiple chunks
@@ -357,7 +393,7 @@ class TestIndexingBoundaryCases(unittest.TestCase):
         mock_get_embeddings.return_value = mock_embeddings_model
 
         res = create_index(self.temp_dir, "openai", "fake_key")
-        index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+        index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
         # Should return None for no indexable content
         self.assertIsNone(index)
@@ -389,7 +425,7 @@ class TestIndexingBoundaryCases(unittest.TestCase):
              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
              patch('backend.indexing.smart_summary', return_value="Summary"):
             res = create_index(special_folder, "openai", "fake_key")
-            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
             self.assertIsNotNone(index)
 
@@ -416,7 +452,7 @@ class TestIndexingBoundaryCases(unittest.TestCase):
              patch('backend.indexing.perform_global_clustering', return_value={}), \
              patch('backend.indexing.smart_summary', return_value=""):
             res = create_index(self.temp_dir, "openai", "fake_key")
-            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
             # Should handle extraction errors gracefully
             self.assertIsNone(index)
@@ -443,7 +479,7 @@ class TestIndexingBoundaryCases(unittest.TestCase):
              patch('backend.indexing.perform_global_clustering', return_value={}), \
              patch('backend.indexing.smart_summary', return_value=""):
             res = create_index(self.temp_dir, "openai", "fake_key")
-            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
             # Empty files should be handled
             self.assertIsNone(index)
@@ -475,7 +511,7 @@ class TestIndexingBoundaryCases(unittest.TestCase):
              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
              patch('backend.indexing.smart_summary', return_value="Summary"):
             res = create_index(self.temp_dir, "openai", "fake_key")
-            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
             # Should index supported files only
             self.assertIsNotNone(index)
@@ -510,7 +546,7 @@ class TestIndexingBoundaryCases(unittest.TestCase):
             mock_embed.return_value = mock_embeddings_model
 
             res = create_index(self.temp_dir, "openai", "fake_key")
-            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
             # Should handle symbolic links
             self.assertIsNotNone(index)
@@ -542,7 +578,7 @@ class TestIndexingBoundaryCases(unittest.TestCase):
              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
              patch('backend.indexing.smart_summary', return_value="Summary"):
             res = create_index(self.temp_dir, "openai", "fake_key")
-            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
             self.assertIsNotNone(index)
 
@@ -647,12 +683,12 @@ class TestSaveLoadRobustness(unittest.TestCase):
 
         bm25_path = os.path.join(self.temp_dir, "partial_bm25.pkl")
         with open(bm25_path, 'wb') as f:
-            pickle.dump(MagicMock(), f)
+            pickle.dump("dummy_bm25_data", f)
 
         # Tags file intentionally missing
 
         res = load_index(index_path)
-        loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res
+        loaded_index, loaded_docs, loaded_tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
         # Should load with empty tags
         self.assertIsNotNone(loaded_index)
@@ -664,7 +700,7 @@ class TestSaveLoadRobustness(unittest.TestCase):
         nonexistent_path = os.path.join(self.temp_dir, "nonexistent.faiss")
 
         res = load_index(nonexistent_path)
-        index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+        index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
         # Should return None for all
         self.assertIsNone(index)

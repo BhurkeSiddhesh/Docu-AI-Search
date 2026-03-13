@@ -4,8 +4,17 @@ from typing import List, Dict
 
 def perform_global_clustering(embeddings: List[List[float]], max_cluster_size: int = 20) -> Dict[int, List[int]]:
     """
-    Groups embeddings into clusters using K-Means.
-    Returns: {cluster_id: [chunk_index_1, chunk_index_2, ...]}
+    Groups embeddings into clusters using K-Means for hierarchical RAG.
+
+    Implements a recursive-like grouping where clusters are used to generate 
+    summaries for higher-level semantic retrieval.
+
+    Args:
+        embeddings (List[List[float]]): A list of vector embeddings to cluster.
+        max_cluster_size (int): The target maximum number of items per cluster.
+
+    Returns:
+        Dict[int, List[int]]: A dictionary mapping cluster IDs to lists of original indices.
     """
     if not embeddings:
         return {}

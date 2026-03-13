@@ -6,6 +6,8 @@ import re
 import threading
 import multiprocessing
 from backend import database
+from typing import Any, List, Dict, Optional, Tuple, Union
+
 
 try:
     from llama_cpp import Llama
@@ -53,8 +55,20 @@ _embeddings_cache = {}
 _llm_cache = {}
 _llm_client_cache = {}
 
-def get_embeddings(provider, api_key=None, model_path=None):
-    """Returns an embeddings model instance based on the provider."""
+def get_embeddings(provider: str, api_key: str = None, model_path: str = None) -> Any:
+    """
+    Returns an embeddings model instance based on the provider.
+    
+    Caches the model instance to avoid redundant reloads.
+
+    Args:
+        provider (str): The embedding provider (e.g., 'openai', 'gemini', 'local').
+        api_key (str, optional): API key for cloud providers.
+        model_path (str, optional): Path to a local model (legacy/custom).
+
+    Returns:
+        Any: An instance of the requested embeddings model (e.g., OpenAIEmbeddings).
+    """
     cache_key = f"{provider}:{api_key or ''}"
     
     if cache_key in _embeddings_cache:
@@ -116,25 +130,25 @@ def get_embeddings(provider, api_key=None, model_path=None):
 
 _DEFAULT_LOCAL_EMBEDDING_MODEL = "Alibaba-NLP/gte-Qwen2-1.5B-instruct"
 
-def get_embedding_client(provider_type: str, model_name: str = None, api_key: str = None):
+def get_embedding_client(provider_type: str, model_name: str = None, api_key: str = None) -> Any:
     """
     Factory that returns a LangChain embedding object for the requested provider.
 
     Args:
-        provider_type: One of:
+        provider_type (str): One of:
             'local'           – HuggingFaceEmbeddings (runs on-device, no key needed).
             'huggingface_api' – HuggingFaceEndpointEmbeddings via the Inference API.
             'commercial_api'  – OpenAI or Google Gemini, selected by model_name.
-        model_name: The embedding model identifier.
+        model_name (str, optional): The embedding model identifier.
             - 'local':           defaults to _DEFAULT_LOCAL_EMBEDDING_MODEL.
             - 'huggingface_api': the repo_id (e.g. 'BAAI/bge-large-en-v1.5').
             - 'commercial_api':  any string containing 'gpt' / 'text-embedding' →
                                  OpenAI; anything containing 'gemini' / 'embedding-001'
                                  → Google; raises ValueError otherwise.
-        api_key: Required for 'huggingface_api' and 'commercial_api'.
+        api_key (str, optional): Required for 'huggingface_api' and 'commercial_api'.
 
     Returns:
-        A LangChain embeddings object ready to call .embed_documents() / .embed_query().
+        Any: A LangChain embeddings object ready to call .embed_documents() / .embed_query().
 
     Raises:
         ValueError: On unsupported provider_type or unrecognised commercial model.
@@ -218,8 +232,20 @@ def get_embedding_client(provider_type: str, model_name: str = None, api_key: st
     )
 
 
-def get_local_llm(model_path, tensor_split=None):
-    """Load and cache the GGUF model directly with LlamaCpp."""
+def get_local_llm(model_path: str, tensor_split: List[float] = None) -> Any:
+    """
+    Load and cache the GGUF model directly with LlamaCpp.
+
+    This function implements "blazing fast" inference settings for local models, 
+    including GPU offloading and Flash Attention.
+
+    Args:
+        model_path (str): Absolute or relative path to the GGUF model file.
+        tensor_split (List[float], optional): Distribution of model across multiple GPUs.
+
+    Returns:
+        Any: An initialized Llama instance, or None if loading fails.
+    """
     if Llama is None:
         print("llama_cpp not installed")
         return None
@@ -256,15 +282,30 @@ def get_local_llm(model_path, tensor_split=None):
         print(f"Failed to load Local LLM: {e}")
         return None
 
-def warmup_local_model(model_path, tensor_split=None):
-    """Pre-load the local model into memory on startup."""
+def warmup_local_model(model_path: str, tensor_split: List[float] = None) -> None:
+    """
+    Pre-load the local model into memory on startup.
+
+    Args:
+        model_path (str): Path to the GGUF model file.
+        tensor_split (List[float], optional): Multi-GPU distribution.
+    """
     if model_path:
         get_local_llm(model_path, tensor_split=tensor_split)
 
 
-def get_llm_client(provider, api_key=None, model_path=None):
+def get_llm_client(provider: str, api_key: str = None, model_path: str = None) -> Any:
     """
-    Returns a LangChain-compatible Chat Model or None if configuration is invalid.
+    Returns a LangChain-compatible Chat Model or special path for local models.
+
+    Args:
+        provider (str): 'openai', 'gemini', 'anthropic', 'grok', or 'local'.
+        api_key (str, optional): API key for cloud providers.
+        model_path (str, optional): Filesystem path for local GGUF models.
+
+    Returns:
+        Any: A LangChain chat client, or a "LOCAL:path" string for local models, 
+             or None if configuration is invalid.
     """
     cache_key = f"{provider}:{api_key or ''}:{model_path or ''}"
     if cache_key in _llm_client_cache:
@@ -305,9 +346,6 @@ def get_llm_client(provider, api_key=None, model_path=None):
         elif provider == 'local':
             # For local, we don't return a LangChain object because we are using llama-cpp-python directly
             # for better control over the 'create_completion' call in generate_ai_answer currently.
-            # However, for 'smart_summary', we might want a unified interface.
-            # For now, return a special marker or the model path wrapper?
-            # Let's return the model_path string, and handle it in the consumer.
             if not model_path or not os.path.exists(model_path):
                 print("Local model path missing or invalid")
                 return None
@@ -321,20 +359,30 @@ def get_llm_client(provider, api_key=None, model_path=None):
         _llm_client_cache[cache_key] = client
     return client
 
-def generate_ai_answer(context, question, provider, api_key=None, model_path=None, tensor_split=None,
-                       raw=False, system_instruction=None, stop=None, max_tokens=512, temperature=0.2):
+def generate_ai_answer(context: str, question: str, provider: str, 
+                        api_key: str = None, model_path: str = None, 
+                        tensor_split: List[float] = None, raw: bool = False, 
+                        system_instruction: str = None, stop: List[str] = None, 
+                        max_tokens: int = 512, temperature: float = 0.2) -> str:
     """
     Generate a natural language answer using the selected provider.
 
     Args:
-        context: Context text (documents). Ignored if raw=True unless manually included in question.
-        question: User query. If raw=True, this is treated as the full user prompt content.
-        provider: 'openai', 'gemini', 'anthropic', 'local', etc.
-        raw: If True, bypasses standard prompt wrapping. 'question' becomes the main prompt.
-        system_instruction: Optional system prompt to override default.
-        stop: Optional list of stop sequences.
-        max_tokens: Max tokens to generate.
-        temperature: Sampling temperature.
+        context (str): Document snippets used as grounding for the answer. 
+            Ignored if raw=True.
+        question (str): The user's query or the full prompt (if raw=True).
+        provider (str): 'openai', 'gemini', 'anthropic', 'local', etc.
+        api_key (str, optional): Key for cloud providers.
+        model_path (str, optional): Filesystem path for local models.
+        tensor_split (List[float], optional): Distribution for multi-GPU loading.
+        raw (bool): If True, bypasses standard RAG prompt wrapping.
+        system_instruction (str, optional): System prompt override.
+        stop (List[str], optional): List of stop sequences for generation.
+        max_tokens (int): Maximum tokens allowed in response.
+        temperature (float): Sampling temperature (0.0 to 1.0).
+
+    Returns:
+        str: The generated response text, or an error message.
     """
     # Get client
     client = get_llm_client(provider, api_key, model_path)
@@ -416,9 +464,24 @@ def generate_ai_answer(context, question, provider, api_key=None, model_path=Non
         print(f"Generation error ({provider}): {e}")
         return f"Error generating answer: {str(e)}"
 
-def stream_ai_answer(context, question, provider, api_key=None, model_path=None, tensor_split=None):
+def stream_ai_answer(context: str, question: str, provider: str, 
+                     api_key: str = None, model_path: str = None, 
+                     tensor_split: List[float] = None) -> Any:
     """
     Generator that yields tokens for the AI answer.
+
+    Uses a grounded RAG prompt and handles both local and cloud providers.
+
+    Args:
+        context (str): Document snippets for context.
+        question (str): The user's query.
+        provider (str): 'openai', 'gemini', 'anthropic', or 'local'.
+        api_key (str, optional): Key for cloud providers.
+        model_path (str, optional): Path for local GGUF models.
+        tensor_split (List[float], optional): Distribution for multi-GPU.
+
+    Yields:
+        str: Incremental tokens of the generated answer.
     """
     # Get client
     client = get_llm_client(provider, api_key, model_path)
@@ -492,16 +555,44 @@ def stream_ai_answer(context, question, provider, api_key=None, model_path=None,
 # -----------------------------------------------------------------------------
 
 def compute_cache_key(query: str, context: str, model_id: str) -> tuple:
-    """Returns SHA256 hashes for query and context."""
+    """
+    Returns SHA256 hashes for query and context.
+
+    Used to uniquely identify the input to an AI model for caching purposes.
+
+    Args:
+        query (str): The search query or prompt.
+        context (str): The document context provided to the model.
+        model_id (str): Identifier for the specific model used.
+
+    Returns:
+        tuple: (query_hash, context_hash) as hex strings.
+    """
     query_hash = hashlib.sha256(query.strip().lower().encode('utf-8')).hexdigest()
     # Normalize context by removing whitespace to ignore formatting changes
     context_norm = re.sub(r'\s+', ' ', context.strip())
     context_hash = hashlib.sha256(context_norm.encode('utf-8')).hexdigest()
     return query_hash, context_hash
 
-def cached_generate_ai_answer(context, question, provider, api_key=None, model_path=None, tensor_split=None):
+def cached_generate_ai_answer(context: str, question: str, provider: str, 
+                               api_key: str = None, model_path: str = None, 
+                               tensor_split: List[float] = None) -> str:
     """
     Wrapper around generate_ai_answer that checks persistent cache first.
+
+    This reduces API costs and improves response time for repeated queries 
+    over the same context.
+
+    Args:
+        context (str): Document context for the prompt.
+        question (str): User's query.
+        provider (str): 'openai', 'gemini', 'anthropic', or 'local'.
+        api_key (str, optional): Key for cloud providers.
+        model_path (str, optional): Path for local GGUF models.
+        tensor_split (List[float], optional): Distribution for multi-GPU loading.
+
+    Returns:
+        str: The AI's answer, either from cache or freshly generated.
     """
     # specific model ID for cache key
     if provider == 'local':
@@ -526,9 +617,25 @@ def cached_generate_ai_answer(context, question, provider, api_key=None, model_p
         
     return answer
 
-def cached_smart_summary(text, query, provider, api_key=None, model_path=None, file_name=None):
+def cached_smart_summary(text: str, query: str, provider: str, 
+                         api_key: str = None, model_path: str = None, 
+                         file_name: str = None) -> str:
     """
     Wrapper around smart_summary that checks persistent cache first.
+
+    Caches contextual summaries to avoid redundant LLM calls during search 
+    results rendering.
+
+    Args:
+        text (str): Document text to summarize.
+        query (str): The keyword/question the summary should be tailored to.
+        provider (str): 'openai', 'gemini', 'anthropic', or 'local'.
+        api_key (str, optional): Key for cloud providers.
+        model_path (str, optional): Path for local models.
+        file_name (str, optional): Original name of the source file.
+
+    Returns:
+        str: A tailored summary.
     """
     if not text:
         return ""
@@ -561,10 +668,25 @@ def cached_smart_summary(text, query, provider, api_key=None, model_path=None, f
         
     return summary
 
-def smart_summary(text, query, provider, api_key=None, model_path=None, file_name=None):
+def smart_summary(text: str, query: str, provider: str, 
+                  api_key: str = None, model_path: str = None, 
+                  file_name: str = None) -> str:
     """
     Generates a contextual summary of the text specifically related to the query.
-    Optionally includes file_name for better context in the response.
+
+    Uses an LLM to extract key findings from a document excerpt. Falls back 
+    to a basic summarized version if model calls fail or are unavailable.
+
+    Args:
+        text (str): Full text of the document chunk.
+        query (str): The search query to focus the summary on.
+        provider (str): AI provider name.
+        api_key (str, optional): API key.
+        model_path (str, optional): Path to local GGUF.
+        file_name (str, optional): Name of the file for prompting context.
+
+    Returns:
+        str: A natural language extract or summary.
     """
     if not text:
         return ""
@@ -626,9 +748,19 @@ Key findings:"""
         print(f"Smart summary error: {e}")
         return summarize(text, provider, api_key, model_path, query) # Fallback
 
-def extract_answer(text, question):
+def extract_answer(text: str, question: str) -> str:
     """
-    Legacy extraction: keyword matching fallback.
+    Fast sentence-level matching fallback for answer extraction.
+
+    Scores sentences based on the count of keywords from the question 
+    and returns the highest scoring pair.
+
+    Args:
+        text (str): Document text to search.
+        question (str): The search query.
+
+    Returns:
+        str: Up to two most relevant sentences.
     """
     if not text or not question:
         return ""
@@ -659,9 +791,20 @@ def extract_answer(text, question):
     
     return ""
 
-def summarize(text, provider=None, api_key=None, model_path=None, question=None):
+def summarize(text: str, provider: str = None, api_key: str = None, 
+              model_path: str = None, question: str = None) -> str:
     """
-    Fast regex-based summary (fallback).
+    Fast regex-based summary generator.
+
+    Args:
+        text (str): Input text.
+        provider (str, optional): AI provider (unused, interface consistency).
+        api_key (str, optional): API key (unused).
+        model_path (str, optional): Model path (unused).
+        question (str, optional): If provided, focuses summary on the question.
+
+    Returns:
+        str: A short summary (first 2 significant sentences or extracted answer).
     """
     try:
         if question:
@@ -686,7 +829,20 @@ def summarize(text, provider=None, api_key=None, model_path=None, question=None)
         print(f"Error: {e}")
         return ""
 
-def get_tags(text, provider, api_key=None, model_path=None):
+def get_tags(text: str, provider: str, api_key: str = None, 
+             model_path: str = None) -> str:
+    """
+    Extracts top keywords from text for tagging.
+
+    Args:
+        text (str): Input text.
+        provider (str): AI provider (unused, interface consistency).
+        api_key (str, optional): API key (unused).
+        model_path (str, optional): Model path (unused).
+
+    Returns:
+        str: A comma-separated string of top 5 keywords.
+    """
     try:
         words = re.findall(r'\b[a-zA-Z]{4,15}\b', text.lower())
         stop_words = {

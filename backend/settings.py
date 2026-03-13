@@ -96,9 +96,17 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 @router.get("/embeddings", response_model=EmbeddingConfigResponse)
 async def get_embedding_config(request: Request):
     """
-    Return the current embedding configuration.
-    The raw API key is never sent over the wire; only a boolean
-    ``api_key_set`` flag is exposed.
+    Retrieves the current embedding provider configuration.
+
+    The response provides the provider type, model name, and a flag indicating
+    if an API key is configured. To maintain security, the raw API key is
+    never exposed through this endpoint.
+
+    Args:
+        request (Request): The FastAPI request object, used to access app state.
+
+    Returns:
+        EmbeddingConfigResponse: The current configuration with the API key status.
     """
     # Prefer app.state if available (already seeded on startup)
     state_cfg = getattr(request.app.state, "embedding_config", None)
@@ -123,15 +131,24 @@ async def get_embedding_config(request: Request):
 @router.post("/embeddings")
 async def update_embedding_config(body: EmbeddingConfig, request: Request):
     """
-    Persist the new embedding configuration.
+    Updates and persists the embedding provider configuration.
 
-    * ``'huggingface_api'`` requires ``api_key``.
-    * ``'commercial_api'`` requires ``api_key``.
-    * ``'local'`` does not require ``api_key``.
+    This endpoint:
+        1. Validates the input payload.
+        2. Ensures an API key is provided for non-local providers.
+        3. Persists the configuration to `config.ini`.
+        4. Updates the in-memory cache in `app.state` to avoid a restart.
 
-    The updated config is written to ``config.ini`` **and** cached on
-    ``app.state.embedding_config`` so downstream code picks it up
-    immediately without reading from disk.
+    Args:
+        body (EmbeddingConfig): The new configuration details.
+        request (Request): The FastAPI request object to update app state.
+
+    Returns:
+        dict: A success status with the updated configuration details.
+
+    Raises:
+        HTTPException: 422 Unprocessable Entity if an API key is missing for
+                       cloud-based providers.
     """
     # --- Extra validation: api_key is mandatory for non-local providers ---
     if body.provider_type in ("huggingface_api", "commercial_api"):
@@ -172,14 +189,19 @@ async def update_embedding_config(body: EmbeddingConfig, request: Request):
 
 def get_active_embedding_client(app):
     """
-    Return a LangChain embeddings object for the currently configured provider.
+    Resolves and returns a LangChain embedding client based on current settings.
 
-    Resolution order:
-      1. ``app.state.embedding_config`` (set on startup / POST)
-      2. ``[Embeddings]`` section in config.ini
-      3. Legacy fallback via ``get_embeddings()`` (local HuggingFace)
+    The function follows a strict resolution order:
+        1. Checks in-memory `app.state.embedding_config` for the newest settings.
+        2. Falls back to reading the `[Embeddings]` section in `config.ini`.
+        3. If neither contains custom settings, it falls back to the legacy 
+           `get_embeddings(provider='local')` path.
 
-    No API keys are ever logged.
+    Args:
+        app: The FastAPI application instance.
+
+    Returns:
+        Embeddings: A concrete LangChain embeddings object (e.g., HuggingFace, OpenAI).
     """
     from backend.llm_integration import get_embedding_client, get_embeddings  # lazy
 
@@ -204,7 +226,19 @@ def get_active_embedding_client(app):
 # ---------------------------------------------------------------------------
 
 def _build_client_from_cfg(cfg: dict, factory_fn):
-    """Call the factory with the resolved config dict."""
+    """
+    Helper to bridge the configuration dictionary to the embedding factory.
+
+    Maps 'provider_type', 'model_name', and 'api_key' keys to the
+    corresponding arguments in `backend.llm_integration.get_embedding_client`.
+
+    Args:
+        cfg (dict): Configuration dictionary containing provider details.
+        factory_fn (callable): The `get_embedding_client` factory function.
+
+    Returns:
+        Embeddings: The instantiated LangChain embedding client.
+    """
     return factory_fn(
         provider_type=cfg["provider_type"],
         model_name=cfg.get("model_name") or _DEFAULT_EMBEDDING_CONFIG["model_name"],
@@ -213,7 +247,15 @@ def _build_client_from_cfg(cfg: dict, factory_fn):
 
 
 def _read_embedding_section() -> dict:
-    """Read ``[Embeddings]`` from config.ini, returning defaults if absent."""
+    """
+    Reads the `[Embeddings]` section from `config.ini`.
+
+    If the section or specific keys are missing, it returns the global 
+    application defaults for embedding providers.
+
+    Returns:
+        dict: A dictionary containing 'provider_type', 'model_name', and 'api_key'.
+    """
     config = configparser.ConfigParser()
     config.read(CONFIG_PATH)
 
@@ -231,7 +273,15 @@ def _read_embedding_section() -> dict:
 
 
 def _write_embedding_section(cfg: dict) -> None:
-    """Write ``[Embeddings]`` section to config.ini (preserves other sections)."""
+    """
+    Writes the embedding configuration to the `[Embeddings]` section in `config.ini`.
+
+    This modification is non-destructive and preserves all other sections
+    present in the configuration file.
+
+    Args:
+        cfg (dict): The configuration values to persist.
+    """
     config = configparser.ConfigParser()
     config.read(CONFIG_PATH)
 
@@ -248,9 +298,14 @@ def _write_embedding_section(cfg: dict) -> None:
 
 def seed_app_state(app) -> None:
     """
-    Called once from ``api.py``'s startup event to pre-populate
-    ``app.state.embedding_config`` from disk so the first search/index
-    request doesn't have to read config.ini.
+    Seeds the in-memory application state with current embedding settings.
+
+    This should be called during the FastAPI startup event to ensure
+    downstream logic (like specialized search or re-indexing) has access
+     to the active configuration without disk IO overhead.
+
+    Args:
+        app: The FastAPI application instance to seed.
     """
     cfg = _read_embedding_section()
     app.state.embedding_config = cfg

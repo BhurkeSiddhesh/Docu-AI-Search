@@ -16,12 +16,16 @@ REAL_FILES_URLS = {
 }
 
 def ensure_dir():
-    if not os.path.exists(GOLDEN_DIR):
-        os.makedirs(GOLDEN_DIR)
-        print(f"Created directory: {GOLDEN_DIR}")
+    """
+    Ensures that the golden dataset directory exists.
+    Creates the directory path recursively if it is missing.
+    """
 
 def create_synthetic_pdf():
-    """Create a PDF about Cloud Leopards."""
+    """
+    Generates a synthetic PDF file containing specific facts about nature.
+    The file is used to verify retrieval accuracy for PDF text extraction.
+    """
     path = os.path.join(GOLDEN_DIR, "synthetic_nature.pdf")
     c = canvas.Canvas(path)
     c.drawString(100, 750, "The Clouded Leopard of Borneo")
@@ -32,7 +36,10 @@ def create_synthetic_pdf():
     print(f"Created {path}")
 
 def create_synthetic_docx():
-    """Create a DOCX report about AI Trends."""
+    """
+    Generates a synthetic Word (.docx) file containing AI industry statistics.
+    The file is used to verify retrieval accuracy for DOCX text extraction.
+    """
     path = os.path.join(GOLDEN_DIR, "synthetic_report.docx")
     doc = Document()
     doc.add_heading('AI Trends Report 2024', 0)
@@ -42,7 +49,10 @@ def create_synthetic_docx():
     print(f"Created {path}")
 
 def create_synthetic_xlsx():
-    """Create an Excel sheet with Sales Data."""
+    """
+    Generates a synthetic Excel (.xlsx) file containing regional revenue data.
+    The file is used to verify retrieval accuracy for spreadsheet cell extraction.
+    """
     path = os.path.join(GOLDEN_DIR, "synthetic_sales.xlsx")
     wb = Workbook()
     ws = wb.active
@@ -55,7 +65,10 @@ def create_synthetic_xlsx():
     print(f"Created {path}")
     
 def create_synthetic_pptx():
-    """Create a PPTX about Project Goals."""
+    """
+    Generates a synthetic PowerPoint (.pptx) file containing project roadmap data.
+    The file is used to verify retrieval accuracy for slide text extraction.
+    """
     path = os.path.join(GOLDEN_DIR, "synthetic_roadmap.pptx")
     prs = Presentation()
     slide = prs.slides.add_slide(prs.slide_layouts[0])

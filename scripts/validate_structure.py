@@ -1,3 +1,10 @@
+"""
+Project Structure Validation Tool
+
+Enforces organizational protocols for file and directory placement.
+Checks for root-level pollution (Python files), data leakage (data files 
+outside 'data/'), and mandatory directory existence.
+"""
 import os
 import sys
 
@@ -27,7 +34,22 @@ STRUCTURE_RULES = {
 DATA_EXTENSIONS = ['.db', '.faiss', '.pkl']
 
 def validate_structure():
-    """Validate the project folder structure."""
+    """
+    Validates that the project directory adheres to the organizational rules.
+
+    This function performs a series of checks:
+    1. Root Pollution: Ensures no unauthorized Python files or miscellaneous 
+       directories exist in the root of the project.
+    2. Data Leakage: Confirms that generated artifacts like databases (.db), 
+       FAISS indices (.faiss), and metadata pickles (.pkl) are stored only 
+       within the 'data/' directory.
+    3. Structural Integrity: Verifies the existence of mandatory top-level 
+       directories like 'backend', 'scripts', and 'data'.
+
+    Returns:
+        None: Exits with status 0 on success, or status 1 if critical violations 
+              are detected.
+    """
     project_root = os.getcwd()
     errors = []
     warnings = []

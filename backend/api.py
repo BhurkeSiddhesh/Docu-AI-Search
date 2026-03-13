@@ -8,7 +8,7 @@ import json
 import asyncio
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any, Tuple
 import uvicorn
 import os
 import time
@@ -39,62 +39,212 @@ logger.info("--- SERVER RESTARTING (Logging Configured Early) ---")
 # These functions allow us to defer heavy imports while keeping tests patchable at the module level
 
 def get_embeddings(*args, **kwargs):
+    """
+    Lazy wrapper for getting embeddings from llm_integration.
+    
+    Args:
+        *args: Variable length argument list passed to get_embeddings.
+        **kwargs: Arbitrary keyword arguments passed to get_embeddings.
+        
+    Returns:
+        The result of backend.llm_integration.get_embeddings.
+    """
     from backend.llm_integration import get_embeddings as _get_embeddings
     return _get_embeddings(*args, **kwargs)
 
 def summarize(*args, **kwargs):
+    """
+    Lazy wrapper for the summarization function.
+    
+    Args:
+        *args: Variable length argument list passed to summarize.
+        **kwargs: Arbitrary keyword arguments passed to summarize.
+        
+    Returns:
+        The result of backend.llm_integration.summarize.
+    """
     from backend.llm_integration import summarize as _summarize
     return _summarize(*args, **kwargs)
 
 def search(*args, **kwargs):
+    """
+    Lazy wrapper for the semantic search function.
+    
+    Args:
+        *args: Variable length argument list passed to search.
+        **kwargs: Arbitrary keyword arguments passed to search.
+        
+    Returns:
+        The result of backend.search.search.
+    """
     from backend.search import search as _search
     return _search(*args, **kwargs)
 
 def create_index(*args, **kwargs):
+    """
+    Lazy wrapper for creating a new FAISS index.
+    
+    Args:
+        *args: Variable length argument list passed to create_index.
+        **kwargs: Arbitrary keyword arguments passed to create_index.
+        
+    Returns:
+        The result of backend.indexing.create_index.
+    """
     from backend.indexing import create_index as _create_index
     return _create_index(*args, **kwargs)
 
 def save_index(*args, **kwargs):
+    """
+    Lazy wrapper for saving the FAISS index to disk.
+    
+    Args:
+        *args: Variable length argument list passed to save_index.
+        **kwargs: Arbitrary keyword arguments passed to save_index.
+        
+    Returns:
+        The result of backend.indexing.save_index.
+    """
     from backend.indexing import save_index as _save_index
     return _save_index(*args, **kwargs)
 
 def load_index(*args, **kwargs):
+    """
+    Lazy wrapper for loading the FAISS index from disk.
+    
+    Args:
+        *args: Variable length argument list passed to load_index.
+        **kwargs: Arbitrary keyword arguments passed to load_index.
+        
+    Returns:
+        The result of backend.indexing.load_index.
+    """
     from backend.indexing import load_index as _load_index
     return _load_index(*args, **kwargs)
 
 def smart_summary(*args, **kwargs):
+    """
+    Lazy wrapper for generating a smart summary using an LLM.
+    
+    Args:
+        *args: Variable length argument list passed to smart_summary.
+        **kwargs: Arbitrary keyword arguments passed to smart_summary.
+        
+    Returns:
+        The result of backend.llm_integration.smart_summary.
+    """
     from backend.llm_integration import smart_summary as _smart_summary
     return _smart_summary(*args, **kwargs)
 
 def cached_smart_summary(*args, **kwargs):
+    """
+    Lazy wrapper for getting a cached smart summary.
+    
+    Args:
+        *args: Variable length argument list passed to cached_smart_summary.
+        **kwargs: Arbitrary keyword arguments passed to cached_smart_summary.
+        
+    Returns:
+        The result of backend.llm_integration.cached_smart_summary.
+    """
     from backend.llm_integration import cached_smart_summary as _cached_smart_summary
     return _cached_smart_summary(*args, **kwargs)
 
 def cached_generate_ai_answer(*args, **kwargs):
+    """
+    Lazy wrapper for generating a cached AI answer for a query.
+    
+    Args:
+        *args: Variable length argument list passed to cached_generate_ai_answer.
+        **kwargs: Arbitrary keyword arguments passed to cached_generate_ai_answer.
+        
+    Returns:
+        The result of backend.llm_integration.cached_generate_ai_answer.
+    """
     from backend.llm_integration import cached_generate_ai_answer as _cached_generate_ai_answer
     return _cached_generate_ai_answer(*args, **kwargs)
 
 def stream_ai_answer(*args, **kwargs):
+    """
+    Lazy wrapper for streaming an AI answer from an LLM.
+    
+    Args:
+        *args: Variable length argument list passed to stream_ai_answer.
+        **kwargs: Arbitrary keyword arguments passed to stream_ai_answer.
+        
+    Returns:
+        An iterable or generator yielding response tokens.
+    """
     from backend.llm_integration import stream_ai_answer as _stream_ai_answer
     return _stream_ai_answer(*args, **kwargs)
 
 def get_available_models(*args, **kwargs):
+    """
+    Lazy wrapper for listing all models available for download.
+    
+    Args:
+        *args: Variable length argument list passed to get_available_models.
+        **kwargs: Arbitrary keyword arguments passed to get_available_models.
+        
+    Returns:
+        The result of backend.model_manager.get_available_models.
+    """
     from backend.model_manager import get_available_models as _get_available_models
     return _get_available_models(*args, **kwargs)
 
 def get_local_models(*args, **kwargs):
+    """
+    Lazy wrapper for listing already downloaded local models.
+    
+    Args:
+        *args: Variable length argument list passed to get_local_models.
+        **kwargs: Arbitrary keyword arguments passed to get_local_models.
+        
+    Returns:
+        The result of backend.model_manager.get_local_models.
+    """
     from backend.model_manager import get_local_models as _get_local_models
     return _get_local_models(*args, **kwargs)
 
 def start_download(*args, **kwargs):
+    """
+    Lazy wrapper for starting a model download task.
+    
+    Args:
+        *args: Variable length argument list passed to start_download.
+        **kwargs: Arbitrary keyword arguments passed to start_download.
+        
+    Returns:
+        The result of backend.model_manager.start_download.
+    """
     from backend.model_manager import start_download as _start_download
     return _start_download(*args, **kwargs)
 
 def get_download_status(*args, **kwargs):
+    """
+    Lazy wrapper for checking current model download progress.
+    
+    Args:
+        *args: Variable length argument list passed to get_download_status.
+        **kwargs: Arbitrary keyword arguments passed to get_download_status.
+        
+    Returns:
+        The result of backend.model_manager.get_download_status.
+    """
     from backend.model_manager import get_download_status as _get_download_status
     return _get_download_status(*args, **kwargs)
 
 def get_active_embedding_client(*args, **kwargs):
+    """
+    Lazy wrapper for getting the currently active embedding client from settings.
+    
+    Args:
+        *args: Variable length argument list.
+        **kwargs: Arbitrary keyword arguments.
+        
+    Returns:
+        An instance of an embedding client.
+    """
     from backend.settings import get_active_embedding_client as _get_active
     return _get_active(*args, **kwargs)
 
@@ -103,16 +253,23 @@ from backend import database
 
 def verify_local_request(request: Request):
     """
-    Security middleware to ensure sensitive operations (like opening local files)
-    can only be triggered from the local machine (localhost).
+    Security middleware to ensure sensitive operations can only be triggered from localhost.
+
+    Args:
+        request (Request): The incoming FastAPI request object.
+
+    Raises:
+        HTTPException: 403 Forbidden if the request is not from a local source.
     """
     if not request.client:
         return # Allow for test client if needed
     client_host = request.client.host
     # Support both IPv4 and IPv6 localhost, and FastAPI TestClient
-    if client_host not in ("127.0.0.1", "::1", "localhost", "testserver", "testclient"):
-        logger.warning(f"Security: Blocked remote request to sensitive endpoint from {client_host}")
-        raise HTTPException(status_code=403, detail="Access denied: Only local connections allowed")
+    if client_host in ("127.0.0.1", "::1", "localhost", "testserver", "testclient"):
+        return
+    
+    logger.warning(f"Security: Blocked remote request to sensitive endpoint from {client_host}")
+    raise HTTPException(status_code=403, detail="Access denied: Only local connections allowed")
 
 ALLOWED_EXTENSIONS = {'.pdf', '.docx', '.pptx', '.xlsx', '.txt'}
 
@@ -148,13 +305,37 @@ bm25 = None
 
 @app.get("/")
 async def root(request: Request):
+    """
+    Root endpoint to verify the API is online.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        dict: A dictionary containing the status and a welcome message.
+    """
     return {"status": "online", "message": "Docu AI Search API is running"}
 
 @app.get("/api/health")
 async def health_check(request: Request):
+    """
+    Health check endpoint for service monitoring.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        dict: A dictionary with the status 'ok'.
+    """
     return {"status": "ok"}
 
 def load_config():
+    """
+    Load the application configuration from config.ini.
+
+    Returns:
+        configparser.ConfigParser: The parsed configuration object.
+    """
     import configparser
     if not os.path.exists(CONFIG_PATH):
         config = configparser.ConfigParser()
@@ -170,12 +351,24 @@ def load_config():
     return config
 
 def save_config_file(config):
+    """
+    Save the provided configuration to config.ini.
+
+    Args:
+        config (configparser.ConfigParser): The configuration object to save.
+    """
     with open(CONFIG_PATH, 'w') as configfile:
         config.write(configfile)
 
 # Initialize index on startup if available
 @app.on_event("startup")
 async def startup_event():
+    """
+    Handle application startup events.
+    
+    Initializes the database, seeds the embedding configuration, and
+    triggers the background loading of the search index.
+    """
     logger.info("Application starting up...")
     database.init_database()
     # Seed embedding config cache from config.ini
@@ -185,6 +378,12 @@ async def startup_event():
     asyncio.create_task(load_initial_index())
 
 async def load_initial_index():
+    """
+    Load the FAISS index and associated metadata from disk asynchronously.
+    
+    Updates the global variables for search, including index, docs, tags,
+    summaries, and BM25 index.
+    """
     global index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25
     if os.path.exists(INDEX_PATH):
         try:
@@ -212,7 +411,18 @@ async def load_initial_index():
 
 @app.get("/api/browse")
 async def browse_folder(request: Request):
-    """Open a folder browser dialog and return the selected path."""
+    """
+    Open a folder browser dialog and return the selected path.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        dict: A dictionary containing the selected 'folder' path or None.
+
+    Raises:
+        HTTPException: 500 if the folder dialog fails to open.
+    """
     import tkinter as tk
     from tkinter import filedialog
     try:
@@ -233,14 +443,45 @@ async def browse_folder(request: Request):
 
 @app.get("/api/models/available")
 async def list_available_models(request: Request):
+    """
+    List models available for download from the cloud.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        List[dict]: A list of available model metadata.
+    """
     return get_available_models()
 
 @app.get("/api/models/local")
 async def list_local_models(request: Request):
+    """
+    List models already downloaded to the local directory.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        List[dict]: A list of local model metadata.
+    """
     return get_local_models()
 
 @app.post("/api/models/download/{model_id}")
 async def download_model_endpoint(model_id: str, request: Request):
+    """
+    Trigger a background task to download a specific model.
+
+    Args:
+        model_id (str): The identifier of the model to download.
+        request (Request): The incoming request.
+
+    Returns:
+        dict: Success status and message.
+
+    Raises:
+        HTTPException: 400 if the download fails to start.
+    """
     success, message = start_download(model_id)
     if not success:
         raise HTTPException(status_code=400, detail=message)
@@ -248,11 +489,32 @@ async def download_model_endpoint(model_id: str, request: Request):
 
 @app.get("/api/models/status")
 async def download_status_endpoint(request: Request):
+    """
+    Get the current status and progress of model downloads.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        dict: Progress and status information.
+    """
     return get_download_status()
 
 @app.delete("/api/models/delete")
 async def delete_model(request: dict, req: Request):
-    """Delete a downloaded model file."""
+    """
+    Delete a downloaded model file from disk.
+
+    Args:
+        request (dict): Body containing 'path' of the model to delete.
+        req (Request): The incoming request.
+
+    Returns:
+        dict: Success status and message.
+
+    Raises:
+        HTTPException: 400 if path is missing, 404 if file missing, 500 on error.
+    """
     model_path = request.get('path', '')
     if not model_path:
         raise HTTPException(status_code=400, detail="Model path required")
@@ -270,12 +532,22 @@ async def delete_model(request: dict, req: Request):
 
 @app.get("/api/cache/stats")
 def cache_stats_endpoint():
-    """Get AI response cache statistics."""
+    """
+    Get statistics about the AI response cache.
+
+    Returns:
+        dict: Cache statistics including hit count and entry count.
+    """
     return database.get_cache_stats()
 
 @app.post("/api/cache/clear")
 def clear_cache_endpoint():
-    """Clear all cached AI responses."""
+    """
+    Clear all entries from the AI response cache.
+
+    Returns:
+        dict: Success status and the number of entries cleared.
+    """
     count = database.clear_response_cache()
     return {"status": "success", "cleared_entries": count}
 
@@ -299,7 +571,15 @@ indexing_status = {
 }
 
 def run_benchmark_task():
-    """Background task to run benchmarks."""
+    """
+    Background task to run benchmarks across all local models.
+    
+    This function:
+    1. Updates global benchmark_status to 'running'.
+    2. Imports and executes model benchmarking scripts.
+    3. Triggers save_results to persist metrics to benchark_results.json.
+    4. Updates global benchmark_results in memory for immediate API access.
+    """
     global benchmark_status, benchmark_results
     import json
     
@@ -328,7 +608,19 @@ def run_benchmark_task():
 
 @app.post("/api/benchmarks/run")
 async def run_benchmarks(background_tasks: BackgroundTasks, request: Request):
-    """Start benchmark suite in background."""
+    """
+    Start the benchmark suite in the background.
+
+    Args:
+        background_tasks (BackgroundTasks): FastAPI background tasks manager.
+        request (Request): The incoming request.
+
+    Returns:
+        dict: Success status and message.
+
+    Raises:
+        HTTPException: 400 if a benchmark is already running.
+    """
     global benchmark_status
     
     if benchmark_status["running"]:
@@ -339,12 +631,28 @@ async def run_benchmarks(background_tasks: BackgroundTasks, request: Request):
 
 @app.get("/api/benchmarks/status")
 async def get_benchmark_status(request: Request):
-    """Get current benchmark status."""
+    """
+    Get the current status of the background benchmark task.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        dict: The benchmark status (running, progress, current_model, error).
+    """
     return benchmark_status
 
 @app.get("/api/benchmarks/results")
 async def get_benchmark_results(request: Request):
-    """Get latest benchmark results."""
+    """
+    Get the latest benchmark results from memory or disk.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        dict: The benchmark results and timestamp.
+    """
     global benchmark_results
     
     # Try to load from file if not in memory
@@ -363,10 +671,28 @@ async def get_benchmark_results(request: Request):
 
 
 class SearchRequest(BaseModel):
+    """
+    Data model for a semantic search request.
+
+    Attributes:
+        query (str): The search query text.
+        context (Optional[List[str]]): Optional context strings to refine search.
+    """
     query: str
     context: Optional[List[str]] = None
 
 class SearchResult(BaseModel):
+    """
+    Data model for a single search result item.
+
+    Attributes:
+        document (str): The snippet or title of the document.
+        summary (Optional[str]): A summary of the document content.
+        tags (List[str]): Extracted tags for the document.
+        file_path (Optional[str]): Absolute system path to the file.
+        file_name (Optional[str]): The filename.
+        faiss_idx (Optional[int]): The internal FAISS index for the document chunk.
+    """
     document: str
     summary: Optional[str] = None
     tags: List[str] = []
@@ -375,11 +701,36 @@ class SearchResult(BaseModel):
     faiss_idx: Optional[int] = None
 
 class SearchResponse(BaseModel):
+    """
+    Data model for the complete search response.
+
+    Attributes:
+        results (List[SearchResult]): List of individual search results.
+        ai_answer (Optional[str]): AI-generated natural language answer.
+        active_model (Optional[str]): The name of the model used for response.
+    """
     results: List[SearchResult]
     ai_answer: Optional[str] = ""
     active_model: Optional[str] = ""
 
 class ConfigModel(BaseModel):
+    """
+    Data model for application configuration.
+
+    Attributes:
+        folders (List[str]): List of folders to be indexed.
+        auto_index (bool): Whether to index folders automatically on change.
+        openai_api_key (Optional[str]): API key for OpenAI.
+        gemini_api_key (Optional[str]): API key for Gemini.
+        anthropic_api_key (Optional[str]): API key for Anthropic.
+        grok_api_key (Optional[str]): API key for Grok.
+        local_model_path (Optional[str]): Path to the local GGUF model file.
+        provider (str): The selected LLM provider.
+        tensor_split (Optional[str]): GPU split configuration for LlamaCpp.
+        query_rewriting (bool): Whether to enable AI query rewriting.
+        cross_encoder_reranking (bool): Whether to enable Cross-Encoder reranking.
+        reranker_model (str): The model used for reranking.
+    """
     folders: List[str] = []
     auto_index: bool = False
     openai_api_key: Optional[str] = ""
@@ -395,6 +746,15 @@ class ConfigModel(BaseModel):
 
 @app.get("/api/config")
 async def get_config(request: Request):
+    """
+    Retrieve the current application configuration.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        dict: The configuration mapping (keys, folders, provider settings).
+    """
     config = load_config()
     # Handle both old 'folder' and new 'folders' format
     folder = config.get('General', 'folder', fallback='')
@@ -421,6 +781,16 @@ async def get_config(request: Request):
 
 @app.post("/api/config")
 async def update_config(config_data: ConfigModel, request: Request):
+    """
+    Update the application configuration.
+
+    Args:
+        config_data (ConfigModel): The new configuration data.
+        request (Request): The incoming request.
+
+    Returns:
+        dict: Success status and message.
+    """
     config = configparser.ConfigParser()
     config['General'] = {
         'folders': ','.join(config_data.folders),
@@ -456,6 +826,25 @@ async def update_config(config_data: ConfigModel, request: Request):
 
 @app.post("/api/search")
 async def search_files(request: SearchRequest, req: Request):
+    """
+    Perform a semantic search on the indexed documents.
+
+    This endpoint supports:
+    1. Vanilla semantic search (FAISS + BM25 hybrid).
+    2. Agentic mode (if enabled in config).
+    3. Advanced RAG (query rewriting, reranking).
+    4. SSE Streaming for agentic responses.
+
+    Args:
+        request (SearchRequest): The search query and optional context.
+        req (Request): The incoming request object.
+
+    Returns:
+        SearchResponse or StreamingResponse: The search results or an AI-generated answer.
+
+    Raises:
+        HTTPException: 400 if index not loaded, 409 if embedding dimension mismatch.
+    """
     global index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25
     
     if not index:
@@ -597,8 +986,18 @@ async def search_files(request: SearchRequest, req: Request):
 @app.post("/api/stream-answer")
 async def stream_answer_endpoint(request: SearchRequest, req: Request):
     """
-    Stream the AI answer for a given query.
-    Re-runs the search to get context (fast) and then streams tokens.
+    Stream the AI answer for a given search query.
+
+    If context is provided in the request, it uses that. Otherwise, it 
+    re-runs the semantic search to gather relevant snippets and then 
+    streams tokens from the selected LLM provider.
+
+    Args:
+        request (SearchRequest): The search query and optional context snippets.
+        req (Request): The incoming request object.
+
+    Returns:
+        StreamingResponse: A server-sent event stream of AI response tokens.
     """
     global index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25
 
@@ -691,7 +1090,18 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request):
 
 @app.get("/api/search/history")
 async def get_search_history(request: Request):
-    """Get recent search history."""
+    """
+    Retrieve recent search history from the database.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        List[dict]: A list of search history entries.
+
+    Raises:
+        HTTPException: 500 if database retrieval fails.
+    """
     try:
         history = await asyncio.to_thread(database.get_search_history, limit=50)
         return history
@@ -700,7 +1110,19 @@ async def get_search_history(request: Request):
 
 @app.delete("/api/search/history/{history_id}")
 async def delete_search_history_item(history_id: int, request: Request):
-    """Delete a single search history item."""
+    """
+    Delete a specific search history entry.
+
+    Args:
+        history_id (int): The ID of the history item to delete.
+        request (Request): The incoming request.
+
+    Returns:
+        dict: Success status and message.
+
+    Raises:
+        HTTPException: 404 if item not found, 500 on database error.
+    """
     try:
         success = database.delete_search_history_item(history_id)
         if success:
@@ -711,7 +1133,18 @@ async def delete_search_history_item(history_id: int, request: Request):
 
 @app.delete("/api/search/history")
 async def delete_all_search_history(request: Request):
-    """Delete all search history."""
+    """
+    Clear all search history from the database.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        dict: Success status and the count of deleted items.
+
+    Raises:
+        HTTPException: 500 if database operation fails.
+    """
     try:
         count = database.delete_all_search_history()
         return {"status": "success", "message": f"Deleted {count} history items", "deleted_count": count}
@@ -720,6 +1153,15 @@ async def delete_all_search_history(request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 class LogRequest(BaseModel):
+    """
+    Data model for receiving logs from the frontend.
+
+    Attributes:
+        level (str): Log level (info, warn, error).
+        message (str): The log message text.
+        source (Optional[str]): Source of the log (defaults to 'Frontend').
+        stack (Optional[str]): Optional stack trace for errors.
+    """
     level: str
     message: str
     source: Optional[str] = "Frontend"
@@ -727,7 +1169,16 @@ class LogRequest(BaseModel):
 
 @app.post("/api/logs")
 async def receive_log(log: LogRequest, request: Request):
-    """endpoint to receive logs from frontend"""
+    """
+    Receive logs from the frontend and pipe them to the backend logger.
+
+    Args:
+        log (LogRequest): The log data from the frontend.
+        request (Request): The incoming request.
+
+    Returns:
+        dict: Status 'logged'.
+    """
     log_msg = f"[{log.source}] {log.message}"
     if log.stack:
         log_msg += f"\nStack: {log.stack}"
@@ -742,7 +1193,26 @@ async def receive_log(log: LogRequest, request: Request):
 
 @app.post("/api/open-file")
 async def open_file(request: dict, req: Request, _=Depends(verify_local_request)):
-    """Open a file in the default system application."""
+    """
+    Open a file using the system's default application.
+
+    Security Measures:
+    - Only allowed from localhost (via Depends).
+    - Prevents argument injection (leading dashes).
+    - Only allows opening files verified to be in the index.
+    - Whitelists file extensions (ALLOWED_EXTENSIONS).
+
+    Args:
+        request (dict): Body containing the 'path' of the file to open.
+        req (Request): The incoming request.
+        _ (Depends): Security dependency for local request verification.
+
+    Returns:
+        dict: Success status and message.
+
+    Raises:
+        HTTPException: 400 if path missing/invalid, 403 if access denied, 404 if file missing, 500 on system error.
+    """
     file_path = request.get('path', '')
     if not file_path:
         raise HTTPException(status_code=400, detail="File path is required")
@@ -787,7 +1257,18 @@ async def open_file(request: dict, req: Request, _=Depends(verify_local_request)
 
 @app.get("/api/files")
 async def list_indexed_files(request: Request):
-    """Get all indexed files with metadata."""
+    """
+    List all documents currently in the database.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        List[dict]: Metadata for all indexed files.
+
+    Raises:
+        HTTPException: 500 if database retrieval fails.
+    """
     try:
         files = await asyncio.to_thread(database.get_all_files)
         return files
@@ -796,7 +1277,18 @@ async def list_indexed_files(request: Request):
 
 @app.get("/api/folders/history")
 async def get_folder_history(request: Request):
-    """Get previously used folders."""
+    """
+    Retrieve the history of successfully indexed folders.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        List[str]: A list of folder paths.
+
+    Raises:
+        HTTPException: 500 if database operation fails.
+    """
     try:
         # User requested: ONLY show 100% indexed folders in history
         history = database.get_folder_history(indexed_only=True)
@@ -806,7 +1298,18 @@ async def get_folder_history(request: Request):
 
 @app.delete("/api/folders/history")
 async def clear_folder_history(request: Request):
-    """Clear all folder history."""
+    """
+    Remove all folder entries from the indexing history.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        dict: Success status and count of deleted items.
+
+    Raises:
+        HTTPException: 500 if database operation fails.
+    """
     try:
         count = database.clear_folder_history()
         return {"status": "success", "message": f"Cleared {count} folder history items", "deleted_count": count}
@@ -815,7 +1318,19 @@ async def clear_folder_history(request: Request):
 
 @app.delete("/api/folders/history/item")
 async def delete_folder_history_item(request: dict, req: Request):
-    """Delete a single folder from history."""
+    """
+    Remove a single folder from the indexing history.
+
+    Args:
+        request (dict): Body containing the 'path' to remove.
+        req (Request): The incoming request.
+
+    Returns:
+        dict: Success status and message.
+
+    Raises:
+        HTTPException: 400 if path missing, 404 if path missing in DB, 500 on error.
+    """
     path = request.get('path', '')
     if not path:
         raise HTTPException(status_code=400, detail="Path is required")
@@ -832,7 +1347,16 @@ async def delete_folder_history_item(request: dict, req: Request):
 
 @app.post("/api/validate-path")
 async def validate_path(request: dict, req: Request):
-    """Validate a folder path and count indexable files."""
+    """
+    Validate a system path and count supported file types for indexing.
+
+    Args:
+        request (dict): Body containing the 'path' to validate.
+        req (Request): The incoming request.
+
+    Returns:
+        dict: A dictionary with 'valid' status and 'file_count'.
+    """
     path = request.get('path', '')
     if not path:
         return {"valid": False, "error": "Path is required"}
@@ -856,11 +1380,32 @@ async def validate_path(request: dict, req: Request):
 
 @app.get("/api/index/status")
 async def get_indexing_status(request: Request):
-    """Get current indexing status."""
+    """
+    Get the current progress of the background indexing task.
+
+    Args:
+        request (Request): The incoming request.
+
+    Returns:
+        dict: Indexing status including progress percentage and current file.
+    """
     return indexing_status
 
 @app.post("/api/index")
 async def trigger_indexing(background_tasks: BackgroundTasks, request: Request):
+    """
+    Manually trigger the background indexing process for configured folders.
+
+    Args:
+        background_tasks (BackgroundTasks): FastAPI background task manager.
+        request (Request): The incoming request.
+
+    Returns:
+        dict: Status 'accepted' and a start message.
+
+    Raises:
+        HTTPException: 400 if indexing is already running or no folders are configured.
+    """
     global indexing_status
     if indexing_status["running"]:
         raise HTTPException(status_code=400, detail="Indexing already in progress")
@@ -892,6 +1437,14 @@ async def trigger_indexing(background_tasks: BackgroundTasks, request: Request):
     return {"status": "accepted", "message": "Indexing started in background"}
 
 def indexing_progress_callback(current, total, message=None):
+    """
+    Callback function to update the global indexing progress state.
+
+    Args:
+        current (int): Number of files processed or current progress value.
+        total (int): Total number of files or maximum progress value.
+        message (Optional[str]): Status message about the current task.
+    """
     global indexing_status
     if message:
         indexing_status["current_file"] = message # Reuse current_file field for generic status message
@@ -913,7 +1466,17 @@ def indexing_progress_callback(current, total, message=None):
 @app.get("/api/agent/chat")
 async def agent_chat(query: str, request: Request):
     """
-    Stream agent thoughts and final answer.
+    Stream AI agent's internal thoughts and final grounded answer.
+
+    This endpoint uses a ReAct agent loop to iteratively search the 
+    knowledge base until it finds enough information to answer the query.
+
+    Args:
+        query (str): The user's question.
+        request (Request): The incoming request object.
+
+    Returns:
+        StreamingResponse: A stream of JSON events (type: 'thought' or 'answer').
     """
     global index, docs, tags, index_summaries, cluster_summaries, cluster_map
     
@@ -921,6 +1484,7 @@ async def agent_chat(query: str, request: Request):
     if not index:
         # We can't use HTTPException in streaming response easily, yield error
         async def yield_error():
+             """Inner helper to yield an error event."""
              yield f"data: {json.dumps({'type': 'error', 'content': 'Index not loaded'})}\n\n"
         return StreamingResponse(yield_error(), media_type="text/event-stream")
 
@@ -941,6 +1505,7 @@ async def agent_chat(query: str, request: Request):
     agent = ReActAgent(global_state)
     
     async def event_generator():
+        """Inner helper to generate and yield agent events."""
         try:
             async for event in agent.stream_chat(query):
                 yield f"data: {json.dumps(event)}\n\n"
@@ -950,6 +1515,19 @@ async def agent_chat(query: str, request: Request):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 def run_indexing(config, folders):
+    """
+    Background worker function that orchestrates the document indexing pipeline.
+
+    Steps:
+    1. Extracts text from supported files in folders.
+    2. Generates embeddings and builds FAISS index.
+    3. Persists metadata and index to disk.
+    4. Updates in-memory search objects and status.
+
+    Args:
+        config (configparser.ConfigParser): The application configuration.
+        folders (List[str]): List of folder paths to index.
+    """
     global index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25, indexing_status
     
     provider = config.get('LocalLLM', 'provider', fallback='openai')
@@ -964,12 +1542,13 @@ def run_indexing(config, folders):
         embedding_client = get_active_embedding_client(app)
         _model_name = getattr(embedding_client, 'model_name', None) or getattr(embedding_client, 'model', 'unknown')
 
-        # Unpack 7 values (create_index still returns 7)
-        new_index, new_docs, new_tags, new_summ_index, new_summ_docs, new_cluster_map, new_bm25 = create_index(
+        # Unpack first 7 values
+        res = create_index(
             folders, provider, api_key, model_path,
             progress_callback=indexing_progress_callback,
             embedding_client=embedding_client,
         )
+        new_index, new_docs, new_tags, new_summ_index, new_summ_docs, new_cluster_map, new_bm25 = res[:7]
         if new_index:
             _embedding_dim = int(new_index.d)
             save_index(
@@ -1002,11 +1581,4 @@ def run_indexing(config, folders):
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
-def verify_local_request(request: Request):
-    """
-    Dependency to ensure the request originates from localhost.
-    Useful for sensitive operations like configuration changes or file opening.
-    """
-    client_host = request.client.host
-    if client_host not in ["127.0.0.1", "::1", "localhost", "testclient"]:
-        raise HTTPException(status_code=403, detail="Access denied: Local connection required")
+# Duplicate verify_local_request removed.

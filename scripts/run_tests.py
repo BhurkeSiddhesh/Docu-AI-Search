@@ -27,6 +27,7 @@ sys.path.insert(0, PROJECT_ROOT)
 
 # ANSI color codes for terminal output
 class Colors:
+    """ANSI color codes for formatted terminal output."""
     HEADER = '\033[95m'
     BLUE = '\033[94m'
     GREEN = '\033[92m'
@@ -37,7 +38,12 @@ class Colors:
     BOLD = '\033[1m'
 
 def print_header(text):
-    """Print a colored header."""
+    """
+    Print a colored header to the console for visual separation of test phases.
+
+    Args:
+        text (str): The header text to display center-aligned.
+    """
     print(f"\n{Colors.BLUE}{Colors.BOLD}{'='*60}{Colors.ENDC}")
     print(f"{Colors.BLUE}{Colors.BOLD}{text:^60}{Colors.ENDC}")
     print(f"{Colors.BLUE}{Colors.BOLD}{'='*60}{Colors.ENDC}\n")
@@ -47,6 +53,13 @@ class ProgressTestResult(unittest.TestResult):
     """Custom TestResult that shows a progress bar and current test name."""
     
     def __init__(self, total_tests, stream=sys.stdout):
+        """
+        Initializes the progress result handler.
+
+        Args:
+            total_tests (int): The total number of tests in the suite.
+            stream (file-like): The output stream for progress updates (default stdout).
+        """
         super().__init__()
         self.total_tests = total_tests
         self.current_test = 0
@@ -60,7 +73,7 @@ class ProgressTestResult(unittest.TestResult):
         percentage = (self.current_test / self.total_tests) * 100
         bar_width = 30
         filled = int(bar_width * self.current_test / self.total_tests)
-        bar = '█' * filled + '░' * (bar_width - filled)
+        bar = '#' * filled + '-' * (bar_width - filled)
         
         # Get short test name
         short_name = str(test_name).split(' ')[0]
@@ -85,11 +98,11 @@ class ProgressTestResult(unittest.TestResult):
     def addSuccess(self, test):
         super().addSuccess(test)
         self.passed += 1
-        self._print_progress('✓', test, Colors.GREEN)
+        self._print_progress('OK', test, Colors.GREEN)
         
     def addFailure(self, test, err):
         super().addFailure(test, err)
-        self._print_progress('✗', test, Colors.RED)
+        self._print_progress('FAIL', test, Colors.RED)
         
     def addError(self, test, err):
         super().addError(test, err)
@@ -122,7 +135,14 @@ class ProgressTestRunner:
 
 
 def run_quick_tests():
-    """Run only quick unit tests (skip slow model loading tests)."""
+    """
+    Assembles a test suite containing only fast-running unit tests.
+
+    Skips integration tests or tests that require heavy LLM model loading.
+
+    Returns:
+        unittest.TestSuite: A suite of quick unit tests.
+    """
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     
@@ -149,13 +169,25 @@ def run_quick_tests():
     return suite
 
 def run_all_tests():
-    """Run all tests including slow model comparison tests."""
+    """
+    Discovers and assembles a test suite containing all available tests.
+
+    Returns:
+        unittest.TestSuite: A comprehensive suite of all tests found in the tests directory.
+    """
     loader = unittest.TestLoader()
     tests_dir = os.path.join(PROJECT_ROOT, 'backend', 'tests')
     suite = loader.discover(tests_dir, pattern='test_*.py', top_level_dir=PROJECT_ROOT)
     return suite
 
 def main():
+    """
+    Main entry point for the test runner.
+    
+    Parses command-line arguments, sets up the temporary test environment 
+    (including a temporary SQLite database), and executes the requested test 
+    suite (quick or full). Cleans up temporary resources after execution.
+    """
     parser = argparse.ArgumentParser(description='Run Docu AI Search tests')
     parser.add_argument('--quick', action='store_true', 
                        help='Run quick tests only (skip slow model tests)')
@@ -248,7 +280,7 @@ def main():
         if result.failures:
             print(f"\n{Colors.RED}{Colors.BOLD}FAILURES:{Colors.ENDC}")
             for test, traceback in result.failures:
-                print(f"\n  ✗ {test}")
+                print(f"\n  FAIL: {test}")
                 # Print first few lines of traceback
                 lines = traceback.split('\n')
                 for line in lines[:5]:
@@ -258,17 +290,17 @@ def main():
         if result.errors:
             print(f"\n{Colors.RED}{Colors.BOLD}ERRORS:{Colors.ENDC}")
             for test, traceback in result.errors:
-                print(f"\n  ✗ {test}")
+                print(f"\n  ERROR: {test}")
                 lines = traceback.split('\n')
                 for line in lines[:5]:
                     print(f"    {line}")
         
         # Final status
         if failures == 0 and errors == 0:
-            print(f"\n{Colors.GREEN}{Colors.BOLD}✓ ALL TESTS PASSED!{Colors.ENDC}\n")
+            print(f"\n{Colors.GREEN}{Colors.BOLD}PASS: ALL TESTS PASSED!{Colors.ENDC}\n")
             return 0
         else:
-            print(f"\n{Colors.RED}{Colors.BOLD}✗ SOME TESTS FAILED{Colors.ENDC}\n")
+            print(f"\n{Colors.RED}{Colors.BOLD}FAIL: SOME TESTS FAILED{Colors.ENDC}\n")
             return 1
 
     finally:

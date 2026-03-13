@@ -1,3 +1,11 @@
+"""
+Security Patch Utility: Argument Injection Prevention
+
+This script automatically patches 'backend/api.py' to add safety checks 
+preventing files starting with a leading dash ('-') from being opened. 
+This mitigates potential command-line argument injection vulnerabilities 
+in certain system utilities.
+"""
 import sys
 import os
 

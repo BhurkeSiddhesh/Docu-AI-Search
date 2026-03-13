@@ -11,6 +11,15 @@ if os.path.exists(database.DATABASE_PATH):
 database.init_database()
 
 def benchmark_single_inserts(n=1000):
+    """
+    Measures the performance of adding records to the database one by one.
+
+    Args:
+        n (int, optional): The number of files to insert. Defaults to 1000.
+
+    Returns:
+        float: The total duration of the benchmark in seconds.
+    """
     print(f"Benchmarking {n} single inserts...")
     start_time = time.time()
     for i in range(n):
@@ -30,6 +39,16 @@ def benchmark_single_inserts(n=1000):
     return duration
 
 def benchmark_batch_inserts(n=1000):
+    """
+    Measures the performance of adding records to the database using batch 
+    insertion (optimized chunked SQL).
+
+    Args:
+        n (int, optional): The number of files to insert. Defaults to 1000.
+
+    Returns:
+        float: The total duration of the benchmark in seconds.
+    """
     print(f"Benchmarking {n} batch inserts...")
     files_to_insert = []
     for i in range(n):

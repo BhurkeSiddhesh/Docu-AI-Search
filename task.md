@@ -1,18 +1,22 @@
 # Tasks
 
-- [x] Identify all relevant branches (Jules, Codex, descriptors) <!-- id: 0 -->
-- [x] Process Codex Branches (Verified as LEGACY/INVALID - skipping/deleting)
-- [x] Process Jules (Palette) Branches
-    - [x] palette-accessible-search-results-7367559059304840651 <!-- id: p1 -->
-    - [x] palette-search-results-a11y-248197603329750130 <!-- id: p2 -->
-    - [x] palette-search-shortcuts-14512215958731276449 <!-- id: p3 -->
-    - [x] palette-settings-modal-ux-13257656291593378340 <!-- id: p4 -->
-- [x] Process Bolt Branches (Copilot) - Merged `bolt-cache-config`
-- [x] Process Sentinel Branches - Merged `sentinel-fix-arbitrary-deletion`
-- [x] Merge `improvise_functionality` to `master` <!-- id: 5 -->
-- [x] Fix regressions and security issues in PR #46 <!-- id: 46 -->
-    - [x] Fix database schema and missing functions
-    - [x] Fix indexing parameter mappings
-    - [x] Fix verify_local_request and open-file security
-    - [x] Fix backend tests (api, indexing, database)
-
+- [x] Identify all relevant branches <!-- id: 0 -->
+- [ ] Review and Clean Up Stale Branches <!-- id: 1 -->
+    - [x] `fix/command-injection-open-file-14511753768852143137` (STALE - redundant with `598ea28`)
+    - [x] `fix/log-injection-17769544387223096572` (MERGED to main)
+    - [x] `perf-optimize-summarization-4529264541560000095` (MERGED to main)
+- [ ] Review Unmerged Feature/Security Branches <!-- id: 2 -->
+    - [ ] `origin/add-license-file-10697111616399852256`
+    - [ ] `origin/add-qwen-35b-model-15766450201582755034`
+    - [ ] `origin/chore-cleanup-logs-6385257577513788368417`
+    - [ ] `origin/security-fix-rate-limiting-9734473305422310188`
+    - [ ] `origin/security-fix-redact-logs-8941179334005175137`
+- [ ] Merge/Drop Verified Branches <!-- id: 3 -->
+- [ ] Final Verification and Push to Main <!-- id: 4 -->
+- [x] Fix React `act()` warnings in frontend tests <!-- id: 9 -->
+- [x] Resolve structure validation failures in project root <!-- id: 10 -->
+- [ ] Push changes to main and verify CI <!-- id: 11 -->
+- [ ] Recursively generate/update Google Style docstrings for all Python files (excluding venv, __pycache__, and tests) <!-- id: 5 -->
+    - [ ] Scan Python files and identify missing/outdated docstrings <!-- id: 6 -->
+    - [ ] Generate docstrings for classes and functions <!-- id: 7 -->
+    - [ ] Verify no functional changes and run basic validation <!-- id: 8 -->
