@@ -305,6 +305,7 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+
 ### 2026-03-12 (Settings UX Redesign)
 - **Redesigned Settings Modal to a Sidebar + Detail Pane Layout**
   - **feat**: Reworked `frontend/src/components/SettingsModal.jsx` from stacked collapsible sections to a two-column settings experience inspired by desktop settings UX.

@@ -141,10 +141,18 @@ async def update_embedding_config(body: EmbeddingConfig, request: Request):
                 detail=f"'api_key' is required for provider_type='{body.provider_type}'.",
             )
 
+    existing_cfg = getattr(request.app.state, "embedding_config", None)
+    if not existing_cfg:
+        existing_cfg = _read_embedding_section()
+
+    api_key_to_save = existing_cfg.get("api_key", "")
+    if body.api_key is not None:
+        api_key_to_save = body.api_key
+
     new_cfg = {
         "provider_type": body.provider_type,
         "model_name": body.model_name,
-        "api_key": body.api_key or "",
+        "api_key": api_key_to_save,
     }
 
     # Persist to config.ini

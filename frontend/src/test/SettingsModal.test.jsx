@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import SettingsModal from '../components/SettingsModal'
 import axios from 'axios'
 
@@ -214,7 +214,7 @@ describe('SettingsModal Component', () => {
         await waitFor(() => screen.getByText('Settings'))
 
         // Default section is folders
-        expect(screen.getByText('Indexed Folders')).toBeDefined()
+        expect(screen.getAllByText('Indexed Folders').length).toBeGreaterThan(0)
 
         // Navigate to AI Provider
         fireEvent.click(screen.getByText('AI Provider'))
@@ -467,7 +467,7 @@ describe('SettingsModal Component', () => {
     })
 
     it('dismisses toast after 3 seconds', async () => {
-        vi.useFakeTimers()
+        vi.useFakeTimers({ shouldAdvanceTime: true })
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
         await waitFor(() => screen.getByText('Settings'))
@@ -479,11 +479,11 @@ describe('SettingsModal Component', () => {
         })
 
         // Fast-forward 3 seconds
-        vi.advanceTimersByTime(3000)
-
-        await waitFor(() => {
-            expect(screen.queryByText('Settings saved successfully!')).toBeNull()
+        act(() => {
+            vi.advanceTimersByTime(3000)
         })
+
+        expect(screen.queryByText('Settings saved successfully!')).toBeNull()
 
         vi.useRealTimers()
     })

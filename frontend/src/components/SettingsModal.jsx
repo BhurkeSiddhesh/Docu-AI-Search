@@ -28,7 +28,7 @@ const Toast = ({ message, type = 'success', onDismiss }) => {
             {type === 'success' && <CheckCircle2 className="w-4 h-4 flex-shrink-0" />}
             {type === 'error'   && <X            className="w-4 h-4 flex-shrink-0" />}
             <span>{message}</span>
-            <button onClick={onDismiss} className="ml-2 opacity-70 hover:opacity-100" aria-label="Dismiss notification">
+            <button type="button" onClick={onDismiss} className="ml-2 opacity-70 hover:opacity-100" aria-label="Dismiss notification">
                 <X className="w-3 h-3" />
             </button>
         </div>
@@ -142,7 +142,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
 
     const fetchIndexingStatus = async () => {
         try {
-            const response = await axios.get('http://localhost:8000/api/index/status');
+            const response = await axios.get(`${API}/api/index/status`);
             setIndexingStatus(response.data);
         } catch (error) {
             console.error('Failed to fetch status:', error);
@@ -151,7 +151,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
 
     const fetchFolderHistory = async () => {
         try {
-            const response = await axios.get('http://localhost:8000/api/folders/history');
+            const response = await axios.get(`${API}/api/folders/history`);
             setFolderHistory(response.data || []);
         } catch (error) {
             console.error('Failed to fetch folder history:', error);
@@ -160,7 +160,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
 
     const fetchCacheStats = async () => {
         try {
-            const response = await axios.get('http://localhost:8000/api/cache/stats');
+            const response = await axios.get(`${API}/api/cache/stats`);
             setCacheStats(response.data);
         } catch (error) {
             console.error('Failed to fetch cache stats:', error);
@@ -270,7 +270,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
     const handleIndex = async () => {
         await handleSave();
         try {
-            await axios.post('http://localhost:8000/api/index');
+            await axios.post(`${API}/api/index`);
         } catch (error) {
             console.error('Failed to index:', error);
         }
@@ -323,6 +323,10 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                 onClick={(e) => {
                     if (e.target === e.currentTarget) onClose();
                 }}
+                onKeyDown={(e) => {
+                    if (e.key === 'Escape' && e.target === e.currentTarget) onClose();
+                }}
+                tabIndex={-1}
             >
                 <div className="glass-overlay w-[96vw] max-w-6xl h-[88vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
                     <div className="sticky top-0 z-20 flex items-center justify-between p-4 border-b border-border/30 bg-background/85 backdrop-blur-md">
@@ -332,7 +336,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                             </div>
                             Settings
                         </h2>
-                        <button
+                        <button type="button"
                             onClick={onClose}
                             className="p-2 rounded-xl hover:bg-secondary transition-colors"
                             aria-label="Close settings"
@@ -348,7 +352,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                     const Icon = section.icon;
                                     const isActive = activeSection === section.id;
                                     return (
-                                        <button
+                                        <button type="button"
                                             key={section.id}
                                             onClick={() => setActiveSection(section.id)}
                                             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm transition-colors ${
@@ -402,13 +406,13 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                 <section className="space-y-4">
                                     <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Indexed Folders</h3>
                                     <div className="flex items-center gap-2">
-                                        <button
+                                        <button type="button"
                                             onClick={handleAddFolder}
                                             className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
                                         >
                                             Add Folder
                                         </button>
-                                        <button
+                                        <button type="button"
                                             title="Previously indexed folders"
                                             onClick={() => setShowHistory((prev) => !prev)}
                                             className="px-3 py-2 rounded-lg border border-border text-sm hover:bg-secondary"
@@ -421,7 +425,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                         <div className="p-3 rounded-lg border border-border bg-card/50 space-y-2">
                                             <div className="flex items-center justify-between">
                                                 <h4 className="text-sm font-medium">Previously Indexed</h4>
-                                                <button
+                                                <button type="button"
                                                     onClick={handleClearAllHistory}
                                                     className="text-xs text-destructive hover:underline"
                                                 >
@@ -432,7 +436,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                                 <p className="text-xs text-muted-foreground">No indexed folders yet.</p>
                                             ) : (
                                                 folderHistory.map((folder) => (
-                                                    <button
+                                                    <button type="button"
                                                         key={folder}
                                                         onClick={() => handleAddFromHistory(folder)}
                                                         className="w-full flex items-center justify-between gap-3 px-2 py-1.5 rounded-md hover:bg-secondary text-left"
@@ -458,7 +462,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                                         <FolderOpen className="w-4 h-4 text-primary flex-shrink-0" />
                                                         <span className="text-sm truncate">{folder}</span>
                                                     </div>
-                                                    <button
+                                                    <button type="button"
                                                         onClick={() => handleRemoveFolder(folder)}
                                                         aria-label={`Remove ${folder} from index`}
                                                         className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive"
@@ -471,7 +475,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                     </div>
 
                                     <div className="pt-2">
-                                        <button
+                                        <button type="button"
                                             onClick={handleIndex}
                                             disabled={isLoading || indexingStatus.running}
                                             className="px-4 py-2 rounded-lg btn-cosmic text-sm font-medium disabled:opacity-60"
@@ -487,8 +491,9 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                     <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">API Keys</h3>
                                     {apiProviders.map(provider => (
                                         <div key={provider.id} className="space-y-1">
-                                            <label className="text-sm font-medium">{provider.name}</label>
+                                            <label htmlFor={provider.id} className="text-sm font-medium">{provider.name}</label>
                                             <input
+                                                id={provider.id}
                                                 type="password"
                                                 value={config[provider.key] || ''}
                                                 onChange={(e) => setConfig({ ...config, [provider.key]: e.target.value })}
@@ -584,14 +589,14 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                             <div className="text-sm font-semibold flex items-center gap-2"><span className="text-primary">⚡</span> AI Response Cache</div>
                                             <div className="text-xs text-muted-foreground">{cacheStats.total_entries} entries • {cacheStats.total_hits} hits saved</div>
                                         </div>
-                                        <button
+                                        <button type="button"
                                             onClick={handleClearCache}
                                             className="px-3 py-1.5 text-xs font-medium rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
                                         >
                                             Clear Cache
                                         </button>
                                     </div>
-                                    <button
+                                    <button type="button"
                                         onClick={handleDeleteAllHistory}
                                         className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"
                                     >
@@ -604,13 +609,13 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                     </div>
 
                     <div className="sticky bottom-0 p-4 border-t border-border/30 bg-background/85 backdrop-blur-md flex justify-end gap-3">
-                        <button
+                        <button type="button"
                             onClick={onClose}
                             className="px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-secondary transition-colors"
                         >
                             Cancel
                         </button>
-                        <button
+                        <button type="button"
                             onClick={handleSave}
                             disabled={isLoading}
                             className="px-5 py-2.5 rounded-xl btn-cosmic text-sm font-semibold flex items-center gap-2 disabled:opacity-50"
