@@ -1,0 +1,4844 @@
+author:	coderabbitai
+association:	contributor
+edited:	true
+status:	none
+--
+<!-- This is an auto-generated comment: summarize by coderabbit.ai -->
+<!-- configuration_parsing_error_start -->
+
+> [!WARNING]
+> ### `.coderabbit.yaml` has a parsing error
+> 
+> The CodeRabbit configuration file in this repository has a parsing error and default settings were used instead. Please fix the error(s) in the configuration file. You can initialize chat with CodeRabbit to get help with the configuration file.
+> 
+> <details>
+> <summary>💥 Parsing errors (1)</summary>
+> 
+> ```
+> duplicated mapping key in ".coderabbit.yaml" (181:1)
+> 
+>  178 |       Verify all test imports u ...
+>  179 | 
+>  180 | # File patterns to ignore in re ...
+>  181 | reviews:
+> -------^
+>  182 |   ignore_patterns:
+>  183 |     - "**/*.md"  # Documentatio ...
+> ```
+> 
+> </details>
+> 
+> <details>
+> <summary>⚙️ Configuration instructions</summary>
+> 
+> - Please see the [configuration documentation](https://docs.coderabbit.ai/guides/configure-coderabbit) for more information.
+> - You can also validate your configuration using the [online YAML validator](https://docs.coderabbit.ai/configuration/yaml-validator).
+> - If your editor has YAML language server enabled, you can add the path at the top of this file to enable auto-completion and validation: `# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json`
+> 
+> </details>
+
+<!-- configuration_parsing_error_end -->
+
+<!-- walkthrough_start -->
+
+<details>
+<summary>📝 Walkthrough</summary>
+
+<!-- This is an auto-generated comment: release notes by coderabbit.ai -->
+
+## Summary by CodeRabbit
+
+* **New Features**
+  * Settings interface redesigned with sidebar navigation, section-driven content areas, compact responsive layout, and consolidated actions for simpler configuration and index management.
+
+* **Documentation**
+  * Changelog updated with entries describing the Settings UX redesign and embedding/index metadata behavior.
+
+* **Tests**
+  * Expanded frontend and backend test suites covering settings navigation, embedding/indexing behaviors, cache and API edge cases, and indexing progress/error scenarios.
+
+<!-- end of auto-generated comment: release notes by coderabbit.ai -->
+## Walkthrough
+
+Redesigned the SettingsModal to a sidebar + content-pane layout, added/updated extensive frontend tests, and expanded backend tests for indexing, embedding, cache, and API edge cases; also documented FAISS embedding-dimension checks and index metadata persistence in the changelog.
+
+## Changes
+
+|Cohort / File(s)|Summary|
+|---|---|
+|**Changelog** <br> `AGENTS.md`|Added entries for "Settings UX Redesign" and "FAISS Dimension Safety & Test Fixes" describing UI layout changes, embedding-dimension error behavior, and index metadata persistence.|
+|**Settings Modal UI** <br> `frontend/src/components/SettingsModal.jsx`|Large refactor: replace previous modal chrome with left navigation (`settingsSections`) + right content pane, introduce `activeSection`, consolidate sections (Indexed Folders, AI Provider, Embedding Provider, Local Models, Data Management), simplify per-folder controls, and change top/bottom action placement and styling.|
+|**Frontend tests (Settings)** <br> `frontend/src/test/SettingsModal.test.jsx`|Expanded and adjusted tests to exercise new section-driven navigation, embedding/provider flows, local-model UI, indexing actions, and data-management interactions; small test tweak to navigate to Data Management before clearing history.|
+|**Backend tests — API & Indexing** <br> `backend/tests/test_api.py`, `backend/tests/test_indexing.py`|Added many API tests (embedding settings, folder browsing, cache endpoints, dimension-mismatch handling returning 409), indexing tests verifying embedding-client usage, save/load index metadata sidecar, progress callbacks, and error cases.|
+|**Backend tests — Database Cache** <br> `backend/tests/test_database.py`|New tests for response cache: caching, hit counts, misses, and clearing behavior.|
+|**Test Duplicates / Caveats** <br> `backend/tests/test_api.py`|Duplicate embedding settings test class appears twice in the diff (identical declarations) — may require deduplication. |
+
+## Sequence Diagram(s)
+
+mermaid
+sequenceDiagram
+  participant Client as Client (Browser/UI)
+  participant API as Server API
+  participant FAISS as FAISS Index
+  participant DB as Database / Index Storage
+
+  Client->>API: search request with query + embedding vector
+  API->>FAISS: check index embedding_dim vs provided vector
+  alt dimension mismatch
+    FAISS-->>API: mismatch detected
+    API-->>Client: 409 Conflict + EmbeddingDimensionMismatchError (detail: embedding_dim)
+  else dimensions match
+    FAISS-->>API: search results
+    API->>DB: (optionally) read index metadata (_meta.json)
+    API-->>Client: search results
+
+## Estimated code review effort
+
+🎯 4 (Complex) | ⏱️ ~45 minutes
+
+## Possibly related PRs
+
+- BhurkeSiddhesh/Docu-AI-Search#9 — Related changes to backend indexing persistence and save/load index behavior (metadata sidecar and load return values).
+- BhurkeSiddhesh/Docu-AI-Search#11 — Related changes to indexing tests and test scaffolding/mocks for save/load and embedding behavior.
+
+## Poem
+
+> 🐰  
+> In a burrow of code I hopped with glee,  
+> Sidebar sprouted where tabs used to be,  
+> Indexes whisper their dim-safe song,  
+> Tests hop along to make sure nothing's wrong,  
+> I nibble a carrot and push the changelog free.
+
+</details>
+
+<!-- walkthrough_end -->
+
+
+<!-- pre_merge_checks_walkthrough_start -->
+
+<details>
+<summary>🚥 Pre-merge checks | ✅ 3</summary>
+
+<details>
+<summary>✅ Passed checks (3 passed)</summary>
+
+|     Check name     | Status   | Explanation                                                                                                                                                                                       |
+| :----------------: | :------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+|     Title check    | ✅ Passed | The title clearly and specifically describes the main change: a redesign of the Settings modal to use a two-pane sidebar layout, which is the primary frontend modification across the changeset. |
+|  Description check | ✅ Passed | The description is directly related to the changeset, providing motivation, detailed explanation of the SettingsModal redesign, testing approach, and acknowledgment of changelog updates.        |
+| Docstring Coverage | ✅ Passed | Docstring coverage is 100.00% which is sufficient. The required threshold is 80.00%.                                                                                                              |
+
+</details>
+
+<sub>✏️ Tip: You can configure your own custom pre-merge checks in the settings.</sub>
+
+</details>
+
+<!-- pre_merge_checks_walkthrough_end -->
+
+<!-- finishing_touch_checkbox_start -->
+
+<details>
+<summary>✨ Finishing Touches</summary>
+
+- [ ] <!-- {"checkboxId": "7962f53c-55bc-4827-bfbf-6a18da830691"} --> 📝 Generate docstrings (stacked PR)
+- [ ] <!-- {"checkboxId": "3e1879ae-f29b-4d0d-8e06-d12b7ba33d98"} --> 📝 Generate docstrings (commit on current branch)
+<details>
+<summary>🧪 Generate unit tests (beta)</summary>
+
+- [ ] <!-- {"checkboxId": "f47ac10b-58cc-4372-a567-0e02b2c3d479", "radioGroupId": "utg-output-choice-group-unknown_comment_id"} -->   Create PR with unit tests
+- [ ] <!-- {"checkboxId": "07f1e7d6-8a8e-4e23-9900-8731c2c87f58", "radioGroupId": "utg-output-choice-group-unknown_comment_id"} -->   Post copyable unit tests in a comment
+- [ ] <!-- {"checkboxId": "6ba7b810-9dad-11d1-80b4-00c04fd430c8", "radioGroupId": "utg-output-choice-group-unknown_comment_id"} -->   Commit unit tests in branch `codex/improve-settings-page-usability`
+
+</details>
+
+</details>
+
+<!-- finishing_touch_checkbox_end -->
+
+<!-- pr_review_plan_action_start -->
+
+<details>
+<summary>📝 Coding Plan</summary>
+
+- [ ] <!-- {"checkboxId": "6ad8a4e1-0b3a-4ea2-9b5b-d82c1f47d1f2"} --> Generate coding plan for human review comments
+
+</details>
+
+<!-- pr_review_plan_action_end -->
+
+<!-- tips_start -->
+
+---
+
+Thanks for using [CodeRabbit](https://coderabbit.ai?utm_source=oss&utm_medium=github&utm_campaign=BhurkeSiddhesh/Docu-AI-Search&utm_content=53)! It's free for OSS, and your support helps us grow. If you like it, consider giving us a shout-out.
+
+<details>
+<summary>❤️ Share</summary>
+
+- [X](https://twitter.com/intent/tweet?text=I%20just%20used%20%40coderabbitai%20for%20my%20code%20review%2C%20and%20it%27s%20fantastic%21%20It%27s%20free%20for%20OSS%20and%20offers%20a%20free%20trial%20for%20the%20proprietary%20code.%20Check%20it%20out%3A&url=https%3A//coderabbit.ai)
+- [Mastodon](https://mastodon.social/share?text=I%20just%20used%20%40coderabbitai%20for%20my%20code%20review%2C%20and%20it%27s%20fantastic%21%20It%27s%20free%20for%20OSS%20and%20offers%20a%20free%20trial%20for%20the%20proprietary%20code.%20Check%20it%20out%3A%20https%3A%2F%2Fcoderabbit.ai)
+- [Reddit](https://www.reddit.com/submit?title=Great%20tool%20for%20code%20review%20-%20CodeRabbit&text=I%20just%20used%20CodeRabbit%20for%20my%20code%20review%2C%20and%20it%27s%20fantastic%21%20It%27s%20free%20for%20OSS%20and%20offers%20a%20free%20trial%20for%20proprietary%20code.%20Check%20it%20out%3A%20https%3A//coderabbit.ai)
+- [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fcoderabbit.ai&mini=true&title=Great%20tool%20for%20code%20review%20-%20CodeRabbit&summary=I%20just%20used%20CodeRabbit%20for%20my%20code%20review%2C%20and%20it%27s%20fantastic%21%20It%27s%20free%20for%20OSS%20and%20offers%20a%20free%20trial%20for%20proprietary%20code)
+
+</details>
+
+<sub>Comment `@coderabbitai help` to get the list of available commands and usage tips.</sub>
+
+<!-- tips_end -->
+
+<!-- internal state start -->
+
+
+<!-- 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 -->
+
+<!-- internal state end -->
+--
+author:	coderabbitai
+association:	contributor
+edited:	false
+status:	changes requested
+--
+**Actionable comments posted: 4**
+
+> [!CAUTION]
+> Some comments are outside the diff and can’t be posted inline due to platform limitations.
+> 
+> 
+> 
+> <details>
+> <summary>⚠️ Outside diff range comments (2)</summary><blockquote>
+> 
+> <details>
+> <summary>frontend/src/components/SettingsModal.jsx (2)</summary><blockquote>
+> 
+> `143-168`: _🛠️ Refactor suggestion_ | _🟠 Major_
+> 
+> **Inconsistent API base URL usage.**
+> 
+> Several API calls use hardcoded URLs instead of the `API` constant defined at line 6. This violates the DRY principle and the coding guideline requiring axios calls to use the `API` constant. Affected locations: lines 145, 154, 163, and 273.
+> 
+> <details>
+> <summary>♻️ Proposed fix</summary>
+> 
+> ```diff
+>  const fetchIndexingStatus = async () => {
+>      try {
+> -        const response = await axios.get('http://localhost:8000/api/index/status');
+> +        const response = await axios.get(`${API}/api/index/status`);
+>          setIndexingStatus(response.data);
+>      } catch (error) {
+>          console.error('Failed to fetch status:', error);
+>      }
+>  };
+> 
+>  const fetchFolderHistory = async () => {
+>      try {
+> -        const response = await axios.get('http://localhost:8000/api/folders/history');
+> +        const response = await axios.get(`${API}/api/folders/history`);
+>          setFolderHistory(response.data || []);
+>      } catch (error) {
+>          console.error('Failed to fetch folder history:', error);
+>      }
+>  };
+> 
+>  const fetchCacheStats = async () => {
+>      try {
+> -        const response = await axios.get('http://localhost:8000/api/cache/stats');
+> +        const response = await axios.get(`${API}/api/cache/stats`);
+>          setCacheStats(response.data);
+>      } catch (error) {
+>          console.error('Failed to fetch cache stats:', error);
+>      }
+>  };
+> ```
+> 
+> Also fix line 273:
+> ```diff
+>  const handleIndex = async () => {
+>      await handleSave();
+>      try {
+> -        await axios.post('http://localhost:8000/api/index');
+> +        await axios.post(`${API}/api/index`);
+>      } catch (error) {
+>          console.error('Failed to index:', error);
+>      }
+>  };
+> ```
+> </details>
+> 
+> As per coding guidelines: "API calls from frontend must use axios with `const API = 'http://localhost:8000'` base URL"
+> 
+> <details>
+> <summary>🤖 Prompt for AI Agents</summary>
+> 
+> ```
+> Verify each finding against the current code and only fix it if needed.
+> 
+> In `@frontend/src/components/SettingsModal.jsx` around lines 143 - 168, Replace
+> the hardcoded base URL in the three async functions fetchIndexingStatus,
+> fetchFolderHistory, and fetchCacheStats to use the existing API constant (const
+> API = 'http://localhost:8000') instead of 'http://localhost:8000'; update
+> axios.get calls to axios.get(`${API}/api/index/status`),
+> axios.get(`${API}/api/folders/history`), and axios.get(`${API}/api/cache/stats`)
+> respectively (or create an axios instance with baseURL: API and use relative
+> paths). Also update the other hardcoded axios call referenced in the review (the
+> additional call in this component near the bottom) to use the same API constant
+> so all frontend calls use the shared base URL.
+> ```
+> 
+> </details>
+> 
+> ---
+> 
+> `170-197`: _⚠️ Potential issue_ | _🟡 Minor_
+> 
+> **Clarify backend behavior when API key is not modified: non-local providers already enforce re-entry; consider preserving existing key for local provider.**
+> 
+> When the frontend omits `api_key` (placeholder detected), the backend sets it to an empty string via `body.api_key or ""` at line 147. However, this only affects the **local provider**:
+> 
+> - **Non-local providers** (huggingface_api, commercial_api): Validation at lines 137–142 rejects missing `api_key` with HTTP 422, forcing the user to re-enter it. The key is not overwritten.
+> - **Local provider**: No validation for `api_key`, so an omitted key silently overwrites any existing value with an empty string.
+> 
+> Since the local provider rarely stores keys, this is an edge case. However, for consistency and safety, consider preserving the existing `api_key` when it's not provided in the request instead of defaulting to an empty string.
+> 
+> <details>
+> <summary>🤖 Prompt for AI Agents</summary>
+> 
+> ```
+> Verify each finding against the current code and only fix it if needed.
+> 
+> In `@frontend/src/components/SettingsModal.jsx` around lines 170 - 197, The
+> backend currently defaults missing api_key to an empty string when handling POST
+> /api/settings/embeddings (using body.api_key || ""), which causes the local
+> provider to silently overwrite an existing key; change the update logic so that
+> if the request does not include an api_key field you do not modify the stored
+> key (i.e., only set or clear the stored value when body has an explicit api_key
+> property), keep the existing value for the local provider when api_key is
+> omitted, and retain existing validation for non-local providers
+> (huggingface_api, commercial_api) that still require an explicit api_key.
+> ```
+> 
+> </details>
+> 
+> </blockquote></details>
+> 
+> </blockquote></details>
+
+<details>
+<summary>🤖 Prompt for all review comments with AI agents</summary>
+
+```
+Verify each finding against the current code and only fix it if needed.
+
+Inline comments:
+In `@AGENTS.md`:
+- Around line 308-315: Add a single blank line immediately above the heading
+"### 2026-03-12 (Settings UX Redesign)" in AGENTS.md to satisfy markdown lint
+rule MD022; locate the heading text and insert one empty line before it so the
+file has a blank line separating the previous paragraph/list from this heading.
+
+In `@frontend/src/components/SettingsModal.jsx`:
+- Around line 335-341: The Close button in SettingsModal.jsx (the JSX element
+rendering <button onClick={onClose} ...><X .../></button>) and several other
+buttons in this component are missing an explicit type, which can default to
+type="submit" and cause unintended form submissions; update that Close button
+and every other button in this component (the ones that call handlers like
+onClose and the other action buttons referenced around lines noted in the
+review) to include type="button" attribute to prevent form submission, leaving
+behavior of any intentional submit buttons unchanged.
+- Around line 488-499: The label/input pairs in the API provider mapping inside
+SettingsModal.jsx are not connected for accessibility; update the JSX inside the
+apiProviders.map block to give each input a unique id (e.g., derived from
+provider.key or provider.id) and set the label's htmlFor to that same id so
+screen readers associate the <label> with the corresponding input; keep using
+the existing setConfig handler and provider.key as the value prop so only
+attributes (id on the <input> and htmlFor on the <label>) are added/linked.
+- Around line 321-326: The backdrop div with the existing onClick handler should
+also handle keyboard close so keyboard-only users can dismiss the modal: add an
+onKeyDown handler on the same element that checks for the 'Escape' key and calls
+onClose(), and make the backdrop focusable by adding a tabIndex (e.g.,
+tabIndex={-1} or 0) so it can receive keyboard events; ensure the handler only
+closes when appropriate (e.target === e.currentTarget or similar) to avoid
+closing when inner content is focused and do not interfere with other keys or
+event propagation.
+
+---
+
+Outside diff comments:
+In `@frontend/src/components/SettingsModal.jsx`:
+- Around line 143-168: Replace the hardcoded base URL in the three async
+functions fetchIndexingStatus, fetchFolderHistory, and fetchCacheStats to use
+the existing API constant (const API = 'http://localhost:8000') instead of
+'http://localhost:8000'; update axios.get calls to
+axios.get(`${API}/api/index/status`), axios.get(`${API}/api/folders/history`),
+and axios.get(`${API}/api/cache/stats`) respectively (or create an axios
+instance with baseURL: API and use relative paths). Also update the other
+hardcoded axios call referenced in the review (the additional call in this
+component near the bottom) to use the same API constant so all frontend calls
+use the shared base URL.
+- Around line 170-197: The backend currently defaults missing api_key to an
+empty string when handling POST /api/settings/embeddings (using body.api_key ||
+""), which causes the local provider to silently overwrite an existing key;
+change the update logic so that if the request does not include an api_key field
+you do not modify the stored key (i.e., only set or clear the stored value when
+body has an explicit api_key property), keep the existing value for the local
+provider when api_key is omitted, and retain existing validation for non-local
+providers (huggingface_api, commercial_api) that still require an explicit
+api_key.
+```
+
+</details>
+
+---
+
+<details>
+<summary>ℹ️ Review info</summary>
+
+<details>
+<summary>⚙️ Run configuration</summary>
+
+**Configuration used**: Organization UI
+
+**Review profile**: ASSERTIVE
+
+**Plan**: Pro
+
+**Run ID**: `389e802c-a587-45f8-8470-270aae233859`
+
+</details>
+
+<details>
+<summary>📥 Commits</summary>
+
+Reviewing files that changed from the base of the PR and between b1fb1fb1ff56b6c53b399609bf596a46ba38da65 and 3120bf084b807c8027333def92761573b2b3fc5a.
+
+</details>
+
+<details>
+<summary>📒 Files selected for processing (3)</summary>
+
+* `AGENTS.md`
+* `frontend/src/components/SettingsModal.jsx`
+* `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+
+</details>
+
+<details>
+<summary>📜 Review details</summary>
+
+<details>
+<summary>🧰 Additional context used</summary>
+
+<details>
+<summary>📓 Path-based instructions (7)</summary>
+
+<details>
+<summary>frontend/src/**/*.{jsx,js,ts,tsx}</summary>
+
+
+**📄 CodeRabbit inference engine (.github/copilot-instructions.md)**
+
+> Frontend code should be placed in `frontend/src/` including `App.jsx` and components/
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+- `frontend/src/components/SettingsModal.jsx`
+
+</details>
+<details>
+<summary>frontend/src/**/*.{test,spec}.{js,jsx,ts,tsx}</summary>
+
+
+**📄 CodeRabbit inference engine (.github/copilot-instructions.md)**
+
+> Frontend tests should use Vitest (not Jest) for testing
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>frontend/**/*.{js,jsx,ts,tsx}</summary>
+
+
+**📄 CodeRabbit inference engine (.github/copilot-instructions.md)**
+
+> Frontend code should be compatible with Node 16+ (CI uses Node 18)
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+- `frontend/src/components/SettingsModal.jsx`
+
+</details>
+<details>
+<summary>frontend/src/test/**/*.{js,jsx}</summary>
+
+
+**📄 CodeRabbit inference engine (AGENTS.md)**
+
+> `frontend/src/test/**/*.{js,jsx}`: Frontend tests MUST be placed in `frontend/src/test/` and use Vitest (not Jest)
+> Use Vitest for frontend testing, import from 'vitest' not jest
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>**/*.{js,jsx}</summary>
+
+
+**📄 CodeRabbit inference engine (AGENTS.md)**
+
+> `**/*.{js,jsx}`: Use camelCase for variable names in JavaScript and TypeScript
+> Use async/await for promises in JavaScript and TypeScript, avoid callback-based patterns
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+- `frontend/src/components/SettingsModal.jsx`
+
+</details>
+<details>
+<summary>frontend/src/**/*.{js,jsx}</summary>
+
+
+**📄 CodeRabbit inference engine (AGENTS.md)**
+
+> API calls from frontend must use axios with `const API = 'http://localhost:8000'` base URL
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+- `frontend/src/components/SettingsModal.jsx`
+
+</details>
+<details>
+<summary>frontend/src/components/**/*.jsx</summary>
+
+
+**📄 CodeRabbit inference engine (AGENTS.md)**
+
+> `frontend/src/components/**/*.jsx`: Frontend components must follow the pattern: useState for state, useEffect for side effects, className with TailwindCSS for styling
+> React components must use TailwindCSS classes with dark theme colors (e.g., `bg-gray-900`, `text-white`) for glassmorphism UI
+
+Files:
+- `frontend/src/components/SettingsModal.jsx`
+
+</details>
+
+</details><details>
+<summary>🧠 Learnings (14)</summary>
+
+<details>
+<summary>📚 Learning: 2026-02-23T14:07:27.528Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: .github/copilot-instructions.md:0-0
+Timestamp: 2026-02-23T14:07:27.528Z
+Learning: Update the Change Log section in `AGENTS.md` after any code or document change
+```
+
+**Applied to files:**
+- `AGENTS.md`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: All changes MUST be logged in the Change Log section of `AGENTS.md` with date, description, and affected files after every modification
+```
+
+**Applied to files:**
+- `AGENTS.md`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-05T18:14:48.492Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-05T18:14:48.492Z
+Learning: Run `npm run test` before AND after changes, and update Change Log in AGENTS.md after every modification
+```
+
+**Applied to files:**
+- `AGENTS.md`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to **/*.py : Always update the Change Log section in AGENTS.md after making any changes with date, description, and affected files
+```
+
+**Applied to files:**
+- `AGENTS.md`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:06:51.460Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:06:51.460Z
+Learning: Applies to **/test/**/*.test.jsx : Frontend should use `testing-library/react` interactions instead of basic logic checks in tests for better coverage
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:21:20.365Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:21:20.365Z
+Learning: Run `npm run test` before AND after making changes to verify functionality
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-05T18:14:48.492Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-05T18:14:48.492Z
+Learning: Applies to frontend/src/**/*.jsx : Frontend API calls should use axios with `const API = 'http://localhost:8000'` and proper error handling with try/catch
+```
+
+**Applied to files:**
+- `frontend/src/components/SettingsModal.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:20:58.707Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:20:58.707Z
+Learning: Applies to frontend/src/App.jsx : App component MUST hold global state management, implement retry logic for backend connection resilience with exponential backoff, and use Axios for HTTP client initialization
+```
+
+**Applied to files:**
+- `frontend/src/components/SettingsModal.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-12T18:00:11.731Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-12T18:00:11.731Z
+Learning: Applies to frontend/src/**/*.{js,jsx} : API calls from frontend must use axios with `const API = 'http://localhost:8000'` base URL
+```
+
+**Applied to files:**
+- `frontend/src/components/SettingsModal.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:07:49.158Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:07:49.158Z
+Learning: Applies to frontend/src/**/*.jsx : Frontend API calls MUST use Axios with base URL `http://localhost:8000` and include proper error handling with try-catch blocks
+```
+
+**Applied to files:**
+- `frontend/src/components/SettingsModal.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:21:04.874Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:21:04.874Z
+Learning: Applies to frontend/src/**/*.jsx : Frontend API calls MUST use axios with `http://localhost:8000` base URL and include proper error handling in try-catch blocks
+```
+
+**Applied to files:**
+- `frontend/src/components/SettingsModal.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:20:58.707Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:20:58.707Z
+Learning: Applies to frontend/src/**/*.jsx : Frontend components MUST use TailwindCSS for styling with 'bg-gray-900', 'rounded-lg' patterns; implement loading states with `useState(false)` pattern; use Axios with `${API}/api/*` endpoints; include error handling with console.error()
+```
+
+**Applied to files:**
+- `frontend/src/components/SettingsModal.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:21:20.365Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:21:20.365Z
+Learning: Applies to frontend/src/**/*.{js,jsx} : Frontend API calls MUST use axios with base URL `http://localhost:8000` and include error handling in try-catch blocks
+```
+
+**Applied to files:**
+- `frontend/src/components/SettingsModal.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:06:51.460Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:06:51.460Z
+Learning: Applies to **/components/**/*.jsx : Frontend API calls MUST use axios with try/catch: `const response = await axios.post('${API}/api/endpoint', data)` with error handling
+```
+
+**Applied to files:**
+- `frontend/src/components/SettingsModal.jsx`
+
+</details>
+
+</details><details>
+<summary>🪛 Biome (2.4.6)</summary>
+
+<details>
+<summary>frontend/src/components/SettingsModal.jsx</summary>
+
+[error] 321-326: Static Elements should not be interactive.
+
+(lint/a11y/noStaticElementInteractions)
+
+---
+
+[error] 321-326: Enforce to have the onClick mouse event with the onKeyUp, the onKeyDown, or the onKeyPress keyboard event.
+
+(lint/a11y/useKeyWithClickEvents)
+
+---
+
+[error] 490-490: A form label must be associated with an input.
+
+(lint/a11y/noLabelWithoutControl)
+
+---
+
+[error] 335-339: Provide an explicit type prop for the button element.
+
+(lint/a11y/useButtonType)
+
+---
+
+[error] 351-359: Provide an explicit type prop for the button element.
+
+(lint/a11y/useButtonType)
+
+---
+
+[error] 405-408: Provide an explicit type prop for the button element.
+
+(lint/a11y/useButtonType)
+
+---
+
+[error] 411-415: Provide an explicit type prop for the button element.
+
+(lint/a11y/useButtonType)
+
+---
+
+[error] 424-427: Provide an explicit type prop for the button element.
+
+(lint/a11y/useButtonType)
+
+---
+
+[error] 435-439: Provide an explicit type prop for the button element.
+
+(lint/a11y/useButtonType)
+
+---
+
+[error] 461-465: Provide an explicit type prop for the button element.
+
+(lint/a11y/useButtonType)
+
+---
+
+[error] 474-478: Provide an explicit type prop for the button element.
+
+(lint/a11y/useButtonType)
+
+---
+
+[error] 587-590: Provide an explicit type prop for the button element.
+
+(lint/a11y/useButtonType)
+
+---
+
+[error] 594-597: Provide an explicit type prop for the button element.
+
+(lint/a11y/useButtonType)
+
+---
+
+[error] 607-610: Provide an explicit type prop for the button element.
+
+(lint/a11y/useButtonType)
+
+---
+
+[error] 613-617: Provide an explicit type prop for the button element.
+
+(lint/a11y/useButtonType)
+
+</details>
+
+</details>
+<details>
+<summary>🪛 markdownlint-cli2 (0.21.0)</summary>
+
+<details>
+<summary>AGENTS.md</summary>
+
+[warning] 308-308: Headings should be surrounded by blank lines
+Expected: 1; Actual: 0; Below
+
+(MD022, blanks-around-headings)
+
+</details>
+
+</details>
+
+</details>
+
+<details>
+<summary>🔇 Additional comments (4)</summary><blockquote>
+
+<details>
+<summary>frontend/src/components/SettingsModal.jsx (2)</summary><blockquote>
+
+`1-48`: **LGTM!**
+
+The imports, Toast component, and embedding configuration constants are well-structured. The `EMBEDDING_PROVIDER_TYPES` array correctly aligns with the backend's valid provider types, and `DEFAULT_EMBEDDING_CONFIG` matches the expected schema.
+
+---
+
+`311-317`: **LGTM! Well-structured navigation implementation.**
+
+The `settingsSections` array and the sidebar navigation provide a clean, maintainable approach to the two-pane layout. The active state styling is clear, and the icons enhance discoverability. The grid layout (`md:grid-cols-[260px_1fr]`) provides good responsive behavior.
+
+
+
+Also applies to: 344-366
+
+</blockquote></details>
+<details>
+<summary>frontend/src/test/SettingsModal.test.jsx (2)</summary><blockquote>
+
+`95-102`: **LGTM! Test correctly updated for new navigation flow.**
+
+The test now navigates to the "Data Management" section before clicking "Clear Search History", which accurately reflects the redesigned UI where this action is scoped to a specific section. This maintains test coverage while adapting to the new layout.
+
+---
+
+`34-55`: **LGTM! Comprehensive mock setup.**
+
+The mock configuration correctly includes `mockEmbeddingConfig` matching the backend's response format (with `api_key_set` boolean), and the `beforeEach` block properly mocks all required API endpoints including the new `/api/settings/embeddings`. This ensures tests accurately reflect the component's behavior.
+
+</blockquote></details>
+
+</blockquote></details>
+
+</details>
+
+<!-- This is an auto-generated comment by CodeRabbit for review status -->
+--
+author:	coderabbitai
+association:	contributor
+edited:	false
+status:	none
+--
+<!-- This is an auto-generated reply by CodeRabbit -->
+No open human review comments were found in this PR to create a plan for.
+--
+author:	coderabbitai
+association:	contributor
+edited:	false
+status:	none
+--
+<!-- This is an auto-generated reply by CodeRabbit -->
+> [!NOTE]
+> Unit test generation is a public access feature. Expect some limitations and changes as we gather feedback and continue to improve it.
+
+---
+
+Generating unit tests... This may take up to 20 minutes.
+
+
+--
+author:	coderabbitai
+association:	contributor
+edited:	false
+status:	none
+--
+<!-- This is an auto-generated reply by CodeRabbit -->
+✅ Unit tests committed locally. Commit: `82455813f8d041cdf521b20f7ddfe23d2b6230a7`
+--
+author:	coderabbitai
+association:	contributor
+edited:	false
+status:	changes requested
+--
+**Actionable comments posted: 7**
+
+<details>
+<summary>🤖 Prompt for all review comments with AI agents</summary>
+
+```
+Verify each finding against the current code and only fix it if needed.
+
+Inline comments:
+In `@backend/tests/test_api.py`:
+- Around line 945-950: The test sets mock_search.side_effect to
+EmbeddingDimensionMismatchError incorrectly using a single string; instead
+instantiate EmbeddingDimensionMismatchError with the two integer parameters it
+expects (query_dim and index_dim) so the exception is raised correctly and the
+route can hit the 409 branch; update the mock assignment
+(mock_search.side_effect = EmbeddingDimensionMismatchError(query_dim,
+index_dim)) using the appropriate integers (e.g., 384 and 768) referencing the
+EmbeddingDimensionMismatchError class and mock_search in this test.
+- Around line 791-857: The tests leak embedding state because the real handler
+caches config on request.app.state.embedding_config; wrap the test class to
+snapshot and restore that state: in setUp (or before creating TestClient) save
+current app.state.embedding_config (if exists) and ensure TestClient uses a
+fresh/cleared embedding_config, and in tearDown restore the saved value (or
+delete the temporary attribute) so methods like test_get_embedding_settings,
+test_update_embedding_settings_local, test_update_embedding_settings_commercial,
+test_update_embedding_settings_missing_api_key and
+test_update_embedding_settings_invalid_provider do not share state across tests.
+
+In `@backend/tests/test_database.py`:
+- Around line 494-506: The test test_cache_hit_increments_count uses
+cache_response, get_cached_response and get_cache_stats but only asserts
+stats['total_hits'] > 0; change it to assert the exact expected total: since
+cache_response inserts with hit_count = 1 and you call get_cached_response twice
+(two increments), assert that get_cache_stats()['total_hits'] == 3 to ensure
+reads increment the counter correctly.
+- Around line 586-615: The test currently only checks the shape of
+cleanup_test_data()'s return value; modify test_cleanup_test_data to verify the
+inserted rows are actually removed by (1) capturing identifiers or locating the
+inserted records immediately after database.add_file,
+database.add_folder_to_history, and database.add_search_history (use return
+values from those calls or helper lookups such as a
+get_file_by_path/get_folder_history/get_search_history function), (2) call
+database.cleanup_test_data(), and (3) assert those specific records are no
+longer found (e.g. lookups return None/empty) and that counts returned by
+cleanup_test_data() reflect the removed rows. Ensure you reference the same
+symbols: test_cleanup_test_data, database.add_file,
+database.add_folder_to_history, database.add_search_history, and
+database.cleanup_test_data when adding the assertions.
+
+In `@backend/tests/test_indexing.py`:
+- Around line 1119-1133: The new test classes' setUp/tearDown create real worker
+pools because they don't apply the synchronous executor patches used elsewhere,
+causing non-deterministic create_index() runs; update these classes (the setUp
+where temp files are created) to apply the same monkeypatch/patch for
+concurrent.futures.ProcessPoolExecutor, concurrent.futures.ThreadPoolExecutor,
+and concurrent.futures.as_completed that earlier tests use (or call the shared
+helper/fixture) so create_index() runs synchronously and deterministically;
+mirror the exact patching mechanism used by the earlier classes for both
+occurrences mentioned (around the setUp at 1119-1133 and the other class at
+1184-1193).
+- Around line 956-985: Patch backend.indexing.get_embeddings in
+test_create_index_with_embedding_client and set it to a MagicMock so the real
+embedding path is not executed, then assert get_embeddings.assert_not_called()
+after calling create_index; keep the existing mock_embedding_client and assert
+mock_embedding_client.embed_documents.assert_called() to verify the provided
+embedding_client was used instead of get_embeddings when invoking create_index.
+
+In `@frontend/src/test/SettingsModal.test.jsx`:
+- Around line 399-418: The test's final assertion is vacuous; update it to
+verify the specific browse request was made and a visible UI outcome occurred:
+after clicking the "Add Folder" button, assert axios.get was called with a URL
+containing '/api/browse' (e.g.
+expect(axios.get).toHaveBeenCalledWith(expect.stringContaining('/api/browse'),
+expect.anything())), and assert a visible post-click outcome such as the error
+text from the mocked rejection ('Failed to open dialog') appears (use waitFor(()
+=> screen.getByText('Failed to open dialog')) ) or that the add-folder
+input/modal did not open (e.g. expect(screen.queryByLabelText(/folder
+path/i)).toBeNull()). Ensure these assertions replace or supplement the current
+expect(axios.get).toHaveBeenCalled() check in the "handles browse folder error
+gracefully" test.
+```
+
+</details>
+
+---
+
+<details>
+<summary>ℹ️ Review info</summary>
+
+<details>
+<summary>⚙️ Run configuration</summary>
+
+**Configuration used**: Organization UI
+
+**Review profile**: ASSERTIVE
+
+**Plan**: Pro
+
+**Run ID**: `a2158446-8214-4f5b-9a39-0a3197d423b0`
+
+</details>
+
+<details>
+<summary>📥 Commits</summary>
+
+Reviewing files that changed from the base of the PR and between 3120bf084b807c8027333def92761573b2b3fc5a and 82455813f8d041cdf521b20f7ddfe23d2b6230a7.
+
+</details>
+
+<details>
+<summary>📒 Files selected for processing (4)</summary>
+
+* `backend/tests/test_api.py`
+* `backend/tests/test_database.py`
+* `backend/tests/test_indexing.py`
+* `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+
+</details>
+
+<details>
+<summary>📜 Review details</summary>
+
+<details>
+<summary>🧰 Additional context used</summary>
+
+<details>
+<summary>📓 Path-based instructions (9)</summary>
+
+<details>
+<summary>backend/**/*.py</summary>
+
+
+**📄 CodeRabbit inference engine (.github/copilot-instructions.md)**
+
+> `backend/**/*.py`: Backend code should be placed in `backend/` directory including `api.py`, `database.py`, `indexing.py`, `search.py`, `file_processing.py`, `llm_integration.py`, `model_manager.py`, `background.py`
+> Python code should target Python 3.8+ compatibility while CI uses Python 3.10
+> 
+> `backend/**/*.py`: Redact sensitive search queries and PII in logs to prevent data leakage
+> Implement lazy loading for heavy backend modules (langchain, llama-cpp, tkinter) to reduce cold-start time
+
+Files:
+- `backend/tests/test_indexing.py`
+- `backend/tests/test_database.py`
+- `backend/tests/test_api.py`
+
+</details>
+<details>
+<summary>backend/tests/**/*.py</summary>
+
+
+**📄 CodeRabbit inference engine (.github/copilot-instructions.md)**
+
+> `backend/tests/**/*.py`: Backend tests should be placed in `backend/tests/` directory
+> Mock LLM and network calls in backend tests
+> Tests that manipulate DB should auto-use SQLite in `data/metadata.db` and clean via `database.cleanup_test_data()` on success
+> 
+> `backend/tests/**/*.py`: Backend tests MUST be placed in `backend/tests/` and follow pytest conventions
+> Always mock LLM calls in tests to avoid API costs using `@patch` decorator
+
+Files:
+- `backend/tests/test_indexing.py`
+- `backend/tests/test_database.py`
+- `backend/tests/test_api.py`
+
+</details>
+<details>
+<summary>**/*.py</summary>
+
+
+**📄 CodeRabbit inference engine (AGENTS.md)**
+
+> `**/*.py`: Backend code MUST be placed in `backend/` or `backend/tests/` directories. Exception: `api.py` is the entry point (in `backend/`). NO `.py` files in the project root
+> All generated files (`.db`, `.faiss`, `.log`, `.json` results) MUST go in `data/` directory and code must reference `DATA_DIR` constant
+
+Files:
+- `backend/tests/test_indexing.py`
+- `backend/tests/test_database.py`
+- `backend/tests/test_api.py`
+
+</details>
+<details>
+<summary>frontend/src/**/*.{jsx,js,ts,tsx}</summary>
+
+
+**📄 CodeRabbit inference engine (.github/copilot-instructions.md)**
+
+> Frontend code should be placed in `frontend/src/` including `App.jsx` and components/
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>frontend/src/**/*.{test,spec}.{js,jsx,ts,tsx}</summary>
+
+
+**📄 CodeRabbit inference engine (.github/copilot-instructions.md)**
+
+> Frontend tests should use Vitest (not Jest) for testing
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>frontend/**/*.{js,jsx,ts,tsx}</summary>
+
+
+**📄 CodeRabbit inference engine (.github/copilot-instructions.md)**
+
+> Frontend code should be compatible with Node 16+ (CI uses Node 18)
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>frontend/src/test/**/*.{js,jsx}</summary>
+
+
+**📄 CodeRabbit inference engine (AGENTS.md)**
+
+> `frontend/src/test/**/*.{js,jsx}`: Frontend tests MUST be placed in `frontend/src/test/` and use Vitest (not Jest)
+> Use Vitest for frontend testing, import from 'vitest' not jest
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>**/*.{js,jsx}</summary>
+
+
+**📄 CodeRabbit inference engine (AGENTS.md)**
+
+> `**/*.{js,jsx}`: Use camelCase for variable names in JavaScript and TypeScript
+> Use async/await for promises in JavaScript and TypeScript, avoid callback-based patterns
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>frontend/src/**/*.{js,jsx}</summary>
+
+
+**📄 CodeRabbit inference engine (AGENTS.md)**
+
+> API calls from frontend must use axios with `const API = 'http://localhost:8000'` base URL
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+
+</details><details>
+<summary>🧠 Learnings (17)</summary>
+
+<details>
+<summary>📚 Learning: 2026-03-05T18:14:48.492Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-05T18:14:48.492Z
+Learning: Run `npm run test` before AND after changes for quick test (~12s). Run `npm run test:full` for comprehensive tests with models (~10min)
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:06:51.460Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:06:51.460Z
+Learning: Applies to **/test/**/*.test.jsx : Frontend should use `testing-library/react` interactions instead of basic logic checks in tests for better coverage
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-05T18:14:48.492Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-05T18:14:48.492Z
+Learning: Run tests before AND after making changes using `npm run test` (quick ~12s) or `npm run test:full` (with models ~10min)
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:07:49.159Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:07:49.159Z
+Learning: Tests MUST be run with `npm run test` before AND after changes to ensure no regressions
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:21:20.365Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:21:20.365Z
+Learning: Run `npm run test` before AND after making changes to verify functionality
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-05T18:26:01.165Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-05T18:26:01.165Z
+Learning: Applies to frontend/src/test/**/*.test.jsx : Frontend tests MUST use Vitest (not Jest) with imports from 'vitest' and use `testing-library/react` for UI interaction testing
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-05T18:14:48.492Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-05T18:14:48.492Z
+Learning: Applies to frontend/src/test/**/*.{js,jsx,tsx,ts} : Frontend tests using Vitest MUST use `describe()`, `it()`, `expect()`, and `vi.fn()` for mocking, imported from 'vitest'
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-05T18:14:48.492Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-05T18:14:48.492Z
+Learning: Applies to frontend/src/test/**/*.test.jsx : Frontend tests MUST use Vitest (not Jest). Import from 'vitest', not 'jest'. Pattern: `import { describe, it, expect, vi } from 'vitest'`
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to **/database.py : Implement persistent AI response cache using SQLite with query/context hashing to provide instant repeated queries
+```
+
+**Applied to files:**
+- `backend/tests/test_database.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to backend/tests/**/*.py : Use tempfile and mocks to isolate database state in tests. Avoid modifying production database during test runs. Clean up test data after successful test runs.
+```
+
+**Applied to files:**
+- `backend/tests/test_database.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:07:27.528Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: .github/copilot-instructions.md:0-0
+Timestamp: 2026-02-23T14:07:27.528Z
+Learning: Applies to backend/tests/**/*.py : Tests that manipulate DB should auto-use SQLite in `data/metadata.db` and clean via `database.cleanup_test_data()` on success
+```
+
+**Applied to files:**
+- `backend/tests/test_database.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:06:51.460Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:06:51.460Z
+Learning: Applies to **/tests/test_*.py : Backend tests MUST use unittest.TestCase class structure with setUp/tearDown methods and self.assertEqual assertions
+```
+
+**Applied to files:**
+- `backend/tests/test_database.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to backend/tests/**/*.py : Backend tests MUST use `unittest` framework with mocking of all LLM calls to avoid API costs and external dependencies
+```
+
+**Applied to files:**
+- `backend/tests/test_database.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:07:27.528Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: .github/copilot-instructions.md:0-0
+Timestamp: 2026-02-23T14:07:27.528Z
+Learning: Applies to backend/**/*.py : Backend code should be placed in `backend/` directory including `api.py`, `database.py`, `indexing.py`, `search.py`, `file_processing.py`, `llm_integration.py`, `model_manager.py`, `background.py`
+```
+
+**Applied to files:**
+- `backend/tests/test_api.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to backend/file_processing.py : When adding file type support, add text extraction logic to `extract_text()` in `file_processing.py` and add corresponding mock tests in `tests/test_file_processing.py`
+```
+
+**Applied to files:**
+- `backend/tests/test_api.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to backend/tests/**/*.py : Backend tests MUST use pytest pattern and mock all LLM calls to avoid API costs. Backend test pattern: `class TestFeature(unittest.TestCase)` with `patch` decorators for mocks.
+```
+
+**Applied to files:**
+- `backend/tests/test_api.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-05T18:14:48.492Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-05T18:14:48.492Z
+Learning: Applies to backend/**/*.py : Always run tests before AND after changes using `npm run test`. Mock all LLM calls in tests to avoid costs.
+```
+
+**Applied to files:**
+- `backend/tests/test_api.py`
+
+</details>
+
+</details><details>
+<summary>🪛 Ruff (0.15.5)</summary>
+
+<details>
+<summary>backend/tests/test_indexing.py</summary>
+
+[warning] 981-981: Unpacked variable `docs` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 981-981: Unpacked variable `tags` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 981-981: Unpacked variable `idx_sum` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 981-981: Unpacked variable `clus_sum` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 981-981: Unpacked variable `clus_map` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 981-981: Unpacked variable `bm25` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 983-983: Use a regular `assert` instead of unittest-style `assertIsNotNone`
+
+Replace `assertIsNotNone(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1013-1013: Unpacked variable `docs` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 1013-1013: Unpacked variable `tags` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 1013-1013: Unpacked variable `idx_sum` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 1013-1013: Unpacked variable `clus_sum` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 1013-1013: Unpacked variable `clus_map` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 1013-1013: Unpacked variable `bm25` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 1015-1015: Use a regular `assert` instead of unittest-style `assertIsNotNone`
+
+Replace `assertIsNotNone(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1037-1037: Missing return type annotation for private function `side_effect_write`
+
+Add return type annotation: `None`
+
+(ANN202)
+
+---
+
+[warning] 1037-1037: Unused function argument: `index`
+
+(ARG001)
+
+---
+
+[warning] 1057-1057: Use a regular `assert` instead of unittest-style `assertTrue`
+
+Replace `assertTrue(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1061-1061: Unnecessary mode argument
+
+Remove mode argument
+
+(UP015)
+
+---
+
+[warning] 1063-1063: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1064-1064: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1085-1085: Missing return type annotation for private function `side_effect_write`
+
+Add return type annotation: `None`
+
+(ANN202)
+
+---
+
+[warning] 1085-1085: Unused function argument: `index`
+
+(ARG001)
+
+---
+
+[warning] 1108-1108: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1111-1111: Use a regular `assert` instead of unittest-style `assertIsInstance`
+
+Replace `assertIsInstance(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1112-1112: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1113-1113: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1153-1153: Missing return type annotation for private function `progress_callback`
+
+Add return type annotation: `None`
+
+(ANN202)
+
+---
+
+[warning] 1172-1172: Use a regular `assert` instead of unittest-style `assertGreater`
+
+Replace `assertGreater(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1178-1178: Use a regular `assert` instead of unittest-style `assertGreater`
+
+Replace `assertGreater(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1206-1206: Use `pytest.raises` instead of unittest-style `assertRaises`
+
+Replace `assertRaises` with `pytest.raises`
+
+(PT027)
+
+---
+
+[warning] 1206-1206: Do not assert blind exception: `Exception`
+
+(B017)
+
+</details>
+<details>
+<summary>backend/tests/test_database.py</summary>
+
+[warning] 492-492: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 506-506: Use a regular `assert` instead of unittest-style `assertGreater`
+
+Replace `assertGreater(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 512-512: Use a regular `assert` instead of unittest-style `assertIsNone`
+
+Replace `assertIsNone(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 523-523: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 527-527: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 543-543: Use a regular `assert` instead of unittest-style `assertIsInstance`
+
+Replace `assertIsInstance(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 544-544: Use a regular `assert` instead of unittest-style `assertGreater`
+
+Replace `assertGreater(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 554-554: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 557-557: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 571-571: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 580-580: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 599-599: `datetime.datetime.now()` called without a `tz` argument
+
+(DTZ005)
+
+---
+
+[warning] 612-612: Use a regular `assert` instead of unittest-style `assertIsInstance`
+
+Replace `assertIsInstance(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 613-613: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 614-614: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 615-615: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 629-629: Missing return type annotation for private function `worker`
+
+Add return type annotation: `None`
+
+(ANN202)
+
+---
+
+[warning] 644-644: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 645-645: Use a regular `assert` instead of unittest-style `assertTrue`
+
+Replace `assertTrue(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 665-665: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 676-676: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 700-700: `datetime.datetime.now()` called without a `tz` argument
+
+(DTZ005)
+
+---
+
+[warning] 713-713: Use a regular `assert` instead of unittest-style `assertGreaterEqual`
+
+Replace `assertGreaterEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 735-735: `datetime.datetime.now()` called without a `tz` argument
+
+(DTZ005)
+
+---
+
+[warning] 742-742: Use a regular `assert` instead of unittest-style `assertIsNotNone`
+
+Replace `assertIsNotNone(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 743-743: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 750-750: Use a regular `assert` instead of unittest-style `assertIsNone`
+
+Replace `assertIsNone(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 771-771: `datetime.datetime.now()` called without a `tz` argument
+
+(DTZ005)
+
+---
+
+[warning] 779-779: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 783-783: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 798-798: `datetime.datetime.now()` called without a `tz` argument
+
+(DTZ005)
+
+---
+
+[warning] 805-805: Use a regular `assert` instead of unittest-style `assertIsNotNone`
+
+Replace `assertIsNotNone(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 806-806: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+</details>
+<details>
+<summary>backend/tests/test_api.py</summary>
+
+[warning] 806-806: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 808-808: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 809-809: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 810-810: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 822-822: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 824-824: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 837-837: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 847-847: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 857-857: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 877-877: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 879-879: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 891-891: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 893-893: Use a regular `assert` instead of unittest-style `assertIsNone`
+
+Replace `assertIsNone(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 913-913: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 915-915: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 916-916: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 925-925: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 927-927: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 928-928: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 942-942: Unused method argument: `mock_embeddings`
+
+(ARG002)
+
+---
+
+[warning] 943-943: Unused method argument: `mock_history`
+
+(ARG002)
+
+---
+
+[warning] 961-961: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 962-962: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 979-979: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 980-980: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 993-993: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1003-1003: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1018-1018: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1019-1019: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1029-1029: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1031-1031: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1053-1053: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1086-1086: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+</details>
+
+</details>
+
+</details>
+
+</details>
+
+<!-- This is an auto-generated comment by CodeRabbit for review status -->
+--
+author:	BhurkeSiddhesh
+association:	owner
+edited:	false
+status:	none
+--
+@jules work on the all comments given by @CodeRabbit
+--
+author:	coderabbitai
+association:	contributor
+edited:	true
+status:	none
+--
+> [!NOTE]
+> Docstrings generation - SUCCESS
+> Generated docstrings and committed to branch `codex/improve-settings-page-usability` (commit: `e54e24de9c45490e9171e13364c0162106eff70e`)
+
+<!--DOCSTRING_INTERNAL_START_STATE>N4Igxg9gtlCWAuBJAJiAXCAHAJgCwFZ9MBGAZgDNNkAGXYsZc/bYgI22vIHZlGBTbKWTZWANkHUAhlxAAaEACc+AN1h8A7gH0AzvEnwArtvThoABwA2feH1QBfIA <!--DOCSTRING_INTERNAL_END_STATE>
+--
+author:	coderabbitai
+association:	contributor
+edited:	false
+status:	none
+--
+<!-- This is an auto-generated reply by CodeRabbit -->
+> [!TIP]
+> For best results, initiate chat on the files or code changes.
+
+<details>
+<summary>🧩 Analysis chain</summary>
+
+Let me fetch all the CodeRabbit review comments on this PR first.
+
+---
+
+🏁 Script executed:
+```
+#!/bin/bash
+# Fetch all review comments on PR `#53`
+gh pr view 53 --repo BhurkeSiddhesh/Docu-AI-Search --json reviews,comments
+
+echo "---REVIEW COMMENTS---"
+gh api repos/BhurkeSiddhesh/Docu-AI-Search/pulls/53/comments --paginate | jq '.[] | {user: .user.login, body: .body, path: .path, line: .line, diff_hunk: .diff_hunk}' 2>/dev/null
+
+echo "---ISSUE COMMENTS---"
+gh api repos/BhurkeSiddhesh/Docu-AI-Search/issues/53/comments --paginate | jq '.[] | {user: .user.login, body: .body}' 2>/dev/null
+
+echo "---REVIEWS---"
+gh api repos/BhurkeSiddhesh/Docu-AI-Search/pulls/53/reviews --paginate | jq '.[] | {user: .user.login, body: .body, state: .state}' 2>/dev/null
+```
+
+Length of output: 247180
+
+---
+
+`@BhurkeSiddhesh` Here is a full summary of all actionable CodeRabbit review comments, organized into a coding plan for `@jules` to work through.
+
+
+
+## All CodeRabbit Review Comments — Coding Plan
+
+### Issues to Fix
+
+- Fix `.coderabbit.yaml` duplicate `reviews` key (Line 181)
+- `AGENTS.md`: add blank line before heading
+- `SettingsModal.jsx`: replace hardcoded URLs, fix accessibility issues (keyboard, labels, button types)
+- `backend/tests/test_api.py`: fix `EmbeddingDimensionMismatchError` signature, add state isolation tearDown
+- `backend/tests/test_database.py`: pin exact hit count assertion, strengthen cleanup test
+- `backend/tests/test_indexing.py`: patch `get_embeddings`, add executor patches in two new test classes
+- `frontend/src/test/SettingsModal.test.jsx`: strengthen vacuous browse-error assertion
+
+---
+
+<!-- <requirement>
+[requirement fix_coderabbit_yaml_1/8]
+Fix the duplicate `reviews` mapping key in `.coderabbit.yaml` at line 181 that causes a parsing error and falls back to default settings.
+
+
+
+</requirement> -->
+
+<!-- <requirement>
+[requirement fix_agents_md_blank_line_2/8]
+Add a blank line immediately above the `### 2026-03-12 (Settings UX Redesign)` heading in `AGENTS.md` to satisfy markdown lint rule MD022.
+
+
+
+</requirement> -->
+
+<!-- <requirement>
+[requirement fix_settings_modal_hardcoded_urls_3/8]
+In `frontend/src/components/SettingsModal.jsx`, replace all hardcoded `http://localhost:8000` strings in `fetchIndexingStatus` (line ~145), `fetchFolderHistory` (line ~154), `fetchCacheStats` (line ~163), and `handleIndex` (line ~273) with the existing `API` constant using template literals: `${API}/api/index/status`, `${API}/api/folders/history`, `${API}/api/cache/stats`, and `${API}/api/index`.
+
+
+
+</requirement> -->
+
+<!-- <requirement>
+[requirement fix_settings_modal_accessibility_4/8]
+In `frontend/src/components/SettingsModal.jsx`, fix three accessibility issues:
+
+1. **Backdrop keyboard handler** (around Line 321-326): Add `onKeyDown` (checking for `'Escape'` key) and `tabIndex={-1}` to the backdrop `div`.
+2. **Button types** (Lines 335, 351, 405, 411, 424, 435, 461, 474, 587, 594, 607, 613): Add `type="button"` to every button that lacks an explicit type.
+3. **Label/input association** (around Line 488-499): In the `apiProviders.map` block, add `id={`api-key-${provider.id}`}` to each `<input>` and `htmlFor={`api-key-${provider.id}`}` to each `<label>`.
+
+
+
+</requirement> -->
+
+<!-- <requirement>
+[requirement fix_test_api_embedding_state_isolation_5/8]
+In `backend/tests/test_api.py`, add a `tearDown` method to `TestAPIEmbeddingSettings` that snapshots and restores `app.state.embedding_config` to prevent state leaking between tests:
+
+```python
+def setUp(self):
+    self.client = TestClient(app)
+    self._had_embedding_config = hasattr(app.state, 'embedding_config')
+    self._original_embedding_config = getattr(app.state, 'embedding_config', None)
+
+def tearDown(self):
+    self.client.close()
+    if self._had_embedding_config:
+        app.state.embedding_config = self._original_embedding_config
+    elif hasattr(app.state, 'embedding_config'):
+        delattr(app.state, 'embedding_config')
+```
+
+Also fix the `EmbeddingDimensionMismatchError` instantiation around line 945-950 — change:
+```python
+mock_search.side_effect = EmbeddingDimensionMismatchError("Query dimension (384) != Index dimension (768)")
+```
+to:
+```python
+mock_search.side_effect = EmbeddingDimensionMismatchError(384, 768)
+```
+
+
+
+</requirement> -->
+
+<!-- <requirement>
+[requirement fix_test_database_assertions_6/8]
+In `backend/tests/test_database.py`:
+
+1. In `test_cache_hit_increments_count` (around line 494-506), replace the weak assertion:
+   ```python
+   self.assertGreater(stats['total_hits'], 0)
+   ```
+   with the precise assertion:
+   ```python
+   self.assertEqual(stats['total_entries'], 1)
+   self.assertEqual(stats['total_hits'], 3)
+   ```
+
+2. In `test_cleanup_test_data` (around line 586-615), after calling `database.cleanup_test_data()`, add assertions that verify:
+   - `counts['files'] >= 1`, `counts['folders'] >= 1`, `counts['search_history'] >= 1`
+   - The inserted file/folder/query are actually gone (using available lookup helpers like `get_file_by_path`, `get_folder_history`, `get_search_history`)
+
+
+
+</requirement> -->
+
+<!-- <requirement>
+[requirement fix_test_indexing_7/8]
+In `backend/tests/test_indexing.py`:
+
+1. In `test_create_index_with_embedding_client` (around line 956-985), add `@patch('backend.indexing.get_embeddings')` decorator and `mock_get_embeddings` parameter, then after calling `create_index`, assert:
+   ```python
+   mock_get_embeddings.assert_not_called()
+   mock_embedding_client.embed_documents.assert_called()
+   ```
+
+2. In `TestSaveIndexWithMetadata.setUp` (around line 1119-1133) and `TestLoadIndexWithMetadata.setUp` (around line 1184-1193), apply the same synchronous executor patches used by earlier test classes:
+   ```python
+   self.pp_patcher = patch('concurrent.futures.ProcessPoolExecutor', side_effect=MockExecutor)
+   self.tp_patcher = patch('concurrent.futures.ThreadPoolExecutor', side_effect=MockExecutor)
+   self.ac_patcher = patch('concurrent.futures.as_completed', side_effect=lambda fs: fs)
+   self.pp_patcher.start(); self.tp_patcher.start(); self.ac_patcher.start()
+   ```
+   and stop them in `tearDown`.
+
+
+
+</requirement> -->
+
+<!-- <requirement>
+[requirement fix_test_modal_browse_assertion_8/8]
+In `frontend/src/test/SettingsModal.test.jsx`, strengthen the vacuous browse-error assertion (around line 399-418). Replace:
+```js
+await waitFor(() => expect(axios.get).toHaveBeenCalled())
+```
+with:
+```js
+await waitFor(() => {
+    expect(
+        axios.get.mock.calls.some(([url]) => url.includes('/api/browse'))
+    ).toBe(true)
+})
+expect(screen.getByText('Settings')).toBeDefined()
+```
+
+
+
+</requirement> -->
+
+---
+
+🏁 Script executed:
+```
+#!/bin/bash
+# Find the .coderabbit.yaml and show lines around the duplicate key
+fd '.coderabbit.yaml' --exec cat -n {}
+```
+
+Length of output: 0
+
+---
+
+🏁 Script executed:
+```
+#!/bin/bash
+# Show context around line 308 in AGENTS.md
+sed -n '305,318p' AGENTS.md
+```
+
+Length of output: 1127
+
+---
+
+🏁 Script executed:
+```
+#!/bin/bash
+# Find all hardcoded localhost:8000 in SettingsModal.jsx
+grep -n "http://localhost:8000" frontend/src/components/SettingsModal.jsx
+```
+
+Length of output: 385
+
+---
+
+🏁 Script executed:
+```
+#!/bin/bash
+# Show all button elements without type= in SettingsModal.jsx
+grep -n "<button" frontend/src/components/SettingsModal.jsx | grep -v 'type='
+# Show the label/input map section
+sed -n '485,505p' frontend/src/components/SettingsModal.jsx
+# Show the backdrop div
+sed -n '318,330p' frontend/src/components/SettingsModal.jsx
+```
+
+Length of output: 3031
+
+---
+
+🏁 Script executed:
+```
+#!/bin/bash
+# Show the TestAPIEmbeddingSettings class setUp and the mismatch error line
+sed -n '788,800p' backend/tests/test_api.py
+sed -n '940,960p' backend/tests/test_api.py
+# Confirm EmbeddingDimensionMismatchError signature
+grep -n "class EmbeddingDimensionMismatchError" backend/search.py
+```
+
+Length of output: 1436
+
+---
+
+🏁 Script executed:
+```
+#!/bin/bash
+# Show the relevant test methods
+sed -n '490,530p' backend/tests/test_database.py
+sed -n '586,620p' backend/tests/test_database.py
+# Check available database helper functions for lookups
+grep -n "^def get_" backend/database.py | head -30
+```
+
+Length of output: 3302
+
+---
+
+🏁 Script executed:
+```
+#!/bin/bash
+# Show the test_create_index_with_embedding_client function
+sed -n '955,990p' backend/tests/test_indexing.py
+# Show the TestSaveIndexWithMetadata and TestLoadIndexWithMetadata setUp sections
+sed -n '1115,1200p' backend/tests/test_indexing.py
+# Check how MockExecutor is defined
+grep -n "MockExecutor" backend/tests/test_indexing.py | head -5
+```
+
+Length of output: 5445
+
+---
+
+🏁 Script executed:
+```
+#!/bin/bash
+# Show the handles browse folder error gracefully test
+sed -n '395,422p' frontend/src/test/SettingsModal.test.jsx
+```
+
+Length of output: 1495
+
+---
+
+
+
+</details>
+
+`@BhurkeSiddhesh` Here are all the concrete fixes for every CodeRabbit comment. `@jules`, please apply the following changes:
+
+---
+
+## Fix 1 — `AGENTS.md`: Add blank line before heading (MD022)
+
+```diff
+ > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
+ 
++
+ ### 2026-03-12 (Settings UX Redesign)
+```
+
+---
+
+## Fix 2 — `frontend/src/components/SettingsModal.jsx`: Replace hardcoded URLs with `${API}` constant
+
+Lines 145, 154, 163, and 273:
+
+```diff
+-    const response = await axios.get('http://localhost:8000/api/index/status');
++    const response = await axios.get(`${API}/api/index/status`);
+
+-    const response = await axios.get('http://localhost:8000/api/folders/history');
++    const response = await axios.get(`${API}/api/folders/history`);
+
+-    const response = await axios.get('http://localhost:8000/api/cache/stats');
++    const response = await axios.get(`${API}/api/cache/stats`);
+
+-    await axios.post('http://localhost:8000/api/index');
++    await axios.post(`${API}/api/index`);
+```
+
+---
+
+## Fix 3 — `frontend/src/components/SettingsModal.jsx`: Keyboard + focus accessibility for backdrop (Line ~321)
+
+```diff
+ <div
+     className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+     onClick={(e) => {
+         if (e.target === e.currentTarget) onClose();
+     }}
++    onKeyDown={(e) => {
++        if (e.key === 'Escape' && e.target === e.currentTarget) onClose();
++    }}
++    role="button"
++    tabIndex={-1}
++    aria-label="Close settings modal"
+ >
+```
+
+---
+
+## Fix 4 — `frontend/src/components/SettingsModal.jsx`: Add `type="button"` to all buttons
+
+Apply `type="button"` to every `<button>` in the component that lacks an explicit type. Confirmed affected lines: 31, 335, 351, 405, 411, 424, 435, 461, 474, 587, 594, 607, 613. Example pattern:
+
+```diff
+-<button
++<button
++    type="button"
+     onClick={onClose}
+     className="p-2 rounded-xl hover:bg-secondary transition-colors"
+     aria-label="Close settings"
+ >
+```
+
+Apply the same `type="button"` addition to every `<button>` at those lines.
+
+---
+
+## Fix 5 — `frontend/src/components/SettingsModal.jsx`: Associate labels with inputs (Line ~490)
+
+```diff
+ {apiProviders.map(provider => (
+     <div key={provider.id} className="space-y-1">
+-        <label className="text-sm font-medium">{provider.name}</label>
++        <label htmlFor={`api-key-${provider.id}`} className="text-sm font-medium">{provider.name}</label>
+         <input
++            id={`api-key-${provider.id}`}
+             type="password"
+             value={config[provider.key] || ''}
+             onChange={(e) => setConfig({ ...config, [provider.key]: e.target.value })}
+             className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
+             placeholder={provider.placeholder}
+         />
+     </div>
+ ))}
+```
+
+---
+
+## Fix 6 — `backend/tests/test_api.py`: Add state isolation to `TestAPIEmbeddingSettings` + fix `EmbeddingDimensionMismatchError` signature
+
+```diff
+ class TestAPIEmbeddingSettings(unittest.TestCase):
+     """Test cases for embedding settings endpoints."""
+
+     def setUp(self):
+         """Set up test client before each test method."""
+         self.client = TestClient(app)
++        self._had_embedding_config = hasattr(app.state, 'embedding_config')
++        self._original_embedding_config = getattr(app.state, 'embedding_config', None)
++
++    def tearDown(self):
++        self.client.close()
++        if self._had_embedding_config:
++            app.state.embedding_config = self._original_embedding_config
++        elif hasattr(app.state, 'embedding_config'):
++            delattr(app.state, 'embedding_config')
+```
+
+And fix the `EmbeddingDimensionMismatchError` constructor call in `test_search_dimension_mismatch_error` (~line 945):
+
+```diff
+-        mock_search.side_effect = EmbeddingDimensionMismatchError(
+-            "Query dimension (384) != Index dimension (768)"
+-        )
++        mock_search.side_effect = EmbeddingDimensionMismatchError(384, 768)
+```
+
+---
+
+## Fix 7 — `backend/tests/test_database.py`: Pin exact `total_hits` assertion
+
+```diff
+         stats = database.get_cache_stats()
+-        self.assertGreater(stats['total_hits'], 0)
++        self.assertEqual(stats['total_entries'], 1)
++        self.assertEqual(stats['total_hits'], 3)
+```
+
+And strengthen `test_cleanup_test_data` to verify actual row removal:
+
+```diff
+         counts = database.cleanup_test_data()
+
+-        # Verify cleanup happened
+-        self.assertIsInstance(counts, dict)
+-        self.assertIn('files', counts)
+-        self.assertIn('folders', counts)
+-        self.assertIn('search_history', counts)
++        # Verify counts reflect what was removed
++        self.assertGreaterEqual(counts['files'], 1)
++        self.assertGreaterEqual(counts['folders'], 1)
++        self.assertGreaterEqual(counts['search_history'], 1)
++        # Verify rows are actually gone
++        self.assertIsNone(database.get_file_by_path('/test/path/file.pdf'))
++        folder_paths = [f['path'] for f in database.get_folder_history()]
++        self.assertNotIn('/test/folder', folder_paths)
++        history_queries = [h['query'] for h in database.get_search_history(limit=20)]
++        self.assertNotIn('test query', history_queries)
+```
+
+---
+
+## Fix 8 — `backend/tests/test_indexing.py`: Add `get_embeddings` patch to `test_create_index_with_embedding_client`
+
+```diff
++    `@patch`('backend.indexing.get_embeddings')
+     `@patch`('backend.indexing.CharacterTextSplitter')
+     `@patch`('backend.indexing.extract_text')
+-    def test_create_index_with_embedding_client(self, mock_extract_text, mock_splitter_cls):
++    def test_create_index_with_embedding_client(self, mock_extract_text, mock_splitter_cls, mock_get_embeddings):
+         ...
+             self.assertIsNotNone(index)
+             mock_embedding_client.embed_documents.assert_called()
++            mock_get_embeddings.assert_not_called()
+```
+
+And add executor patches to `TestIndexingProgressCallback.setUp` and `TestIndexingErrorRecovery.setUp` (the two classes that call `create_index()` without the synchronous executor patches):
+
+```diff
+ class TestIndexingProgressCallback(unittest.TestCase):
+     def setUp(self):
+         from backend import database
+         database.init_database()
+         self.temp_dir = tempfile.mkdtemp()
+         for i in range(3):
+             with open(os.path.join(self.temp_dir, f"file{i}.txt"), 'w') as f:
+                 f.write(f"Content {i}")
++        self.pp_patcher = patch('concurrent.futures.ProcessPoolExecutor', side_effect=MockExecutor)
++        self.tp_patcher = patch('concurrent.futures.ThreadPoolExecutor', side_effect=MockExecutor)
++        self.ac_patcher = patch('concurrent.futures.as_completed', side_effect=lambda fs: fs)
++        self.pp_patcher.start()
++        self.tp_patcher.start()
++        self.ac_patcher.start()
+
+     def tearDown(self):
++        self.pp_patcher.stop()
++        self.tp_patcher.stop()
++        self.ac_patcher.stop()
+         if os.path.exists(self.temp_dir):
+             shutil.rmtree(self.temp_dir)
+```
+
+Apply the same pattern to `TestIndexingErrorRecovery.setUp`/`tearDown`.
+
+---
+
+## Fix 9 — `frontend/src/test/SettingsModal.test.jsx`: Strengthen vacuous browse-error assertion (Line ~418)
+
+```diff
+-        // Should handle error gracefully (no crash)
+-        await waitFor(() => expect(axios.get).toHaveBeenCalled())
++        // Should have attempted the browse call specifically
++        await waitFor(() => {
++            expect(
++                axios.get.mock.calls.some(([url]) => url.includes('/api/browse'))
++            ).toBe(true)
++        })
++        // Modal should still be visible (no crash / unmount)
++        expect(screen.getByText('Settings')).toBeDefined()
+```
+
+---
+
+> **Note on `.coderabbit.yaml`**: The file has a duplicate `reviews:` key at line 181. Please open `.coderabbit.yaml`, find the second `reviews:` block near line 181, and either merge it into the first `reviews:` block or remove the duplicate key. You can validate the fix at https://docs.coderabbit.ai/configuration/yaml-validator.
+
+---
+
+💡 Use `@coderabbitai` plan to create a plan for code changes
+
+
+--
+author:	BhurkeSiddhesh
+association:	owner
+edited:	false
+status:	none
+--
+@jules, please acknowledge
+--
+author:	coderabbitai
+association:	contributor
+edited:	false
+status:	changes requested
+--
+**Actionable comments posted: 4**
+
+<details>
+<summary>♻️ Duplicate comments (6)</summary><blockquote>
+
+<details>
+<summary>backend/tests/test_database.py (2)</summary><blockquote>
+
+`504-506`: _⚠️ Potential issue_ | _🟡 Minor_
+
+**Assert the exact cache-hit total.**
+
+`cache_response()` starts the row at `hit_count = 1`, and each successful `get_cached_response()` adds one more hit. After two reads on a fresh table, this should be `3`; `> 0` still passes if the read-side increment breaks.  
+ 
+
+<details>
+<summary>Suggested tightening</summary>
+
+```diff
+         # Verify hit count increased
+         stats = database.get_cache_stats()
+-        self.assertGreater(stats['total_hits'], 0)
++        self.assertEqual(stats['total_entries'], 1)
++        self.assertEqual(stats['total_hits'], 3)
+```
+</details>
+
+<details>
+<summary>🤖 Prompt for AI Agents</summary>
+
+```
+Verify each finding against the current code and only fix it if needed.
+
+In `@backend/tests/test_database.py` around lines 504 - 506, The test currently
+only asserts stats['total_hits'] > 0; change it to assert the exact expected
+total of 3 since cache_response() seeds hit_count = 1 and two subsequent
+get_cached_response() reads should increment it twice; update the assertion in
+this test to self.assertEqual(database.get_cache_stats()['total_hits'], 3)
+(referencing cache_response(), get_cached_response(), and
+database.get_cache_stats()) so the test fails if hit counting stops
+incrementing.
+```
+
+</details>
+
+---
+
+`613-620`: _⚠️ Potential issue_ | _🟡 Minor_
+
+**Verify that `cleanup_test_data()` actually removed the inserted rows.**
+
+This only checks the returned dict shape, so a no-op cleanup can still pass. Assert that the file, folder, and search-history records inserted by this test are gone after cleanup, and that the returned counts reflect those deletions.  
+ 
+
+<details>
+<summary>Suggested assertions</summary>
+
+```diff
+         # Run cleanup
+         counts = database.cleanup_test_data()
+ 
+-        # Verify cleanup happened
+-        self.assertIsInstance(counts, dict)
+-        self.assertIn('files', counts)
+-        self.assertIn('folders', counts)
+-        self.assertIn('search_history', counts)
++        self.assertGreaterEqual(counts['files'], 1)
++        self.assertGreaterEqual(counts['folders'], 1)
++        self.assertGreaterEqual(counts['search_history'], 1)
++        self.assertIsNone(database.get_file_by_path('/test/path/file.pdf'))
++        self.assertNotIn('/test/folder', [item['path'] for item in database.get_folder_history()])
++        self.assertNotIn('test query', [item['query'] for item in database.get_search_history(limit=20)])
+```
+</details>
+
+<details>
+<summary>🤖 Prompt for AI Agents</summary>
+
+```
+Verify each finding against the current code and only fix it if needed.
+
+In `@backend/tests/test_database.py` around lines 613 - 620, The test currently
+only checks the shape of the dict returned by cleanup_test_data(); after calling
+database.cleanup_test_data() you must also assert that the specific test rows
+were actually removed and that the returned counts match those deletions. Call
+the appropriate lookup methods for the records you inserted (e.g.,
+database.get_file_by_id(file_id), database.get_folder_by_id(folder_id),
+database.get_search_history_by_id(search_id) or equivalent query helpers),
+assert those return None/empty (or 0 rows), and assert counts['files'],
+counts['folders'], counts['search_history'] equal the number of rows removed for
+each type returned by cleanup_test_data().
+```
+
+</details>
+
+</blockquote></details>
+<details>
+<summary>backend/tests/test_api.py (2)</summary><blockquote>
+
+`791-793`: _⚠️ Potential issue_ | _🟠 Major_
+
+**Restore `app.state.embedding_config` around this class.**
+
+These tests share the singleton `app`, and the real embeddings handler caches config on `app.state.embedding_config`. Without snapshot/restore, one test can change the next test’s starting state.  
+  
+
+<details>
+<summary>Suggested isolation</summary>
+
+```diff
+ class TestAPIEmbeddingSettings(unittest.TestCase):
+     """Test cases for embedding settings endpoints."""
+ 
+     def setUp(self):
+         """Set up test client before each test method."""
++        self._had_embedding_config = hasattr(app.state, 'embedding_config')
++        self._original_embedding_config = getattr(app.state, 'embedding_config', None)
+         self.client = TestClient(app)
++
++    def tearDown(self):
++        self.client.close()
++        if self._had_embedding_config:
++            app.state.embedding_config = self._original_embedding_config
++        elif hasattr(app.state, 'embedding_config'):
++            delattr(app.state, 'embedding_config')
+```
+</details>
+
+```shell
+#!/bin/bash
+set -euo pipefail
+
+echo "Inspect cached embedding-config usage and test cleanup:"
+rg -n -C2 'embedding_config|class TestAPIEmbeddingSettings|def setUp|def tearDown' \
+  backend/settings.py backend/tests/test_api.py backend/api.py
+```
+
+Based on learnings: Cache embedding configuration in `app.state.embedding_config` and use `get_active_embedding_client(app)` helper for resolving providers.
+
+<details>
+<summary>🤖 Prompt for AI Agents</summary>
+
+```
+Verify each finding against the current code and only fix it if needed.
+
+In `@backend/tests/test_api.py` around lines 791 - 793, Tests share the global
+FastAPI app and its cached embedding config, so modify the TestAPI
+setUp/tearDown to snapshot and restore app.state.embedding_config around each
+test: in setUp (where TestClient(app) is created) save the current
+app.state.embedding_config to a temp variable and in tearDown restore it (or
+delete if it was absent) so tests don't leak config; also update tests to
+resolve embedding clients via the existing get_active_embedding_client(app)
+helper and ensure any code paths that mutate app.state.embedding_config (or the
+TestClient usage) are cleaned up between tests.
+```
+
+</details>
+
+---
+
+`949-952`: _⚠️ Potential issue_ | _🔴 Critical_
+
+**Construct `EmbeddingDimensionMismatchError` with dimensions, not a message string.**
+
+This exception takes `query_dim` and `index_dim`. Passing a single string raises `TypeError` during test setup, so the test never reaches the `409` path it is supposed to cover.  
+ 
+
+<details>
+<summary>Suggested fix</summary>
+
+```diff
+         mock_config.return_value.get.return_value = 'openai'
+         mock_search.side_effect = EmbeddingDimensionMismatchError(
+-            "Query dimension (384) != Index dimension (768)"
++            384, 768
+         )
+```
+</details>
+
+Based on learnings: Search functionality must handle embedding dimension mismatches and return 409 Conflict if FAISS index dimension differs from query vector.
+
+<details>
+<summary>🤖 Prompt for AI Agents</summary>
+
+```
+Verify each finding against the current code and only fix it if needed.
+
+In `@backend/tests/test_api.py` around lines 949 - 952, The test's
+mock_search.side_effect is constructing EmbeddingDimensionMismatchError
+incorrectly with a message string; change it to instantiate the exception with
+the expected dimensions (e.g., EmbeddingDimensionMismatchError(384, 768) or
+named args query_dim=384, index_dim=768) so the test triggers the
+embedding-dimension mismatch path in the code that should return a 409 Conflict;
+update the instantiation referenced by mock_search.side_effect and keep the
+surrounding mocking of mock_config.return_value.get intact.
+```
+
+</details>
+
+</blockquote></details>
+<details>
+<summary>backend/tests/test_indexing.py (2)</summary><blockquote>
+
+`960-989`: _⚠️ Potential issue_ | _🟠 Major_
+
+**Patch `backend.indexing.get_embeddings` here and assert it stays unused.**
+
+If `create_index()` regresses and ignores `embedding_client`, this test can still fall through the real fallback path and won’t actually prove the injected-client contract. Patch `get_embeddings` in this test and add `assert_not_called()`.
+
+<details>
+<summary>🛡️ Suggested hardening</summary>
+
+```diff
+     `@patch`('backend.indexing.CharacterTextSplitter')
+     `@patch`('backend.indexing.extract_text')
+-    def test_create_index_with_embedding_client(self, mock_extract_text, mock_splitter_cls):
++    `@patch`('backend.indexing.get_embeddings')
++    def test_create_index_with_embedding_client(
++        self,
++        mock_get_embeddings,
++        mock_extract_text,
++        mock_splitter_cls,
++    ):
+         """Test create_index with embedding_client parameter."""
+@@
+             self.assertIsNotNone(index)
+             # Verify embedding client was used (not get_embeddings)
+             mock_embedding_client.embed_documents.assert_called()
++            mock_get_embeddings.assert_not_called()
+```
+</details>
+
+As per coding guidelines, "Mock LLM and network calls in backend tests".
+
+<details>
+<summary>🤖 Prompt for AI Agents</summary>
+
+```
+Verify each finding against the current code and only fix it if needed.
+
+In `@backend/tests/test_indexing.py` around lines 960 - 989, Patch
+backend.indexing.get_embeddings in this test and assert it is not called to
+ensure create_index uses the injected embedding_client; specifically, add a
+patch for backend.indexing.get_embeddings (or use `@patch` on get_embeddings) in
+the test_create_index_with_embedding_client setup, then after calling
+create_index(self.temp_dir, provider="openai", api_key="fake_key",
+embedding_client=mock_embedding_client) assert
+get_embeddings.assert_not_called() and keep the existing assert that
+mock_embedding_client.embed_documents.assert_called() so the test fails if
+create_index ignores the embedding_client and falls back to get_embeddings.
+```
+
+</details>
+
+---
+
+`1149-1171`: _⚠️ Potential issue_ | _🟠 Major_
+
+**Reuse the synchronous executor patches in these remaining `create_index()` test classes.**
+
+Unlike the earlier indexing tests, these classes still let `create_index()` construct real executors. That can spawn worker threads/processes, bypass local mocks, and turn the tests into flaky CI-only failures. Mirror the `MockExecutor` patch/start/stop block already used elsewhere in this file.
+
+<details>
+<summary>🧵 Reuse the existing synchronous executor patch block</summary>
+
+```diff
+     def setUp(self):
+         """
+         Prepare test environment by initializing the test database and creating a temporary directory with three sample text files.
+         """
+         from backend import database
+         database.init_database()
+         self.temp_dir = tempfile.mkdtemp()
+
+         # Create multiple test files
+         for i in range(3):
+             with open(os.path.join(self.temp_dir, f"file{i}.txt"), 'w') as f:
+                 f.write(f"Content {i}")
++
++        self.pp_patcher = patch('concurrent.futures.ProcessPoolExecutor', side_effect=MockExecutor)
++        self.tp_patcher = patch('concurrent.futures.ThreadPoolExecutor', side_effect=MockExecutor)
++        self.ac_patcher = patch('concurrent.futures.as_completed', side_effect=lambda fs: fs)
++        self.pp_patcher.start()
++        self.tp_patcher.start()
++        self.ac_patcher.start()
+
+     def tearDown(self):
+         """
+         Remove the per-test temporary directory created in setUp.
+         """
++        self.pp_patcher.stop()
++        self.tp_patcher.stop()
++        self.ac_patcher.stop()
+         if os.path.exists(self.temp_dir):
+             shutil.rmtree(self.temp_dir)
+```
+
+Apply the same change to `TestIndexingErrorRecovery`.
+</details>
+
+ 
+
+
+Also applies to: 1233-1248
+
+<details>
+<summary>🤖 Prompt for AI Agents</summary>
+
+```
+Verify each finding against the current code and only fix it if needed.
+
+In `@backend/tests/test_indexing.py` around lines 1149 - 1171, Tests under
+TestIndexingErrorRecovery (and similar classes) call create_index() which
+currently constructs real executors and can spawn worker threads; update these
+test classes to reuse the existing synchronous executor patch block
+(MockExecutor) used elsewhere in this file by adding the same patch/start in
+setUp and stop/cleanup in tearDown so create_index() uses the mocked executor;
+specifically, in the TestIndexingErrorRecovery class add the MockExecutor patch
+initialization in setUp (mirroring the existing patch block used in other
+indexing tests) and ensure the corresponding patch.stop() (or cleanup) is called
+in tearDown to avoid real worker threads being created.
+```
+
+</details>
+
+</blockquote></details>
+
+</blockquote></details>
+
+<details>
+<summary>🤖 Prompt for all review comments with AI agents</summary>
+
+```
+Verify each finding against the current code and only fix it if needed.
+
+Inline comments:
+In `@backend/tests/test_api.py`:
+- Around line 839-847: The test_update_embedding_settings_missing_api_key test
+currently allows either 400 or 422 which weakens the contract; update the
+assertion to expect the explicit 422 validation response from POST
+/api/settings/embeddings when provider_type is "commercial_api" and api_key is
+missing. Modify the assertion in test_update_embedding_settings_missing_api_key
+to assert response.status_code == 422 (and optionally assert the validation
+error key/message in the response body) so the test tightly reflects the app's
+validation behavior for embedding settings.
+
+In `@backend/tests/test_indexing.py`:
+- Around line 1257-1262: The test currently catches any Exception from
+create_index, so make the assertion targeted to the mocked embedding failure by
+expecting the specific error text or type from mock_get_embeddings: change the
+side_effect to raise a distinct error (e.g., Exception("Embedding API error"))
+and replace with self.assertRaisesRegex(Exception, r"Embedding API error"):
+create_index(self.temp_dir, "openai", "fake_key") so only the embedding path
+triggers the test; alternatively define and raise a custom EmbeddingError in the
+mock and assertRaises(EmbeddingError) to reference the embedding failure
+directly.
+- Around line 1223-1227: The test currently only checks that more than two
+stages appear, which is weak; update the assertion in
+backend/tests/test_indexing.py to validate the full expected stage set emitted
+by backend/indexing.py by comparing the discovered stages (found_stages) against
+the canonical stage_keywords list (or asserting found_stages contains all
+stage_keywords) so the test fails if any of the seven labels (Extracting,
+Chunking, Embedding, Keyword, Clustering, Summarizing, Finalizing) are missing
+or renamed; locate the variables messages, stage_keywords, and found_stages in
+the test and replace the self.assertGreater(...) with an assertion that checks
+set(found_stages) >= set(stage_keywords) (or equality) to enforce the full
+progress stage contract.
+
+In `@frontend/src/test/SettingsModal.test.jsx`:
+- Around line 469-489: The test "dismisses toast after 3 seconds" uses
+vi.useFakeTimers() but advances timers without flushing React updates; wrap the
+timer advance in React's act so state updates are applied before assertions.
+Specifically, in SettingsModal.test.jsx around the vi.advanceTimersByTime(3000)
+call, import and use act (from react-dom/test-utils or `@testing-library/react`)
+and replace the standalone vi.advanceTimersByTime(3000) with act(() => {
+vi.advanceTimersByTime(3000) }); keep the surrounding waitFor/assertions and the
+final vi.useRealTimers() as-is.
+
+---
+
+Duplicate comments:
+In `@backend/tests/test_api.py`:
+- Around line 791-793: Tests share the global FastAPI app and its cached
+embedding config, so modify the TestAPI setUp/tearDown to snapshot and restore
+app.state.embedding_config around each test: in setUp (where TestClient(app) is
+created) save the current app.state.embedding_config to a temp variable and in
+tearDown restore it (or delete if it was absent) so tests don't leak config;
+also update tests to resolve embedding clients via the existing
+get_active_embedding_client(app) helper and ensure any code paths that mutate
+app.state.embedding_config (or the TestClient usage) are cleaned up between
+tests.
+- Around line 949-952: The test's mock_search.side_effect is constructing
+EmbeddingDimensionMismatchError incorrectly with a message string; change it to
+instantiate the exception with the expected dimensions (e.g.,
+EmbeddingDimensionMismatchError(384, 768) or named args query_dim=384,
+index_dim=768) so the test triggers the embedding-dimension mismatch path in the
+code that should return a 409 Conflict; update the instantiation referenced by
+mock_search.side_effect and keep the surrounding mocking of
+mock_config.return_value.get intact.
+
+In `@backend/tests/test_database.py`:
+- Around line 504-506: The test currently only asserts stats['total_hits'] > 0;
+change it to assert the exact expected total of 3 since cache_response() seeds
+hit_count = 1 and two subsequent get_cached_response() reads should increment it
+twice; update the assertion in this test to
+self.assertEqual(database.get_cache_stats()['total_hits'], 3) (referencing
+cache_response(), get_cached_response(), and database.get_cache_stats()) so the
+test fails if hit counting stops incrementing.
+- Around line 613-620: The test currently only checks the shape of the dict
+returned by cleanup_test_data(); after calling database.cleanup_test_data() you
+must also assert that the specific test rows were actually removed and that the
+returned counts match those deletions. Call the appropriate lookup methods for
+the records you inserted (e.g., database.get_file_by_id(file_id),
+database.get_folder_by_id(folder_id),
+database.get_search_history_by_id(search_id) or equivalent query helpers),
+assert those return None/empty (or 0 rows), and assert counts['files'],
+counts['folders'], counts['search_history'] equal the number of rows removed for
+each type returned by cleanup_test_data().
+
+In `@backend/tests/test_indexing.py`:
+- Around line 960-989: Patch backend.indexing.get_embeddings in this test and
+assert it is not called to ensure create_index uses the injected
+embedding_client; specifically, add a patch for backend.indexing.get_embeddings
+(or use `@patch` on get_embeddings) in the test_create_index_with_embedding_client
+setup, then after calling create_index(self.temp_dir, provider="openai",
+api_key="fake_key", embedding_client=mock_embedding_client) assert
+get_embeddings.assert_not_called() and keep the existing assert that
+mock_embedding_client.embed_documents.assert_called() so the test fails if
+create_index ignores the embedding_client and falls back to get_embeddings.
+- Around line 1149-1171: Tests under TestIndexingErrorRecovery (and similar
+classes) call create_index() which currently constructs real executors and can
+spawn worker threads; update these test classes to reuse the existing
+synchronous executor patch block (MockExecutor) used elsewhere in this file by
+adding the same patch/start in setUp and stop/cleanup in tearDown so
+create_index() uses the mocked executor; specifically, in the
+TestIndexingErrorRecovery class add the MockExecutor patch initialization in
+setUp (mirroring the existing patch block used in other indexing tests) and
+ensure the corresponding patch.stop() (or cleanup) is called in tearDown to
+avoid real worker threads being created.
+```
+
+</details>
+
+---
+
+<details>
+<summary>ℹ️ Review info</summary>
+
+<details>
+<summary>⚙️ Run configuration</summary>
+
+**Configuration used**: Organization UI
+
+**Review profile**: ASSERTIVE
+
+**Plan**: Pro
+
+**Run ID**: `e922c014-8b68-4348-a333-6ae1dca3b902`
+
+</details>
+
+<details>
+<summary>📥 Commits</summary>
+
+Reviewing files that changed from the base of the PR and between 3120bf084b807c8027333def92761573b2b3fc5a and e54e24de9c45490e9171e13364c0162106eff70e.
+
+</details>
+
+<details>
+<summary>📒 Files selected for processing (4)</summary>
+
+* `backend/tests/test_api.py`
+* `backend/tests/test_database.py`
+* `backend/tests/test_indexing.py`
+* `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+
+</details>
+
+<details>
+<summary>📜 Review details</summary>
+
+<details>
+<summary>🧰 Additional context used</summary>
+
+<details>
+<summary>📓 Path-based instructions (9)</summary>
+
+<details>
+<summary>backend/**/*.py</summary>
+
+
+**📄 CodeRabbit inference engine (.github/copilot-instructions.md)**
+
+> `backend/**/*.py`: Backend code should be placed in `backend/` directory including `api.py`, `database.py`, `indexing.py`, `search.py`, `file_processing.py`, `llm_integration.py`, `model_manager.py`, `background.py`
+> Python code should target Python 3.8+ compatibility while CI uses Python 3.10
+> 
+> `backend/**/*.py`: Redact sensitive search queries and PII in logs to prevent data leakage
+> Implement lazy loading for heavy backend modules (langchain, llama-cpp, tkinter) to reduce cold-start time
+
+Files:
+- `backend/tests/test_database.py`
+- `backend/tests/test_indexing.py`
+- `backend/tests/test_api.py`
+
+</details>
+<details>
+<summary>backend/tests/**/*.py</summary>
+
+
+**📄 CodeRabbit inference engine (.github/copilot-instructions.md)**
+
+> `backend/tests/**/*.py`: Backend tests should be placed in `backend/tests/` directory
+> Mock LLM and network calls in backend tests
+> Tests that manipulate DB should auto-use SQLite in `data/metadata.db` and clean via `database.cleanup_test_data()` on success
+> 
+> `backend/tests/**/*.py`: Backend tests MUST be placed in `backend/tests/` and follow pytest conventions
+> Always mock LLM calls in tests to avoid API costs using `@patch` decorator
+
+Files:
+- `backend/tests/test_database.py`
+- `backend/tests/test_indexing.py`
+- `backend/tests/test_api.py`
+
+</details>
+<details>
+<summary>**/*.py</summary>
+
+
+**📄 CodeRabbit inference engine (AGENTS.md)**
+
+> `**/*.py`: Backend code MUST be placed in `backend/` or `backend/tests/` directories. Exception: `api.py` is the entry point (in `backend/`). NO `.py` files in the project root
+> All generated files (`.db`, `.faiss`, `.log`, `.json` results) MUST go in `data/` directory and code must reference `DATA_DIR` constant
+
+Files:
+- `backend/tests/test_database.py`
+- `backend/tests/test_indexing.py`
+- `backend/tests/test_api.py`
+
+</details>
+<details>
+<summary>frontend/src/**/*.{jsx,js,ts,tsx}</summary>
+
+
+**📄 CodeRabbit inference engine (.github/copilot-instructions.md)**
+
+> Frontend code should be placed in `frontend/src/` including `App.jsx` and components/
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>frontend/src/**/*.{test,spec}.{js,jsx,ts,tsx}</summary>
+
+
+**📄 CodeRabbit inference engine (.github/copilot-instructions.md)**
+
+> Frontend tests should use Vitest (not Jest) for testing
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>frontend/**/*.{js,jsx,ts,tsx}</summary>
+
+
+**📄 CodeRabbit inference engine (.github/copilot-instructions.md)**
+
+> Frontend code should be compatible with Node 16+ (CI uses Node 18)
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>frontend/src/test/**/*.{js,jsx}</summary>
+
+
+**📄 CodeRabbit inference engine (AGENTS.md)**
+
+> `frontend/src/test/**/*.{js,jsx}`: Frontend tests MUST be placed in `frontend/src/test/` and use Vitest (not Jest)
+> Use Vitest for frontend testing, import from 'vitest' not jest
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>**/*.{js,jsx}</summary>
+
+
+**📄 CodeRabbit inference engine (AGENTS.md)**
+
+> `**/*.{js,jsx}`: Use camelCase for variable names in JavaScript and TypeScript
+> Use async/await for promises in JavaScript and TypeScript, avoid callback-based patterns
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>frontend/src/**/*.{js,jsx}</summary>
+
+
+**📄 CodeRabbit inference engine (AGENTS.md)**
+
+> API calls from frontend must use axios with `const API = 'http://localhost:8000'` base URL
+
+Files:
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+
+</details><details>
+<summary>🧠 Learnings (40)</summary>
+
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to **/database.py : Implement persistent AI response cache using SQLite with query/context hashing to provide instant repeated queries
+```
+
+**Applied to files:**
+- `backend/tests/test_database.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to backend/tests/**/*.py : Use tempfile and mocks to isolate database state in tests. Avoid modifying production database during test runs. Clean up test data after successful test runs.
+```
+
+**Applied to files:**
+- `backend/tests/test_database.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to **/database.py : Implement `cleanup_test_data()` in database.py to remove temp/test paths from production database after test runs
+```
+
+**Applied to files:**
+- `backend/tests/test_database.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:07:27.528Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: .github/copilot-instructions.md:0-0
+Timestamp: 2026-02-23T14:07:27.528Z
+Learning: Applies to backend/tests/**/*.py : Tests that manipulate DB should auto-use SQLite in `data/metadata.db` and clean via `database.cleanup_test_data()` on success
+```
+
+**Applied to files:**
+- `backend/tests/test_database.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:06:51.460Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:06:51.460Z
+Learning: Applies to **/tests/test_*.py : Backend tests MUST use unittest.TestCase class structure with setUp/tearDown methods and self.assertEqual assertions
+```
+
+**Applied to files:**
+- `backend/tests/test_database.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to backend/tests/**/*.py : Backend tests MUST use `unittest` framework with mocking of all LLM calls to avoid API costs and external dependencies
+```
+
+**Applied to files:**
+- `backend/tests/test_database.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-05T18:14:48.492Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-05T18:14:48.492Z
+Learning: Run `npm run test` before AND after changes for quick test (~12s). Run `npm run test:full` for comprehensive tests with models (~10min)
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-05T18:14:48.492Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-05T18:14:48.492Z
+Learning: Run tests before AND after making changes using `npm run test` (quick ~12s) or `npm run test:full` (with models ~10min)
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:06:51.460Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:06:51.460Z
+Learning: Applies to **/test/**/*.test.jsx : Frontend should use `testing-library/react` interactions instead of basic logic checks in tests for better coverage
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:21:20.365Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:21:20.365Z
+Learning: Run `npm run test` before AND after making changes to verify functionality
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-05T18:14:48.492Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-05T18:14:48.492Z
+Learning: Run `npm run test` before AND after changes, and update Change Log in AGENTS.md after every modification
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:07:49.159Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:07:49.159Z
+Learning: Tests MUST be run with `npm run test` before AND after changes to ensure no regressions
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-05T18:14:48.492Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-05T18:14:48.492Z
+Learning: Applies to frontend/src/**/*.jsx : Frontend API calls should use axios with `const API = 'http://localhost:8000'` and proper error handling with try/catch
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:07:49.158Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:07:49.158Z
+Learning: Applies to frontend/src/**/*.jsx : Frontend API calls MUST use Axios with base URL `http://localhost:8000` and include proper error handling with try-catch blocks
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:21:04.874Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:21:04.874Z
+Learning: Applies to frontend/src/**/*.jsx : Frontend API calls MUST use axios with `http://localhost:8000` base URL and include proper error handling in try-catch blocks
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:21:20.365Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:21:20.365Z
+Learning: Applies to frontend/src/**/*.{js,jsx} : Frontend API calls MUST use axios with base URL `http://localhost:8000` and include error handling in try-catch blocks
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-05T18:26:01.165Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-05T18:26:01.165Z
+Learning: Applies to frontend/src/test/**/*.test.jsx : Frontend tests MUST use Vitest (not Jest) with imports from 'vitest' and use `testing-library/react` for UI interaction testing
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:06:51.460Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:06:51.460Z
+Learning: Applies to **/components/**/*.jsx : Frontend API calls MUST use axios with try/catch: `const response = await axios.post('${API}/api/endpoint', data)` with error handling
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:20:58.707Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:20:58.707Z
+Learning: Applies to frontend/src/**/*.jsx : Frontend components MUST use TailwindCSS for styling with 'bg-gray-900', 'rounded-lg' patterns; implement loading states with `useState(false)` pattern; use Axios with `${API}/api/*` endpoints; include error handling with console.error()
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:06:51.460Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:06:51.460Z
+Learning: Applies to **/test/**/*.test.jsx : Frontend tests MUST use Vitest (not Jest): import from 'vitest' and use describe/it/expect syntax
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:20:58.707Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:20:58.707Z
+Learning: Applies to frontend/src/test/**/*.test.jsx : Frontend tests MUST use Vitest (not Jest) and be placed in `frontend/src/test/` directory with pattern `*.test.jsx`
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-05T18:14:48.492Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-05T18:14:48.492Z
+Learning: Applies to frontend/src/test/**/*.{js,jsx,tsx,ts} : Frontend tests using Vitest MUST use `describe()`, `it()`, `expect()`, and `vi.fn()` for mocking, imported from 'vitest'
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-05T18:14:48.492Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-05T18:14:48.492Z
+Learning: Applies to frontend/src/test/**/*.test.jsx : Frontend tests MUST use Vitest (not Jest). Import from 'vitest', not 'jest'. Pattern: `import { describe, it, expect, vi } from 'vitest'`
+```
+
+**Applied to files:**
+- `frontend/src/test/SettingsModal.test.jsx`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:06:51.460Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:06:51.460Z
+Learning: Applies to **/indexing.py : Use regex-based fast summary in indexing for 'local' provider instead of slow LLM summarization
+```
+
+**Applied to files:**
+- `backend/tests/test_indexing.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to backend/indexing.py : Use weighted progress reporting for FAISS indexing with granular status updates for extraction, embedding, and summarization phases
+```
+
+**Applied to files:**
+- `backend/tests/test_indexing.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-12T18:00:11.731Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-12T18:00:11.731Z
+Learning: Applies to backend/indexing.py : Persist embedding metadata in `_meta.json` file containing `model_name` and `embedding_dim` alongside `.faiss` index
+```
+
+**Applied to files:**
+- `backend/tests/test_indexing.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to backend/indexing.py : RAPTOR indexing MUST use regex-based summaries for local provider (instead of LLM summaries) for performance, implement weighted progress tracking, and serialize metadata using JSON (not pickle)
+```
+
+**Applied to files:**
+- `backend/tests/test_indexing.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to backend/tests/**/*.py : Mock LLM calls using `patch('llm_integration.get_llm_client')` and return `MagicMock(content='AI text')` to avoid API costs and external dependencies
+```
+
+**Applied to files:**
+- `backend/tests/test_indexing.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to **/tests/test_*.py : Backend tests MUST mock all LLM calls to avoid API costs: use `patch('llm_integration.get_llm_client')` and mock return values
+```
+
+**Applied to files:**
+- `backend/tests/test_indexing.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to backend/tests/test_*.py : All LLM calls in backend tests MUST be mocked using `patch()` decorator to avoid API costs and ensure test isolation
+```
+
+**Applied to files:**
+- `backend/tests/test_indexing.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to backend/tests/**/*.py : Backend tests MUST mock all LLM calls using `patch` decorator to avoid API costs and external dependencies
+```
+
+**Applied to files:**
+- `backend/tests/test_indexing.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to **/test*.{py,jsx} : All tests MUST mock LLM calls using `patch` decorator to avoid API costs
+```
+
+**Applied to files:**
+- `backend/tests/test_indexing.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-12T18:00:11.731Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-12T18:00:11.731Z
+Learning: Applies to backend/tests/**/*.py : Always mock LLM calls in tests to avoid API costs using patch decorator
+```
+
+**Applied to files:**
+- `backend/tests/test_indexing.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to backend/tests/test_*.py : Backend tests MUST use pytest with unittest.TestCase pattern, applying `patch` decorators for mocking LLM calls
+```
+
+**Applied to files:**
+- `backend/tests/test_indexing.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-23T14:06:51.158Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-23T14:06:51.158Z
+Learning: Applies to backend/llm_integration.py : Follow the LLM Provider Pattern: implement `get_embeddings(provider, api_key)` and `get_llm_client(provider, api_key)` functions. Use caches `_embeddings_cache` and `_llm_cache` to avoid reloading.
+```
+
+**Applied to files:**
+- `backend/tests/test_indexing.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-02-25T17:05:49.518Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-02-25T17:05:49.518Z
+Learning: Applies to backend/tests/**/*.py : Backend tests MUST use pytest pattern and mock all LLM calls to avoid API costs. Backend test pattern: `class TestFeature(unittest.TestCase)` with `patch` decorators for mocks.
+```
+
+**Applied to files:**
+- `backend/tests/test_indexing.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-12T18:00:11.731Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-12T18:00:11.731Z
+Learning: Applies to backend/settings.py : Implement embedding settings router with `GET /api/settings/embeddings` and `POST /api/settings/embeddings` endpoints
+```
+
+**Applied to files:**
+- `backend/tests/test_api.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-12T18:00:11.731Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-12T18:00:11.731Z
+Learning: Applies to backend/settings.py : Cache embedding configuration in `app.state.embedding_config` and use `get_active_embedding_client(app)` helper for resolving providers
+```
+
+**Applied to files:**
+- `backend/tests/test_api.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-12T18:00:11.731Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-12T18:00:11.731Z
+Learning: Applies to backend/settings.py : Validate POST /api/settings/embeddings payload: reject unknown provider_type and enforce api_key for non-local providers
+```
+
+**Applied to files:**
+- `backend/tests/test_api.py`
+
+</details>
+<details>
+<summary>📚 Learning: 2026-03-12T18:00:11.731Z</summary>
+
+```
+Learnt from: CR
+Repo: BhurkeSiddhesh/Docu-AI-Search PR: 0
+File: AGENTS.md:0-0
+Timestamp: 2026-03-12T18:00:11.731Z
+Learning: Applies to backend/search.py : Search functionality must handle embedding dimension mismatches and return 409 Conflict if FAISS index dimension differs from query vector
+```
+
+**Applied to files:**
+- `backend/tests/test_api.py`
+
+</details>
+
+</details><details>
+<summary>🪛 Ruff (0.15.5)</summary>
+
+<details>
+<summary>backend/tests/test_database.py</summary>
+
+[warning] 492-492: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 506-506: Use a regular `assert` instead of unittest-style `assertGreater`
+
+Replace `assertGreater(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 512-512: Use a regular `assert` instead of unittest-style `assertIsNone`
+
+Replace `assertIsNone(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 523-523: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 527-527: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 543-543: Use a regular `assert` instead of unittest-style `assertIsInstance`
+
+Replace `assertIsInstance(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 544-544: Use a regular `assert` instead of unittest-style `assertGreater`
+
+Replace `assertGreater(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 554-554: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 557-557: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 571-571: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 580-580: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 604-604: `datetime.datetime.now()` called without a `tz` argument
+
+(DTZ005)
+
+---
+
+[warning] 617-617: Use a regular `assert` instead of unittest-style `assertIsInstance`
+
+Replace `assertIsInstance(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 618-618: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 619-619: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 620-620: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 634-634: Missing return type annotation for private function `worker`
+
+Add return type annotation: `None`
+
+(ANN202)
+
+---
+
+[warning] 654-654: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 655-655: Use a regular `assert` instead of unittest-style `assertTrue`
+
+Replace `assertTrue(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 675-675: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 686-686: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 712-712: `datetime.datetime.now()` called without a `tz` argument
+
+(DTZ005)
+
+---
+
+[warning] 725-725: Use a regular `assert` instead of unittest-style `assertGreaterEqual`
+
+Replace `assertGreaterEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 749-749: `datetime.datetime.now()` called without a `tz` argument
+
+(DTZ005)
+
+---
+
+[warning] 756-756: Use a regular `assert` instead of unittest-style `assertIsNotNone`
+
+Replace `assertIsNotNone(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 757-757: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 764-764: Use a regular `assert` instead of unittest-style `assertIsNone`
+
+Replace `assertIsNone(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 785-785: `datetime.datetime.now()` called without a `tz` argument
+
+(DTZ005)
+
+---
+
+[warning] 793-793: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 797-797: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 812-812: `datetime.datetime.now()` called without a `tz` argument
+
+(DTZ005)
+
+---
+
+[warning] 819-819: Use a regular `assert` instead of unittest-style `assertIsNotNone`
+
+Replace `assertIsNotNone(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 820-820: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+</details>
+<details>
+<summary>backend/tests/test_indexing.py</summary>
+
+[warning] 985-985: Unpacked variable `docs` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 985-985: Unpacked variable `tags` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 985-985: Unpacked variable `idx_sum` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 985-985: Unpacked variable `clus_sum` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 985-985: Unpacked variable `clus_map` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 985-985: Unpacked variable `bm25` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 987-987: Use a regular `assert` instead of unittest-style `assertIsNotNone`
+
+Replace `assertIsNotNone(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1017-1017: Unpacked variable `docs` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 1017-1017: Unpacked variable `tags` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 1017-1017: Unpacked variable `idx_sum` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 1017-1017: Unpacked variable `clus_sum` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 1017-1017: Unpacked variable `clus_map` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 1017-1017: Unpacked variable `bm25` is never used
+
+Prefix it with an underscore or any other dummy variable pattern
+
+(RUF059)
+
+---
+
+[warning] 1019-1019: Use a regular `assert` instead of unittest-style `assertIsNotNone`
+
+Replace `assertIsNotNone(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1047-1047: Missing return type annotation for private function `side_effect_write`
+
+Add return type annotation: `None`
+
+(ANN202)
+
+---
+
+[warning] 1047-1047: Unused function argument: `index`
+
+(ARG001)
+
+---
+
+[warning] 1074-1074: Use a regular `assert` instead of unittest-style `assertTrue`
+
+Replace `assertTrue(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1078-1078: Unnecessary mode argument
+
+Remove mode argument
+
+(UP015)
+
+---
+
+[warning] 1080-1080: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1081-1081: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1108-1108: Missing return type annotation for private function `side_effect_write`
+
+Add return type annotation: `None`
+
+(ANN202)
+
+---
+
+[warning] 1108-1108: Unused function argument: `index`
+
+(ARG001)
+
+---
+
+[warning] 1138-1138: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1141-1141: Use a regular `assert` instead of unittest-style `assertIsInstance`
+
+Replace `assertIsInstance(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1142-1142: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1143-1143: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1191-1191: Missing return type annotation for private function `progress_callback`
+
+Add return type annotation: `None`
+
+(ANN202)
+
+---
+
+[warning] 1221-1221: Use a regular `assert` instead of unittest-style `assertGreater`
+
+Replace `assertGreater(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1227-1227: Use a regular `assert` instead of unittest-style `assertGreater`
+
+Replace `assertGreater(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1261-1261: Use `pytest.raises` instead of unittest-style `assertRaises`
+
+Replace `assertRaises` with `pytest.raises`
+
+(PT027)
+
+---
+
+[warning] 1261-1261: Do not assert blind exception: `Exception`
+
+(B017)
+
+</details>
+<details>
+<summary>backend/tests/test_api.py</summary>
+
+[warning] 806-806: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 808-808: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 809-809: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 810-810: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 822-822: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 824-824: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 837-837: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 847-847: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 857-857: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 877-877: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 879-879: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 893-893: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 895-895: Use a regular `assert` instead of unittest-style `assertIsNone`
+
+Replace `assertIsNone(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 915-915: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 917-917: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 918-918: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 927-927: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 929-929: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 930-930: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 944-944: Unused method argument: `mock_embeddings`
+
+(ARG002)
+
+---
+
+[warning] 945-945: Unused method argument: `mock_history`
+
+(ARG002)
+
+---
+
+[warning] 963-963: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 964-964: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 981-981: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 982-982: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 995-995: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1005-1005: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1020-1020: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1021-1021: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1031-1031: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1033-1033: Use a regular `assert` instead of unittest-style `assertIn`
+
+Replace `assertIn(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1055-1055: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+---
+
+[warning] 1088-1088: Use a regular `assert` instead of unittest-style `assertEqual`
+
+Replace `assertEqual(...)` with `assert ...`
+
+(PT009)
+
+</details>
+
+</details>
+
+</details>
+
+<details>
+<summary>🔇 Additional comments (6)</summary><blockquote>
+
+<details>
+<summary>frontend/src/test/SettingsModal.test.jsx (5)</summary><blockquote>
+
+`399-418`: **The browse-error assertion remains vacuous.**
+
+The assertion `expect(axios.get).toHaveBeenCalled()` is satisfied by the initial settings fetches (`/api/config`, `/api/index/status`, etc.) before the "Add Folder" click. This test never proves the `/api/browse` failure path executed.
+
+Assert the specific browse request and verify a visible post-click outcome:
+
+<details>
+<summary>✅ Proposed fix</summary>
+
+```diff
+         // Click add folder (should not crash)
+         fireEvent.click(screen.getByText('Add Folder'))
+
+-        // Should handle error gracefully (no crash)
+-        await waitFor(() => expect(axios.get).toHaveBeenCalled())
++        // Verify browse endpoint was called
++        await waitFor(() => {
++            expect(
++                axios.get.mock.calls.some(([url]) => url.includes('/api/browse'))
++            ).toBe(true)
++        })
++        // Modal should still be visible (no crash)
++        expect(screen.getByText('Settings')).toBeDefined()
+```
+</details>
+
+Based on learnings, "Frontend should use `testing-library/react` interactions instead of basic logic checks in tests for better coverage".
+
+---
+
+`95-102`: **LGTM!**
+
+The test correctly navigates to the "Data Management" section before asserting the "Clear Search History" behavior, aligning with the new two-pane layout design.
+
+---
+
+`212-241`: **LGTM!**
+
+Good coverage for section navigation. Tests verify that clicking each sidebar section renders the expected content (folders, AI Provider options, ModelManager mock, Data Management).
+
+---
+
+`243-281`: **LGTM!**
+
+Solid coverage for indexing status states—both in-progress with percentage/current file, and error scenarios. The mock overrides are structured clearly.
+
+---
+
+`365-397`: **LGTM!**
+
+This test validates the important security behavior of not sending placeholder API keys (`'••••••••'`) to the server. The assertion correctly checks that `api_key` is undefined in the POST payload when the user hasn't modified the masked value.
+
+</blockquote></details>
+<details>
+<summary>backend/tests/test_indexing.py (1)</summary><blockquote>
+
+`1044-1081`: **Nice coverage on the metadata sidecar contract.**
+
+These tests lock down both halves of the new `_meta.json` behavior: `save_index()` writes `model_name`/`embedding_dim`, and `load_index()` returns them as the 8th tuple element. Based on learnings, "Persist embedding metadata in `_meta.json` file containing `model_name` and `embedding_dim` alongside `.faiss` index".
+
+
+
+Also applies to: 1104-1143
+
+</blockquote></details>
+
+</blockquote></details>
+
+</details>
+
+<!-- This is an auto-generated comment by CodeRabbit for review status -->
+--
