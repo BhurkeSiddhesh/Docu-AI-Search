@@ -23,10 +23,10 @@ const mockConfig = {
     folders: ['C:/Users/test/Documents'],
     auto_index: false,
     provider: 'local',
-    openai_api_key: '',
-    gemini_api_key: '',
-    anthropic_api_key: '',
-    grok_api_key: '',
+    openai_api_key_set: false,
+    gemini_api_key_set: false,
+    anthropic_api_key_set: false,
+    grok_api_key_set: false,
     local_model_path: '',
     local_model_type: 'llamacpp'
 }
