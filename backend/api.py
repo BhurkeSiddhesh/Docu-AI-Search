@@ -767,10 +767,10 @@ async def get_config(request: Request):
     return {
         "folders": folders,
         "auto_index": config.getboolean('General', 'auto_index', fallback=False),
-        "openai_api_key": config.get('APIKeys', 'openai_api_key', fallback=''),
-        "gemini_api_key": config.get('APIKeys', 'gemini_api_key', fallback=''),
-        "anthropic_api_key": config.get('APIKeys', 'anthropic_api_key', fallback=''),
-        "grok_api_key": config.get('APIKeys', 'grok_api_key', fallback=''),
+        "openai_api_key_set": bool(config.get('APIKeys', 'openai_api_key', fallback='')),
+        "gemini_api_key_set": bool(config.get('APIKeys', 'gemini_api_key', fallback='')),
+        "anthropic_api_key_set": bool(config.get('APIKeys', 'anthropic_api_key', fallback='')),
+        "grok_api_key_set": bool(config.get('APIKeys', 'grok_api_key', fallback='')),
         "local_model_path": config.get('LocalLLM', 'model_path', fallback=''),
         "provider": config.get('LocalLLM', 'provider', fallback='openai'),
         "tensor_split": config.get('LocalLLM', 'tensor_split', fallback=None),
@@ -791,16 +791,22 @@ async def update_config(config_data: ConfigModel, request: Request):
     Returns:
         dict: Success status and message.
     """
+    existing = load_config()
     config = configparser.ConfigParser()
     config['General'] = {
         'folders': ','.join(config_data.folders),
         'auto_index': str(config_data.auto_index)
     }
+    # Preserve existing key if client submits empty string (i.e. user left it blank)
+    def _key(new_val, section, option):
+        if new_val:
+            return new_val
+        return existing.get(section, option, fallback='')
     config['APIKeys'] = {
-        'openai_api_key': config_data.openai_api_key or '',
-        'gemini_api_key': config_data.gemini_api_key or '',
-        'anthropic_api_key': config_data.anthropic_api_key or '',
-        'grok_api_key': config_data.grok_api_key or ''
+        'openai_api_key': _key(config_data.openai_api_key, 'APIKeys', 'openai_api_key'),
+        'gemini_api_key': _key(config_data.gemini_api_key, 'APIKeys', 'gemini_api_key'),
+        'anthropic_api_key': _key(config_data.anthropic_api_key, 'APIKeys', 'anthropic_api_key'),
+        'grok_api_key': _key(config_data.grok_api_key, 'APIKeys', 'grok_api_key'),
     }
     config['LocalLLM'] = {
         'model_path': config_data.local_model_path or '', 
