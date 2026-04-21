@@ -791,8 +791,7 @@ async def update_config(config_data: ConfigModel, request: Request):
     Returns:
         dict: Success status and message.
     """
-    existing = load_config()
-    config = configparser.ConfigParser()
+    config = load_config()
     config['General'] = {
         'folders': ','.join(config_data.folders),
         'auto_index': str(config_data.auto_index)
@@ -801,7 +800,7 @@ async def update_config(config_data: ConfigModel, request: Request):
     def _key(new_val, section, option):
         if new_val:
             return new_val
-        return existing.get(section, option, fallback='')
+        return config.get(section, option, fallback='')
     config['APIKeys'] = {
         'openai_api_key': _key(config_data.openai_api_key, 'APIKeys', 'openai_api_key'),
         'gemini_api_key': _key(config_data.gemini_api_key, 'APIKeys', 'gemini_api_key'),
