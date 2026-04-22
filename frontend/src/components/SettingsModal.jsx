@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { X, Settings, FolderOpen, Loader2, Save, Key, Cpu, Trash2, CheckCircle2, Database } from 'lucide-react';
+import { X, Settings, FolderOpen, Loader2, Save, Key, Cpu, Trash2, CheckCircle2, Database, Wifi, WifiOff, RefreshCw, Server } from 'lucide-react';
 import ModelManager from './ModelManager';
 
 const API = 'http://localhost:8000';
@@ -75,6 +75,12 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
     const [folderHistory, setFolderHistory] = useState([]);
     const [showHistory, setShowHistory] = useState(false);
     const [cacheStats, setCacheStats] = useState({ total_entries: 0, total_hits: 0 });
+    // External Provider state
+    const [extProviderType, setExtProviderType] = useState('lmstudio'); // 'ollama' or 'lmstudio'
+    const [extHealth, setExtHealth] = useState(null); // { status, models_available, message }
+    const [extModels, setExtModels] = useState([]);
+    const [extLoadingHealth, setExtLoadingHealth] = useState(false);
+    const [extLoadingModels, setExtLoadingModels] = useState(false);
 
     const showToast = useCallback((message, type = 'success') => {
         setToast({ message, type });
@@ -164,6 +170,51 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
             setCacheStats(response.data);
         } catch (error) {
             console.error('Failed to fetch cache stats:', error);
+        }
+    };
+
+    // -- External Provider API calls --
+    const getExtBaseUrl = () => {
+        return extProviderType === 'ollama'
+            ? (config.ollama_base_url || 'http://localhost:11434')
+            : (config.lmstudio_base_url || 'http://127.0.0.1:1234');
+    };
+
+    const checkExtHealth = async () => {
+        setExtLoadingHealth(true);
+        setExtHealth(null);
+        try {
+            const resp = await axios.post(`${API}/api/providers/health`, {
+                provider_type: extProviderType,
+                base_url: getExtBaseUrl(),
+                api_key: config.external_api_key || '',
+            });
+            setExtHealth(resp.data);
+            if (resp.data.status === 'ok') {
+                showToast(`${extProviderType === 'ollama' ? 'Ollama' : 'LM Studio'} connected!`, 'success');
+            }
+        } catch (err) {
+            setExtHealth({ status: 'error', message: err.response?.data?.detail || 'Connection failed' });
+            showToast('Provider unreachable', 'error');
+        } finally {
+            setExtLoadingHealth(false);
+        }
+    };
+
+    const fetchExtModels = async () => {
+        setExtLoadingModels(true);
+        setExtModels([]);
+        try {
+            const resp = await axios.post(`${API}/api/providers/models`, {
+                provider_type: extProviderType,
+                base_url: getExtBaseUrl(),
+                api_key: config.external_api_key || '',
+            });
+            setExtModels(resp.data.models || []);
+        } catch (err) {
+            showToast('Failed to fetch models', 'error');
+        } finally {
+            setExtLoadingModels(false);
         }
     };
 
@@ -311,6 +362,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
     const settingsSections = [
         { id: 'folders', label: 'Indexed Folders', icon: FolderOpen },
         { id: 'providers', label: 'AI Provider', icon: Key },
+        { id: 'external', label: 'External Providers', icon: Server },
         { id: 'embeddings', label: 'Embedding Provider', icon: Database },
         { id: 'local', label: 'Local Models', icon: Cpu },
         { id: 'data', label: 'Data Management', icon: Trash2 },
@@ -555,6 +607,159 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                     )}
 
                                     <p className="text-[11px] text-muted-foreground leading-relaxed">The embedding provider is used to convert documents and queries into vectors for semantic search. Changes take effect on the next index rebuild.</p>
+                                </section>
+                            )}
+
+                            {activeSection === 'external' && (
+                                <section className="space-y-5">
+                                    <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">External LLM Providers</h3>
+                                    <p className="text-xs text-muted-foreground -mt-2">Connect to Ollama or LM Studio running locally or on your network.</p>
+
+                                    {/* Provider Type Selector */}
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground" htmlFor="ext-provider-select">Provider</label>
+                                        <select
+                                            id="ext-provider-select"
+                                            value={extProviderType}
+                                            onChange={(e) => { setExtProviderType(e.target.value); setExtHealth(null); setExtModels([]); }}
+                                            className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
+                                        >
+                                            <option value="lmstudio">LM Studio</option>
+                                            <option value="ollama">Ollama</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Base URL */}
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground" htmlFor="ext-base-url">Base URL</label>
+                                        <input
+                                            id="ext-base-url"
+                                            type="text"
+                                            value={extProviderType === 'ollama' ? (config.ollama_base_url || '') : (config.lmstudio_base_url || '')}
+                                            onChange={(e) => {
+                                                const key = extProviderType === 'ollama' ? 'ollama_base_url' : 'lmstudio_base_url';
+                                                setConfig(prev => ({ ...prev, [key]: e.target.value }));
+                                            }}
+                                            className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background font-mono"
+                                            placeholder={extProviderType === 'ollama' ? 'http://localhost:11434' : 'http://127.0.0.1:1234'}
+                                        />
+                                    </div>
+
+                                    {/* API Key (optional) */}
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground" htmlFor="ext-api-key">API Key <span className="text-muted-foreground/60">(optional for local)</span></label>
+                                        <input
+                                            id="ext-api-key"
+                                            type="password"
+                                            value={config.external_api_key || ''}
+                                            onChange={(e) => setConfig(prev => ({ ...prev, external_api_key: e.target.value }))}
+                                            className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
+                                            placeholder="Leave empty for local servers"
+                                        />
+                                    </div>
+
+                                    {/* Health Check & Model Discovery */}
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={checkExtHealth}
+                                            disabled={extLoadingHealth}
+                                            className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
+                                        >
+                                            {extLoadingHealth ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wifi className="w-3.5 h-3.5" />}
+                                            Test Connection
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={fetchExtModels}
+                                            disabled={extLoadingModels}
+                                            className="px-3 py-2 rounded-lg border border-border text-sm font-medium hover:bg-secondary disabled:opacity-50 flex items-center gap-2"
+                                        >
+                                            {extLoadingModels ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                                            Refresh Models
+                                        </button>
+                                    </div>
+
+                                    {/* Health Status Indicator */}
+                                    {extHealth && (
+                                        <div className={`p-3 rounded-xl border flex items-center gap-3 ${
+                                            extHealth.status === 'ok'
+                                                ? 'border-green-500/30 bg-green-500/5'
+                                                : 'border-destructive/30 bg-destructive/5'
+                                        }`}>
+                                            {extHealth.status === 'ok'
+                                                ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
+                                                : <WifiOff className="w-5 h-5 text-destructive flex-shrink-0" />
+                                            }
+                                            <div>
+                                                <div className={`text-sm font-semibold ${extHealth.status === 'ok' ? 'text-green-500' : 'text-destructive'}`}>
+                                                    {extHealth.status === 'ok' ? 'Connected' : 'Unreachable'}
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    {extHealth.status === 'ok'
+                                                        ? `${extHealth.models_available} model${extHealth.models_available !== 1 ? 's' : ''} available`
+                                                        : (extHealth.message || 'Check URL and ensure the server is running')
+                                                    }
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Model Selector */}
+                                    {extModels.length > 0 && (
+                                        <div className="space-y-2">
+                                            <label className="text-xs font-medium text-muted-foreground">Available Models</label>
+                                            <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                                                {extModels.map((model) => {
+                                                    const isSelected = config.external_model_name === model.id;
+                                                    return (
+                                                        <button
+                                                            type="button"
+                                                            key={model.id}
+                                                            onClick={() => {
+                                                                setConfig(prev => ({ ...prev, external_model_name: model.id, provider: extProviderType }));
+                                                            }}
+                                                            className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-left text-sm transition-all ${
+                                                                isSelected
+                                                                    ? 'bg-primary/15 border border-primary/30 text-primary font-semibold'
+                                                                    : 'border border-border bg-card/30 hover:bg-secondary/60'
+                                                            }`}
+                                                        >
+                                                            <div className="min-w-0">
+                                                                <div className="font-medium truncate">{model.name}</div>
+                                                                <div className="text-[10px] text-muted-foreground truncate">
+                                                                    {model.owned_by && `by ${model.owned_by}`}
+                                                                    {model.format && ` • ${model.format.toUpperCase()}`}
+                                                                    {model.size_bytes > 0 && ` • ${(model.size_bytes / 1e9).toFixed(1)} GB`}
+                                                                </div>
+                                                            </div>
+                                                            {isSelected && (
+                                                                <div className="px-2 py-0.5 bg-primary text-primary-foreground text-[10px] rounded-md font-bold uppercase tracking-widest flex-shrink-0">
+                                                                    Selected
+                                                                </div>
+                                                            )}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Currently Selected Model */}
+                                    {config.external_model_name && (
+                                        <div className="p-3 rounded-xl bg-primary/5 border border-primary/15">
+                                            <div className="text-[10px] uppercase font-bold text-primary tracking-wider mb-0.5">Active External Model</div>
+                                            <div className="text-sm font-bold flex items-center gap-2">
+                                                <Server className="w-4 h-4 text-primary" />
+                                                {config.external_model_name}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                        Select a provider and click "Test Connection" to verify reachability. Use "Refresh Models" to discover available models.
+                                        The selected model will be used for AI-powered search answers when the provider is set as active.
+                                    </p>
                                 </section>
                             )}
 

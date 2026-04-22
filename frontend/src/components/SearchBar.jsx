@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, Loader2, Bot, Zap } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
-const SearchBar = ({ onSearch, isLoading, isAgentMode, onToggleAgent }) => {
+const SearchBar = ({ onSearch, isLoading, isAgentMode, onToggleAgent, systemPrompts = [], selectedPromptId, onPromptChange }) => {
     const [query, setQuery] = useState('');
     const [isFocused, setIsFocused] = useState(false);
     const [shortcutHint, setShortcutHint] = useState('Ctrl + K');
@@ -120,6 +120,29 @@ const SearchBar = ({ onSearch, isLoading, isAgentMode, onToggleAgent }) => {
                 >
                     <Bot className="w-3.5 h-3.5" />
                     <span>AI Researcher Mode - Complex reasoning enabled</span>
+                </motion.div>
+            )}
+
+            {/* System Prompt Selector */}
+            {!isAgentMode && systemPrompts.length > 0 && (
+                <motion.div 
+                    initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
+                    className="mt-3 flex justify-center w-full"
+                >
+                    <div className="flex items-center gap-2 text-xs md:text-sm text-muted-foreground bg-background/50 backdrop-blur border border-border/50 rounded-full px-3 py-1.5 shadow-sm">
+                        <Bot className="w-3.5 h-3.5 text-primary" />
+                        <span>AI Persona:</span>
+                        <select 
+                            className="bg-transparent border-none focus:ring-0 cursor-pointer font-medium text-foreground p-0 min-w-[120px]"
+                            value={selectedPromptId || ''}
+                            onChange={(e) => onPromptChange(Number(e.target.value))}
+                            disabled={isLoading}
+                        >
+                            {systemPrompts.map(p => (
+                                <option key={p.id} value={p.id} className="bg-background">{p.name}</option>
+                            ))}
+                        </select>
+                    </div>
                 </motion.div>
             )}
         </div>

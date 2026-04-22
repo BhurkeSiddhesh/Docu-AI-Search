@@ -32,6 +32,9 @@ node_modules/
 models/
 *.gguf
 
+# Data
+data/
+
 # Generated indices and databases
 *.faiss
 *.db

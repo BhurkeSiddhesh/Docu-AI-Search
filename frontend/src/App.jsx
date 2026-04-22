@@ -24,6 +24,8 @@ function App() {
     const [indexingStatus, setIndexingStatus] = useState({ running: false, progress: 0 });
     const [isAgentMode, setIsAgentMode] = useState(false);
     const [agentQuery, setAgentQuery] = useState("");
+    const [systemPrompts, setSystemPrompts] = useState([]);
+    const [selectedPromptId, setSelectedPromptId] = useState(null);
 
     useEffect(() => {
         const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -58,7 +60,22 @@ function App() {
         }
         checkConfig();
         fetchModels();
+        fetchSystemPrompts();
     }, []);
+
+    const fetchSystemPrompts = async () => {
+        try {
+            const res = await axios.get('http://localhost:8000/api/system-prompts');
+            if (Array.isArray(res.data)) {
+                setSystemPrompts(res.data);
+                if (res.data.length > 0) {
+                    setSelectedPromptId(res.data.find(p => p.name === 'Document Analyst')?.id || res.data[0].id);
+                }
+            }
+        } catch (error) {
+            console.error("Failed to fetch system prompts", error);
+        }
+    };
 
     const fetchModels = async () => {
         try {
@@ -130,7 +147,10 @@ function App() {
 
         try {
             // Stage 1: Get File List (Fast)
-            const response = await axios.post('http://localhost:8000/api/search', { query });
+            const response = await axios.post('http://localhost:8000/api/search', { 
+                query,
+                system_prompt_id: selectedPromptId
+            });
             const results = response.data.results || response.data;
             setSearchResults(results);
 
@@ -156,7 +176,7 @@ function App() {
                     const streamResponse = await fetch('http://localhost:8000/api/stream-answer', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ query, context })
+                        body: JSON.stringify({ query, context, system_prompt_id: selectedPromptId })
                     });
 
                     if (streamResponse.body) {
@@ -231,6 +251,9 @@ function App() {
                             isLoading={isLoading}
                             isAgentMode={isAgentMode}
                             onToggleAgent={() => setIsAgentMode(!isAgentMode)}
+                            systemPrompts={systemPrompts}
+                            selectedPromptId={selectedPromptId}
+                            onPromptChange={setSelectedPromptId}
                         />
                     </div>
 

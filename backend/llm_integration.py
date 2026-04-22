@@ -262,7 +262,7 @@ def warmup_local_model(model_path, tensor_split=None):
         get_local_llm(model_path, tensor_split=tensor_split)
 
 
-def get_llm_client(provider, api_key=None, model_path=None):
+def get_llm_client(provider, api_key=None, model_path=None, base_url=None):
     """
     Returns a LangChain-compatible Chat Model or None if configuration is invalid.
     """
@@ -313,6 +313,20 @@ def get_llm_client(provider, api_key=None, model_path=None):
                 return None
             client = "LOCAL:" + model_path
 
+        elif provider in ('ollama', 'lmstudio', 'openai_compatible'):
+            # Delegate to the external provider abstraction
+            from backend.providers import get_provider as get_ext_provider
+            try:
+                ext_config = _build_external_provider_config(provider, base_url, model_path)
+                ext_provider = get_ext_provider(provider, ext_config)
+                # Return a marker to distinguish from LangChain clients
+                client = f"EXTERNAL:{provider}"
+                # Stash the provider instance for reuse in generate/stream
+                _llm_client_cache[f"__ext_instance__{provider}"] = ext_provider
+            except Exception as e:
+                print(f"Error initializing external provider '{provider}': {e}")
+                return None
+
     except Exception as e:
         print(f"Error initializing LLM client for {provider}: {e}")
         return None
@@ -320,6 +334,28 @@ def get_llm_client(provider, api_key=None, model_path=None):
     if client:
         _llm_client_cache[cache_key] = client
     return client
+
+
+def _build_external_provider_config(provider: str, base_url_override: str = None, model_override: str = None) -> dict:
+    """Read ExternalProviders section from config.ini for the given provider."""
+    import configparser
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    config_path = os.path.join(BASE_DIR, 'config.ini')
+    cfg = configparser.ConfigParser()
+    cfg.read(config_path)
+
+    if provider == 'ollama':
+        return {
+            "base_url": base_url_override or cfg.get('ExternalProviders', 'ollama_base_url', fallback='http://localhost:11434'),
+            "model": model_override or cfg.get('ExternalProviders', 'external_model_name', fallback=''),
+            "api_key": cfg.get('ExternalProviders', 'external_api_key', fallback=''),
+        }
+    else:  # lmstudio / openai_compatible
+        return {
+            "base_url": base_url_override or cfg.get('ExternalProviders', 'lmstudio_base_url', fallback='http://localhost:1234/v1'),
+            "model": model_override or cfg.get('ExternalProviders', 'external_model_name', fallback=''),
+            "api_key": cfg.get('ExternalProviders', 'external_api_key', fallback='lm-studio'),
+        }
 
 def generate_ai_answer(context, question, provider, api_key=None, model_path=None, tensor_split=None,
                        raw=False, system_instruction=None, stop=None, max_tokens=512, temperature=0.2):
@@ -366,8 +402,21 @@ def generate_ai_answer(context, question, provider, api_key=None, model_path=Non
         stop_seqs = stop # Can be None
 
     try:
+        # Handle External Providers (Ollama, LM Studio)
+        if isinstance(client, str) and client.startswith("EXTERNAL:"):
+            ext_provider = _llm_client_cache.get(f"__ext_instance__{provider}")
+            if not ext_provider:
+                return "Error: External provider not initialised. Check settings."
+            return ext_provider.generate(
+                user_content,
+                system_prompt=system_prompt,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                stop=stop_seqs,
+            )
+
         # Handle Local LLM (LlamaCpp)
-        if isinstance(client, str) and client.startswith("LOCAL:"):
+        elif isinstance(client, str) and client.startswith("LOCAL:"):
             real_model_path = client.split("LOCAL:")[1]
             llm = get_local_llm(real_model_path, tensor_split=tensor_split)
             if not llm:
@@ -416,32 +465,38 @@ def generate_ai_answer(context, question, provider, api_key=None, model_path=Non
         print(f"Generation error ({provider}): {e}")
         return f"Error generating answer: {str(e)}"
 
-def stream_ai_answer(context, question, provider, api_key=None, model_path=None, tensor_split=None):
+def stream_ai_answer(context, question, provider, api_key=None, model_path=None, tensor_split=None, system_instruction=None, base_url=None):
     """
     Generator that yields tokens for the AI answer.
     """
     # Get client
-    client = get_llm_client(provider, api_key, model_path)
+    client = get_llm_client(provider, api_key, model_path, base_url)
     if not client:
         yield "Error: Could not initialize AI model. Check settings and API keys."
         return
 
-    prompt_text = f"""You are a document search assistant. Answer the question using ONLY facts from the provided documents.
+    system_prompt = system_instruction or """You are a precise document search assistant.
+CRITICAL: You must distinguish between similar names. If the question asks about 'Siddhesh', do NOT provide info about 'Siddharth'.
+Only answer based on the provided documents. Quote facts and reference file names."""
 
-    IMPORTANT:
-    1. Check Names: If the question is about a specific person (e.g., 'Siddhesh'), ensure you ONLY use documents describing that exact person. Do NOT confuse them with similar names like 'Siddharth'.
-    2. Quote specific content, data, numbers, or key details from the documents.
-    3. Reference which file the information comes from when possible.
-    4. If the documents do not contain information for the specific person requested, state that clearly.
-
-    Documents:
-    {context}
-
-    Question: {question}
-
-    Answer (cite specific details from the documents):"""
+    user_content = f"Documents:\n{context}\n\nQuestion: {question}\n\nAnswer (cite specific details from the documents):"
 
     try:
+        # Handle External Providers (Ollama, LM Studio)
+        if isinstance(client, str) and client.startswith("EXTERNAL:"):
+            ext_provider = _llm_client_cache.get(f"__ext_instance__{provider}")
+            if not ext_provider:
+                yield "Error: External provider not initialised. Check settings."
+                return
+            for token in ext_provider.stream(
+                user_content,
+                system_prompt=system_prompt,
+                max_tokens=512,
+                temperature=0.2,
+            ):
+                yield token
+            return
+
         # Handle Local LLM (LlamaCpp)
         if isinstance(client, str) and client.startswith("LOCAL:"):
             real_model_path = client.split("LOCAL:")[1]
@@ -454,9 +509,11 @@ def stream_ai_answer(context, question, provider, api_key=None, model_path=None,
             if len(context) > MAX_CONTEXT_CHARS:
                 context = context[:MAX_CONTEXT_CHARS] + "... [Truncated to fit context window]"
 
+            full_prompt = f"{system_prompt}\n\n{user_content}"
+
             with _local_llm_lock:
                 stream = llm.create_completion(
-                    prompt_text,
+                    full_prompt,
                     max_tokens=512,
                     stop=["System:", "Question:", "Context:", "Documents:"],
                     echo=False,
@@ -473,12 +530,10 @@ def stream_ai_answer(context, question, provider, api_key=None, model_path=None,
         else:
             from langchain_core.messages import HumanMessage, SystemMessage
 
-            messages = [
-                SystemMessage(content="""You are a precise document search assistant.
-                CRITICAL: You must distinguish between similar names. If the question asks about 'Siddhesh', do NOT provide info about 'Siddharth'.
-                Only answer based on the provided documents. Quote facts and reference file names."""),
-                HumanMessage(content=f"Documents:\n{context}\n\nQuestion: {question}\n\nAnswer:")
-            ]
+            messages = []
+            if system_prompt:
+                messages.append(SystemMessage(content=system_prompt))
+            messages.append(HumanMessage(content=user_content))
 
             for chunk in client.stream(messages):
                  yield chunk.content

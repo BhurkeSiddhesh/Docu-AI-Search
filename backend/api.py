@@ -181,6 +181,12 @@ async def startup_event():
     # Seed embedding config cache from config.ini
     from backend.settings import seed_app_state
     seed_app_state(app)
+    # Seed default system prompts if table is empty
+    try:
+        from backend.system_prompts import seed_default_prompts
+        seed_default_prompts()
+    except Exception as e:
+        logger.warning("Failed to seed system prompts: %s", e)
     # Load index in background to not block health checks
     asyncio.create_task(load_initial_index())
 
@@ -365,6 +371,11 @@ async def get_benchmark_results(request: Request):
 class SearchRequest(BaseModel):
     query: str
     context: Optional[List[str]] = None
+    system_prompt_id: Optional[int] = None
+    provider_override: Optional[str] = None
+    model_override: Optional[str] = None
+    api_key_override: Optional[str] = None
+    base_url_override: Optional[str] = None
 
 class SearchResult(BaseModel):
     document: str
@@ -392,6 +403,11 @@ class ConfigModel(BaseModel):
     query_rewriting: bool = False
     cross_encoder_reranking: bool = False
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    # External providers (Ollama, LM Studio)
+    ollama_base_url: Optional[str] = "http://localhost:11434"
+    lmstudio_base_url: Optional[str] = "http://localhost:1234/v1"
+    external_model_name: Optional[str] = ""
+    external_api_key: Optional[str] = ""
 
 @app.get("/api/config")
 async def get_config(request: Request):
@@ -416,7 +432,12 @@ async def get_config(request: Request):
         "tensor_split": config.get('LocalLLM', 'tensor_split', fallback=None),
         "query_rewriting": config.getboolean('AdvancedRAG', 'query_rewriting', fallback=False),
         "cross_encoder_reranking": config.getboolean('AdvancedRAG', 'cross_encoder_reranking', fallback=False),
-        "reranker_model": config.get('AdvancedRAG', 'reranker_model', fallback='cross-encoder/ms-marco-MiniLM-L-6-v2')
+        "reranker_model": config.get('AdvancedRAG', 'reranker_model', fallback='cross-encoder/ms-marco-MiniLM-L-6-v2'),
+        # External providers
+        "ollama_base_url": config.get('ExternalProviders', 'ollama_base_url', fallback='http://localhost:11434'),
+        "lmstudio_base_url": config.get('ExternalProviders', 'lmstudio_base_url', fallback='http://localhost:1234/v1'),
+        "external_model_name": config.get('ExternalProviders', 'external_model_name', fallback=''),
+        "external_api_key": config.get('ExternalProviders', 'external_api_key', fallback=''),
     }
 
 @app.post("/api/config")
@@ -441,6 +462,12 @@ async def update_config(config_data: ConfigModel, request: Request):
         'query_rewriting': str(config_data.query_rewriting),
         'cross_encoder_reranking': str(config_data.cross_encoder_reranking),
         'reranker_model': config_data.reranker_model or 'cross-encoder/ms-marco-MiniLM-L-6-v2'
+    }
+    config['ExternalProviders'] = {
+        'ollama_base_url': config_data.ollama_base_url or 'http://localhost:11434',
+        'lmstudio_base_url': config_data.lmstudio_base_url or 'http://localhost:1234/v1',
+        'external_model_name': config_data.external_model_name or '',
+        'external_api_key': config_data.external_api_key or '',
     }
     save_config_file(config)
     
@@ -606,16 +633,21 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request):
          return StreamingResponse(iter(["Error: Index not loaded."]), media_type="text/event-stream")
 
     config = load_config()
-    provider = config.get('LocalLLM', 'provider', fallback='openai')
-    api_key = config.get('APIKeys', 'openai_api_key', fallback=None)
-    if provider == 'gemini':
-        api_key = config.get('APIKeys', 'gemini_api_key', fallback=api_key)
-    elif provider == 'anthropic':
-        api_key = config.get('APIKeys', 'anthropic_api_key', fallback=api_key)
-    elif provider == 'grok':
-        api_key = config.get('APIKeys', 'grok_api_key', fallback=api_key)
+    provider = request.provider_override or config.get('LocalLLM', 'provider', fallback='openai')
+    
+    api_key = request.api_key_override
+    if not api_key:
+        api_key = config.get('APIKeys', 'openai_api_key', fallback=None)
+        if provider == 'gemini':
+            api_key = config.get('APIKeys', 'gemini_api_key', fallback=api_key)
+        elif provider == 'anthropic':
+            api_key = config.get('APIKeys', 'anthropic_api_key', fallback=api_key)
+        elif provider == 'grok':
+            api_key = config.get('APIKeys', 'grok_api_key', fallback=api_key)
+        elif provider in ('ollama', 'lmstudio'):
+            api_key = config.get('ExternalProviders', 'external_api_key', fallback=api_key)
 
-    model_path = config.get('LocalLLM', 'model_path', fallback=None)
+    model_path = request.model_override or config.get('LocalLLM', 'model_path', fallback=None)
     tensor_split_str = config.get('LocalLLM', 'tensor_split', fallback=None)
     tensor_split = None
     if tensor_split_str:
@@ -683,11 +715,109 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request):
     if not context_text:
         return StreamingResponse(iter(["No relevant context found."]), media_type="text/event-stream")
 
+    system_instruction = None
+    if getattr(request, 'system_prompt_id', None) is not None:
+        from backend.system_prompts import get_system_prompt_by_id
+        prompt_data = get_system_prompt_by_id(request.system_prompt_id)
+        if prompt_data:
+            system_instruction = prompt_data["content"]
+
     async def generate():
-        for token in stream_ai_answer(context_text, request.query, provider, api_key, model_path, tensor_split):
+        for token in stream_ai_answer(
+            context_text, request.query, provider, api_key, model_path, 
+            tensor_split, system_instruction, base_url=request.base_url_override
+        ):
             yield token
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+# -------------------------------------------------------------------------
+# External Provider endpoints (Ollama, LM Studio, OpenAI-compatible)
+# -------------------------------------------------------------------------
+
+class ProviderQueryRequest(BaseModel):
+    provider_type: str  # 'ollama' or 'lmstudio'
+    base_url: Optional[str] = None
+    api_key: Optional[str] = ""
+
+@app.post("/api/providers/health")
+async def provider_health_check(body: ProviderQueryRequest, request: Request):
+    """Check if an external LLM provider (Ollama / LM Studio) is reachable."""
+    from backend.providers import get_provider
+    try:
+        provider = get_provider(body.provider_type, {
+            "base_url": body.base_url,
+            "model": "",
+            "api_key": body.api_key or "",
+        })
+        result = provider.health_check()
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/providers/models")
+async def provider_list_models(body: ProviderQueryRequest, request: Request):
+    """Fetch available models from an external LLM provider."""
+    from backend.providers import get_provider
+    try:
+        provider = get_provider(body.provider_type, {
+            "base_url": body.base_url,
+            "model": "",
+            "api_key": body.api_key or "",
+        })
+        models = provider.list_models()
+        return {"models": models}
+    except ConnectionError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/providers/list")
+async def list_providers(request: Request):
+    """List all supported LLM provider types."""
+    return {
+        "providers": [
+            {"id": "local", "name": "Local Model (GGUF)", "needs_server": False},
+            {"id": "ollama", "name": "Ollama", "needs_server": True, "default_url": "http://localhost:11434"},
+            {"id": "lmstudio", "name": "LM Studio", "needs_server": True, "default_url": "http://localhost:1234/v1"},
+            {"id": "openai", "name": "OpenAI", "needs_server": False},
+            {"id": "gemini", "name": "Google Gemini", "needs_server": False},
+            {"id": "anthropic", "name": "Anthropic Claude", "needs_server": False},
+            {"id": "grok", "name": "xAI Grok", "needs_server": False},
+        ]
+    }
+
+
+# -------------------------------------------------------------------------
+# System Prompts endpoints
+# -------------------------------------------------------------------------
+
+class SystemPromptRequest(BaseModel):
+    name: str
+    content: str
+    category: str = "general"
+
+@app.get("/api/system-prompts")
+async def list_system_prompts(request: Request, category: Optional[str] = None):
+    """List all system prompts, optionally filtered by category."""
+    from backend.system_prompts import get_system_prompts
+    return get_system_prompts(category=category)
+
+@app.post("/api/system-prompts")
+async def create_system_prompt(body: SystemPromptRequest, request: Request):
+    """Create a new system prompt."""
+    from backend.system_prompts import add_system_prompt
+    prompt_id = add_system_prompt(body.name, body.content, body.category)
+    return {"status": "success", "id": prompt_id}
+
+@app.delete("/api/system-prompts/{prompt_id}")
+async def delete_system_prompt_endpoint(prompt_id: int, request: Request):
+    """Delete a system prompt by ID."""
+    from backend.system_prompts import delete_system_prompt
+    if delete_system_prompt(prompt_id):
+        return {"status": "success", "message": "Prompt deleted"}
+    raise HTTPException(status_code=404, detail="System prompt not found")
 
 @app.get("/api/search/history")
 async def get_search_history(request: Request):

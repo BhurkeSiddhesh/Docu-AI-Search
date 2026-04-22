@@ -188,6 +188,17 @@ def init_database():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # System prompts table (reusable personas / instructions)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS system_prompts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            content TEXT NOT NULL,
+            category TEXT DEFAULT 'general',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     
     # Index for fast cache lookups
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_cache_lookup ON response_cache(query_hash, model_id)")

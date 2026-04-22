@@ -306,6 +306,18 @@ python scripts/verify_golden_set.py
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
 
+### 2026-03-25 (External LLM Provider Integration)
+- **Implemented Full External LLM Provider System (Ollama + LM Studio)**
+  - **feat**: Created `backend/providers.py` — `LLMProvider` ABC with `OllamaProvider` and `OpenAICompatibleProvider` (auto-detects LM Studio native `/api/v1/chat` vs OpenAI `/v1/chat/completions`).
+  - **feat**: Created `backend/system_prompts.py` — SQLite-backed CRUD for system prompts with auto-seeded defaults (Document Analysis, Creative Writing, Code Review, Concise Answers).
+  - **feat**: Added 6 API endpoints: `/api/providers/health`, `/api/providers/models`, `/api/providers/list`, `/api/system-prompts` (GET/POST/DELETE).
+  - **feat**: Integrated external providers into `get_llm_client()`, `generate_ai_answer()`, and `stream_ai_answer()` in `llm_integration.py`.
+  - **feat**: Added "External Providers" section to `SettingsModal.jsx` with provider selector (LM Studio/Ollama), base URL config, health check indicator, dynamic model discovery, and model selection cards.
+  - **config**: Added `[ExternalProviders]` section to `config.ini` with `ollama_base_url`, `lmstudio_base_url`, `external_model_name`, `external_api_key`.
+  - **test**: Added `backend/tests/test_providers.py` (19 tests) and `backend/tests/test_system_prompts.py` (9 tests). All 28 new tests passing.
+  - **verified**: Live-tested against LM Studio at `http://127.0.0.1:1234` — health check, model listing (3 models), and UI flow all verified in browser.
+  - **Files**: `backend/providers.py` (new), `backend/system_prompts.py` (new), `backend/tests/test_providers.py` (new), `backend/tests/test_system_prompts.py` (new), `backend/api.py`, `backend/llm_integration.py`, `backend/database.py`, `config.ini`, `frontend/src/components/SettingsModal.jsx`
+
 ### 2026-03-12 (Settings UX Redesign)
 - **Redesigned Settings Modal to a Sidebar + Detail Pane Layout**
   - **feat**: Reworked `frontend/src/components/SettingsModal.jsx` from stacked collapsible sections to a two-column settings experience inspired by desktop settings UX.
