@@ -952,7 +952,7 @@ class TestAPISearchDimensionMismatch(unittest.TestCase):
 
         mock_config.return_value.get.return_value = 'openai'
         mock_search.side_effect = EmbeddingDimensionMismatchError(
-            "Query dimension (384) != Index dimension (768)"
+            query_dim=384, index_dim=768
         )
 
         with patch('backend.api.index', MagicMock()), \

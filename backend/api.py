@@ -1009,6 +1009,8 @@ async def search_files(request: SearchRequest, req: Request):
             ai_answer="", # Empty for immediate return
             active_model=active_model_name
         )
+    except HTTPException:
+        raise  # re-raise HTTP exceptions (409 dimension mismatch, etc.) with original status
     except Exception as e:
         logger.error(f"Search error: {e}")
         import traceback

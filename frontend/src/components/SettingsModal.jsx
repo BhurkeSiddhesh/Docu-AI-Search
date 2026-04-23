@@ -813,7 +813,6 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                             Clear Cache
                                         </button>
                                     </div>
-                                    </div>
                                     <button type="button"
                                         onClick={handleDeleteAllHistory}
                                         className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"

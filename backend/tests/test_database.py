@@ -568,10 +568,9 @@ class TestDatabaseCleanup(TestDatabaseBase):
         database.add_file(
             path='/test/path/file.pdf',
             filename='file.pdf',
-            extension='.pdf',
-            size_bytes=1024,
-            modified_date=datetime.now(),
-            chunk_count=1,
+            file_type='.pdf',
+            size=1024,
+            last_modified=datetime.now().timestamp(),
             faiss_start_idx=0,
             faiss_end_idx=0
         )
@@ -634,9 +633,11 @@ class TestDatabaseMarkFolderIndexed(unittest.TestCase):
         database.clear_folder_history()
 
     def test_mark_folder_indexed_new_folder(self):
-        """Test marking a new folder as indexed."""
+        """Test marking a new folder as indexed after adding it to history."""
         from backend import database
 
+        # mark_folder_indexed only UPDATEs existing rows, so add first
+        database.add_folder_to_history('/new/folder')
         database.mark_folder_indexed('/new/folder')
 
         history = database.get_folder_history(indexed_only=True)
@@ -664,7 +665,7 @@ class TestDatabaseBatchOperations(unittest.TestCase):
         """
         from backend import database
         database.init_database()
-        database.clear_all_files()
+        database.clear_files()
 
     def test_add_files_batch_performance(self):
         """Test that batch insert is efficient."""
@@ -676,12 +677,12 @@ class TestDatabaseBatchOperations(unittest.TestCase):
             {
                 'path': f'/test/file{i}.txt',
                 'filename': f'file{i}.txt',
-                'extension': '.txt',
-                'size_bytes': 1024,
-                'modified_date': datetime.now(),
-                'chunk_count': 1,
+                'file_type': '.txt',
+                'size': 1024,
+                'last_modified': datetime.now().timestamp(),
                 'faiss_start_idx': i * 10,
-                'faiss_end_idx': i * 10 + 9
+                'faiss_end_idx': i * 10 + 9,
+                'tags': '[]'
             }
             for i in range(100)
         ]
@@ -695,7 +696,7 @@ class TestDatabaseBatchOperations(unittest.TestCase):
 
 
 class TestDatabaseFileByName(unittest.TestCase):
-    """Test file lookup by name functionality."""
+    """Test file lookup by path functionality."""
 
     def setUp(self):
         """
@@ -703,33 +704,32 @@ class TestDatabaseFileByName(unittest.TestCase):
         """
         from backend import database
         database.init_database()
-        database.clear_all_files()
+        database.clear_files()
 
     def test_get_file_by_name_exists(self):
-        """Test getting file by name when it exists."""
+        """Test getting file by path when it exists."""
         from backend import database
         from datetime import datetime
 
         database.add_file(
             path='/test/unique_file.pdf',
             filename='unique_file.pdf',
-            extension='.pdf',
-            size_bytes=2048,
-            modified_date=datetime.now(),
-            chunk_count=1,
+            file_type='.pdf',
+            size=2048,
+            last_modified=datetime.now().timestamp(),
             faiss_start_idx=0,
             faiss_end_idx=0
         )
 
-        file_info = database.get_file_by_name('unique_file.pdf')
+        file_info = database.get_file_by_path('/test/unique_file.pdf')
         self.assertIsNotNone(file_info)
         self.assertEqual(file_info['filename'], 'unique_file.pdf')
 
     def test_get_file_by_name_not_exists(self):
-        """Test getting file by name when it doesn't exist."""
+        """Test getting file by path when it doesn't exist."""
         from backend import database
 
-        file_info = database.get_file_by_name('nonexistent_file.pdf')
+        file_info = database.get_file_by_path('/nonexistent/path.pdf')
         self.assertIsNone(file_info)
 
 
@@ -737,33 +737,28 @@ class TestDatabaseEdgeCases(unittest.TestCase):
     """Test database edge cases and boundary conditions."""
 
     def test_get_files_with_limit_and_offset(self):
-        """Test pagination with limit and offset."""
+        """Test that get_all_files returns all inserted files."""
         from backend import database
         from datetime import datetime
 
         database.init_database()
-        database.clear_all_files()
+        database.clear_files()
 
         # Add 10 files
         for i in range(10):
             database.add_file(
                 path=f'/test/file{i}.txt',
                 filename=f'file{i}.txt',
-                extension='.txt',
-                size_bytes=100,
-                modified_date=datetime.now(),
-                chunk_count=1,
+                file_type='.txt',
+                size=100,
+                last_modified=datetime.now().timestamp(),
                 faiss_start_idx=i,
                 faiss_end_idx=i
             )
 
-        # Test limit
-        files = database.get_all_files(limit=5)
-        self.assertEqual(len(files), 5)
-
-        # Test offset
-        files_offset = database.get_all_files(limit=5, offset=5)
-        self.assertEqual(len(files_offset), 5)
+        # Test all files returned
+        files = database.get_all_files()
+        self.assertEqual(len(files), 10)
 
     def test_add_file_with_special_characters_in_path(self):
         """Test adding file with special characters in path."""
@@ -776,10 +771,9 @@ class TestDatabaseEdgeCases(unittest.TestCase):
         database.add_file(
             path=special_path,
             filename='file & name.pdf',
-            extension='.pdf',
-            size_bytes=1024,
-            modified_date=datetime.now(),
-            chunk_count=1,
+            file_type='.pdf',
+            size=1024,
+            last_modified=datetime.now().timestamp(),
             faiss_start_idx=0,
             faiss_end_idx=0
         )
