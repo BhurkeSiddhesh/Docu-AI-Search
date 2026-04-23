@@ -428,10 +428,28 @@ download_status = {
 }
 
 def get_available_models():
+    """
+    Returns a list of all models available for download.
+
+    Each model dictionary contains metadata like ID, name, description,
+    size, RAM requirements, and download URL.
+
+    Returns:
+        list: A list of model configuration dictionaries.
+    """
     return AVAILABLE_MODELS
 
 def get_local_models():
-    """Return list of downloaded models with path, name, and size."""
+    """
+    Scans the models directory and returns a list of downloaded models.
+
+    Matches downloaded GGUF files with metadata from the available models list
+    to provide descriptive information in the UI.
+
+    Returns:
+        list: A list of dictionaries, each containing 'id', 'filename', 'path',
+              'size', 'name', 'category', and 'ram_required'.
+    """
     models = []
     if os.path.exists(MODELS_DIR):
         for f in os.listdir(MODELS_DIR):
@@ -455,7 +473,21 @@ def get_local_models():
     return models
 
 def check_system_resources(model):
-    """Check if system has enough resources for the model."""
+    """
+    Validates if the system has enough disk space and RAM for a model.
+
+    Checks:
+        - Free disk space in the models directory (requires 10% buffer).
+        - Available system RAM compared to the model's recommendation.
+
+    Args:
+        model (dict): The model metadata dictionary to check.
+
+    Returns:
+        tuple (bool, list):
+            - bool: True if disk space is sufficient to proceed with download.
+            - list: A list of warning strings (e.g., low disk, low RAM).
+    """
     warnings = []
     can_download = True
     
@@ -480,6 +512,26 @@ def check_system_resources(model):
     return can_download, warnings
 
 def download_file(url, filename, model_id, total_bytes=0):
+    """
+    Internal worker function that downloads a model file from a URL.
+
+    Specifically handles:
+        - Resuming partial downloads using HTTP Range headers.
+        - Chunked transfer for large files (1MB blocks).
+        - Real-time global status updates including progress percentage.
+        - Moving the file from a .partial extension to the final name upon success.
+
+    Args:
+        url (str): The direct download URL for the GGUF model.
+        filename (str): The local target filename.
+        model_id (str): The unique identifier of the model being downloaded.
+        total_bytes (int, optional): Expected file size for progress calculation. 
+                                     Defaults to 0.
+
+    Note:
+        This function updates the global `download_status` variable which is
+        shared with the API to report progress to the frontend.
+    """
     global download_status
     filepath = os.path.join(MODELS_DIR, filename)
     temp_filepath = filepath + ".partial"
@@ -550,6 +602,20 @@ def download_file(url, filename, model_id, total_bytes=0):
         # Keep partial file for resume
 
 def start_download(model_id):
+    """
+    Initiates a background download thread for a specific model ID.
+
+    Performs preliminary checks (already downloading, model existence,
+    disk space) before spawning a daemon thread to handle the IO.
+
+    Args:
+        model_id (str): The ID of the model from AVAILABLE_MODELS to download.
+
+    Returns:
+        tuple (bool, str):
+            - bool: True if the download thread was successfully started.
+            - str: A success or error message for the caller.
+    """
     global download_status
     
     if download_status["downloading"]:
@@ -582,12 +648,28 @@ def start_download(model_id):
     return True, f"Download started{warning_msg}"
 
 def get_download_status():
+    """
+    Retrieves the current background download status.
+
+    Returns:
+        dict: A dictionary containing 'downloading' (bool), 'model_id' (str),
+              'progress' (int), 'error' (str), 'bytes_downloaded' (int),
+              and 'total_bytes' (int).
+    """
     return download_status
 
 def is_safe_model_path(path):
     """
-    Validate that the path is strictly within the MODELS_DIR.
-    Prevents path traversal and arbitrary file operations.
+    Validates that the path is strictly within the MODELS_DIR.
+
+    This function is a security essential, preventing path traversal attacks
+    and unauthorized file deletions outside the intended directory.
+
+    Args:
+        path (str): The file path to validate.
+
+    Returns:
+        bool: True if the path is safe (inside MODELS_DIR), False otherwise.
     """
     if not path:
         return False
@@ -610,7 +692,19 @@ def is_safe_model_path(path):
         return False
 
 def delete_model(model_path):
-    """Delete a downloaded model file."""
+    """
+    Deletes a downloaded model file from the disk.
+
+    Uses `is_safe_model_path` to ensure security against path traversal
+    before attempting the file removal.
+
+    Args:
+        model_path (str): The absolute or relative path to the GGUF file.
+
+    Returns:
+        bool: True if the file was successfully deleted or didn't exist,
+              False if the path was unsafe or an error occurred.
+    """
     if not is_safe_model_path(model_path):
         print(f"Security Warning: Attempt to delete unsafe path: {model_path}")
         return False

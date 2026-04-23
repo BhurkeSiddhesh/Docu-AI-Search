@@ -3,15 +3,28 @@ import numpy as np
 import concurrent.futures
 from typing import List, Dict, Any, Tuple
 import string
+from rank_bm25 import BM25Okapi
 
 
 class EmbeddingDimensionMismatchError(Exception):
     """
-    Raised when the embedding dimension produced by the current model does not
-    match the dimension of the saved FAISS index.
-    The user must rebuild the index with the new model before searching.
+    Exception raised when the query embedding dimension differs from the FAISS index dimension.
+
+    This usually happens if the user changes the embedding model without 
+    rebuilding the index.
+
+    Attributes:
+        query_dim (int): Dimension of the vector produced by the current model.
+        index_dim (int): Dimension of the vectors stored in the FAISS index.
     """
     def __init__(self, query_dim: int, index_dim: int):
+        """
+        Initialize the error with specific dimensions.
+
+        Args:
+            query_dim (int): Current model's vector dimension.
+            index_dim (int): FAISS index's vector dimension.
+        """
         self.query_dim = query_dim
         self.index_dim = index_dim
         super().__init__(
@@ -25,8 +38,18 @@ STOP_WORDS = {
     'a', 'an', 'the', 'and', 'or', 'but', 'if', 'then', 'else', 'when', 'at', 'by', 'from', 'for', 'with', 'in', 'on', 'to', 'is', 'am', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'but', 'so', 'up', 'down', 'out', 'off', 'over', 'under', 'again', 'further', 'once', 'here', 'there', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'than', 'too', 'very', 'can', 'will', 'just', 'should', 'now'
 }
 
-def tokenize(text):
-    """Refined tokenization for BM25 with stop-word filtering."""
+def tokenize(text: str) -> List[str]:
+    """
+    Refined tokenization for BM25 with stop-word filtering.
+
+    Removes punctuation, filters out common stop words, and ignores single-character tokens.
+
+    Args:
+        text (str): Input text string.
+
+    Returns:
+        List[str]: A list of significant tokens.
+    """
     if not text: return []
     translator = str.maketrans('', '', string.punctuation)
     tokens = text.lower().translate(translator).split()
@@ -34,8 +57,16 @@ def tokenize(text):
 
 def expand_query(query: str) -> str:
     """
-    Expands query with structural synonyms to bridge the gap between intent and document structure.
-    Example: "work" -> "work experience employment history"
+    Expands a query with contextually relevant synonyms to improve keyword matching.
+
+    Helps bridge the gap between user intent (e.g., "work") and document 
+    terminology (e.g., "experience", "employment").
+
+    Args:
+        query (str): The original user search query.
+
+    Returns:
+        str: A space-separated string of expanded terms.
     """
     expansion_map = {
         'work': ['experience', 'employment', 'history', 'role', 'position', 'career'],
@@ -57,13 +88,41 @@ def expand_query(query: str) -> str:
                 
     return " ".join(expanded_terms)
 
-def search(query: str, index, docs: List[Dict], tags: List[str], embeddings_model, 
-           index_summaries=None, cluster_summaries=None, cluster_map=None, bm25=None) -> Tuple[List[Dict], List[str]]:
+def search(query: str, index: faiss.Index, docs: List[Dict], tags: List[str], 
+           embeddings_model: Any, index_summaries: faiss.Index = None, 
+           cluster_summaries: List[str] = None, cluster_map: Dict = None, 
+           bm25: BM25Okapi = None) -> Tuple[List[Dict], List[str]]:
     """
-    Performs Hybrid Search (RAPTOR + BM25) using Reciprocal Rank Fusion (RRF).
+    Main entry point for hybrid semantic and keyword search.
+
+    Implements:
+    1. Query rewriting (optional) for improved keyword accuracy.
+    2. Parallel Vector Search (on chunks) and RAPTOR Theme Search (on summaries).
+    3. Keyword retrieval using BM25.
+    4. Reciprocal Rank Fusion (RRF) to combine dense and sparse results.
+    5. Identity/Exact Match boosting for proper nouns (names, entities).
+    6. Diversity filtering (one result per file).
+    7. Cross-Encoder reranking (optional) for deep semantic validation.
+
+    Args:
+        query (str): User's natural language question.
+        index (faiss.Index): Primary vector index for text chunks.
+        docs (List[Dict]): List of chunk metadata from the database/pickle.
+        tags (List[str]): Per-chunk tags (legacy).
+        embeddings_model (Any): LangChain or custom embedding client.
+        index_summaries (faiss.Index, optional): Vector index for cluster summaries.
+        cluster_summaries (List[str], optional): Raw summary texts.
+        cluster_map (Dict, optional): Mapping of summaries to chunks.
+        bm25 (BM25Okapi, optional): Pre-built keyword index.
+
     Returns:
-        results: List of result dicts
-        context_snippets: List of text snippets for AI generation
+        Tuple[List[Dict], List[str]]: (results, context_snippets)
+            'results' contains scored and formatted search hits.
+            'context_snippets' is a list of plain text for LLM ingestion.
+
+    Note:
+        The function uses 'AdvancedRAG' settings from config.ini to decide 
+        on query rewriting and reranking behaviors.
     """
     
     import configparser

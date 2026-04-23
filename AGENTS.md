@@ -304,6 +304,26 @@ python scripts/verify_golden_set.py
 ## Change Log
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
+|
+### 2026-03-12 (CI Stability & Structure Fixes)
+- **Resolved React `act()` Warnings & CI Test Failures**
+  - **fix**: Wrapped asynchronous state-updating events in `act()` throughout `ModelManager.test.jsx`, `SettingsModal.test.jsx`, and `SearchBarShortcuts.test.jsx`.
+  - **fix**: Added `waitFor` and `async/await` patterns to ensure UI state stability during multi-step test interactions.
+  - **fix**: Fixed `ModelManager` test regression where the delete button was occasionally not found due to rendering delays.
+- **Enforced Project Structure Compliance**
+  - **clean**: Moved `patch.py` and `check_db.py` from root to `scripts/` to satisfy "No .py files in root" rule.
+  - **clean**: Purged legacy `.log` and `.txt` files from the root directory to pass structure validation.
+  - **fix**: Restored accidentally deleted `requirements.txt` and verified all core project files are correctly placed.
+  - **Files**: `frontend/src/test/*.test.jsx`, `scripts/*.py`, `backend/database.py`, `AGENTS.md`
+
+### 2026-03-12 (Branch Merges)
+- **Merged 4 feature/fix branches into main**
+  - **security**: `fix/command-injection-open-file` — command injection protection via `verify_local_request` middleware + file extension whitelist (`ALLOWED_EXTENSIONS`) in `/api/open-file`.
+  - **security**: `security-fix-rate-limiting` — integrated `slowapi==0.1.9` for API rate limiting; resolved conflicts across `api.py`, `database.py`, `test_indexing.py`, `test_benchmarks.py`, `test_security.py`, `test_database.py`, `requirements.txt`.
+  - **feat**: `add-license-file` — added MIT `LICENSE` file.
+  - **feat**: `add-qwen-35b-model` — adds Qwen 2.5-7B model to the available model list.
+  - **fix**: Added `"testclient"` to `verify_local_request` allowlist so FastAPI TestClient tests pass without overrides.
+  - **Files**: `backend/api.py`, `backend/database.py`, `backend/tests/test_*.py`, `requirements.txt`, `LICENSE`
 
 
 ### 2026-03-25 (External LLM Provider Integration)
@@ -697,3 +717,9 @@ python scripts/verify_golden_set.py
   - **perf**: Updated `frontend/src/App.jsx` to pass search results as context to the streaming endpoint.
   - **Files**: `backend/api.py`, `frontend/src/App.jsx`
   - **Tests**: `backend/tests/test_stream_optimization.py`
+
+### 2026-02-24 (Security Fix)
+- **Fixed Command Injection Vulnerability** - Prevent argument injection in open-file endpoint
+  - **fix**: Added validation to reject filenames starting with `-` in `backend/api.py`.
+  - **test**: Added `backend/tests/test_security_command_injection.py` to verify the fix.
+  - **Files**: `backend/api.py`, `backend/tests/test_security_command_injection.py`

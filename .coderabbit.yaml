@@ -32,6 +32,25 @@ reviews:
     base_branches:
       - main
       - master
+  ignore_patterns:
+    - "**/*.md"
+    - "data/**/*"
+    - "models/**/*"
+    - "**/*.pkl"
+    - "**/*.faiss"
+    - "**/*.db"
+    - "**/*.log"
+    - "**/node_modules/**"
+    - "**/__pycache__/**"
+    - "**/venv*/**"
+    - "**/.pytest_cache/**"
+    - "**/*.pyc"
+    - "package-lock.json"
+    - "npm-debug.log"
+    - ".gitignore"
+    - "*.png"
+    - "*.jpg"
+    - "*.jpeg"
 
 # Path-specific instructions for reviewers
 path_instructions:
@@ -176,28 +195,6 @@ path_instructions:
     instructions: |
       Vitest Not Jest:
       Verify all test imports use 'vitest' package, not 'jest'. Check for vi.fn() instead of jest.fn()
-
-# File patterns to ignore in reviews
-reviews:
-  ignore_patterns:
-    - "**/*.md"  # Documentation will still be reviewed but with lower priority
-    - "data/**/*"  # Generated data files
-    - "models/**/*"  # Downloaded model binaries
-    - "**/*.pkl"  # Pickle files
-    - "**/*.faiss"  # FAISS index files
-    - "**/*.db"  # SQLite databases
-    - "**/*.log"  # Log files
-    - "**/node_modules/**"  # Node dependencies
-    - "**/__pycache__/**"  # Python cache
-    - "**/venv*/**"  # Virtual environments
-    - "**/.pytest_cache/**"  # Test cache
-    - "**/*.pyc"  # Python bytecode
-    - "package-lock.json"  # Lock files
-    - "npm-debug.log"  # Debug logs
-    - ".gitignore"  # Git config
-    - "*.png"  # Images
-    - "*.jpg"  # Images
-    - "*.jpeg"  # Images
 
 # Chat settings
 chat:

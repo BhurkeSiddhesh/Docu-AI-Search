@@ -3,6 +3,11 @@ import os
 from reportlab.pdfgen import canvas
 
 def create_resume():
+    """
+    Generates a synthetic PDF resume for testing purposes.
+    The file is saved to 'data/test_resume/Siddhesh_Resume.pdf' and populated 
+    with education and skill data suitable for retrieval verification.
+    """
     output_dir = os.path.join("data", "test_resume")
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)

@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react'
 import ModelManager from '../components/ModelManager'
 import axios from 'axios'
 
@@ -53,8 +53,10 @@ describe('ModelManager Component', () => {
         const cards = screen.getAllByText('TinyLlama').map(el => el.closest('.border'))
         const card = cards.find(c => within(c).queryByText(/Download/i))
         const downloadBtn = within(card).getByRole('button', { name: /Download/i })
-
-        fireEvent.click(downloadBtn)
+        
+        await act(async () => {
+            fireEvent.click(downloadBtn)
+        })
 
         expect(axios.post).toHaveBeenCalledWith('http://localhost:8000/api/models/download/tinyllama')
     })
@@ -68,7 +70,10 @@ describe('ModelManager Component', () => {
         // Find the Select button. It might be multiple if multiple models?
         // But only downloaded models have Select button.
         const selectBtn = screen.getByText('Select')
-        fireEvent.click(selectBtn)
+        
+        await act(async () => {
+            fireEvent.click(selectBtn)
+        })
 
         expect(onSelectModel).toHaveBeenCalledWith('/models/phi-2.gguf')
     })
@@ -81,7 +86,10 @@ describe('ModelManager Component', () => {
         await waitFor(() => screen.getAllByText('Phi-2')[0])
 
         const trashBtn = screen.getByTitle('Delete Model')
-        fireEvent.click(trashBtn)
+        
+        await act(async () => {
+            fireEvent.click(trashBtn)
+        })
 
         expect(global.confirm).toHaveBeenCalled()
         expect(axios.delete).toHaveBeenCalledWith(

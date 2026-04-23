@@ -21,6 +21,19 @@ INDEX_PATH = os.path.join(PROJECT_ROOT, 'data', 'index.faiss')
 MODELS_DIR = os.path.join(PROJECT_ROOT, 'models')
 
 def run_comparison():
+    """
+    Executes a benchmark comparing retrieval quality and generation speed across 
+    all locally downloaded models.
+
+    This benchmark script:
+    1. Loads the FAISS index and performs a retrieval check to ensure the 
+       search-relevant context is being found.
+    2. Iterates through all GGUF models in the 'models/' directory.
+    3. For each model, it measures:
+        - Load/Cache readiness time.
+        - Generation time (tokens per second proxy).
+        - Quality of the synthesized answer based on the retrieved context.
+    """
     print(f"\n{'='*60}")
     print(f"BENCHMARK: {QUERY}")
     print(f"{'='*60}\n")
@@ -33,7 +46,8 @@ def run_comparison():
 
     # Load index
     try:
-        index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25 = load_index(INDEX_PATH)
+        res = load_index(INDEX_PATH)
+        index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25 = res[:7]
     except Exception as e:
         print(f"Error loading index: {e}")
         return

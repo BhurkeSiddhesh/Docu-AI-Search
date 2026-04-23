@@ -7,8 +7,16 @@ import os
 def tool_search_knowledge_base(query: str, global_state: dict) -> str:
     """
     Search the indexed files for information.
+
+    Uses a hybrid semantic and keyword search approach to find the most relevant 
+    snippets from the indexed knowledge base.
+
     Args:
-        query: The search query (e.g., "revenue 2023", "Project Alpha budget")
+        query (str): The search query (e.g., "revenue 2023", "Project Alpha budget").
+        global_state (dict): The global application state containing indices and docs.
+
+    Returns:
+        str: A formatted string containing the top relevant snippets or an error message.
     """
     if not global_state.get('index'):
         return "Error: No knowledge base indexed."
@@ -40,8 +48,15 @@ def tool_search_knowledge_base(query: str, global_state: dict) -> str:
 def tool_read_file(file_path: str) -> str:
     """
     Read the full content of a specific file.
+
+    Retrieves the raw text from a document if it is part of the indexed knowledge base. 
+    Includes security checks to prevent unauthorized file access.
+
     Args:
-        file_path: Absolute or relative path to the file.
+        file_path (str): Absolute or relative path to the file.
+
+    Returns:
+        str: The extracted text of the file (capped to prevent overflow) or an error.
     """
     if not file_path:
         return "Error: No file path provided."
@@ -81,6 +96,15 @@ def tool_read_file(file_path: str) -> str:
 def tool_list_files(query: str = None) -> str:
     """
     List all available files in the index.
+
+    Provides a quick overview of the currently indexed documents to help 
+    the agent understand the scope of the available knowledge.
+
+    Args:
+        query (str, optional): An optional filter query (currently unused).
+
+    Returns:
+        str: A comma-separated list of filenames or a message if no files exist.
     """
     files = database.get_all_files(limit=50)
     if not files:

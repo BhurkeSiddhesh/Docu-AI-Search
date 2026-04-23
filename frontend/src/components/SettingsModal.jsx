@@ -124,7 +124,19 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
     const fetchConfig = async () => {
         try {
             const response = await axios.get(`${API}/api/config`);
-            setConfig(prev => ({ ...prev, ...response.data }));
+            const data = response.data;
+            // Backend returns _set booleans, not actual keys — keep form fields empty
+            const normalized = { ...data };
+            ['openai', 'gemini', 'anthropic', 'grok'].forEach(p => {
+                normalized[`${p}_api_key`] = '';
+                delete normalized[`${p}_api_key_set`];
+            });
+            setConfig(prev => ({ ...prev, ...normalized, _apiKeySet: {
+                openai: data.openai_api_key_set,
+                gemini: data.gemini_api_key_set,
+                anthropic: data.anthropic_api_key_set,
+                grok: data.grok_api_key_set,
+            }}));
         } catch (error) {
             console.error('Failed to fetch config:', error);
         }
@@ -800,6 +812,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                         >
                                             Clear Cache
                                         </button>
+                                    </div>
                                     </div>
                                     <button type="button"
                                         onClick={handleDeleteAllHistory}

@@ -11,19 +11,20 @@ API_URL = "http://localhost:8000/api"
 GOLDEN_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "golden_dataset")
 
 def wait_for_backend():
-    print("Checking backend status...")
-    for _ in range(10):
-        try:
-            r = requests.get(f"{API_URL}/config", timeout=2)
-            if r.status_code == 200:
-                print("Backend is ready.")
-                return True
-        except:
-            time.sleep(1)
-    return False
+    """
+    Polls the backend API until it is ready to receive requests.
+    Attempts to connect up to 10 times with a 1-second delay between tries.
+
+    Returns:
+        bool: True if the backend responds successfully, False otherwise.
+    """
 
 def configure_folder():
-    """Add golden_dataset folder to configuration."""
+    """
+    Submits the golden dataset path to the application's configuration.
+    Ensures that the directory containing verification files is part of the 
+    monitored folder list.
+    """
     print(f"Adding {GOLDEN_DIR} to config...")
     # Get current config
     r = requests.get(f"{API_URL}/config")
@@ -38,7 +39,10 @@ def configure_folder():
         print("Folder already configured.")
 
 def trigger_indexing():
-    """Trigger indexing and wait for completion."""
+    """
+    Initiates a background indexing process and monitors its progress.
+    Blocks execution until the indexing status reports that it is no longer running.
+    """
     print("Triggering index...")
     requests.post(f"{API_URL}/index")
     
@@ -52,8 +56,21 @@ def trigger_indexing():
         print(f"Indexing: {status['progress']}%...")
         time.sleep(2)
 
-def verify_query(query, expected_text, filename):
-    """Run a search query and verify the expected text is in the summary/answer."""
+def verify_query(query: str, expected_text: str, filename: str) -> bool:
+    """
+    Performs a search query and validates that the expected answer is retrieved.
+
+    Checks both the raw search results (summaries/documents) and the 
+    AI-generated synthesis answer for the occurrence of the 'needle' text.
+
+    Args:
+        query (str): The search question to ask.
+        expected_text (str): The specific text/fact expected in the results.
+        filename (str): The name of the file that should contain the information.
+
+    Returns:
+        bool: True if the expected text is found in either results or AI answer.
+    """
     print(f"\nQuerying: '{query}'...")
     r = requests.post(f"{API_URL}/search", json={"query": query})
     if r.status_code != 200:

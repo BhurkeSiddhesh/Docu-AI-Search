@@ -110,9 +110,7 @@ function App() {
         try {
             const currentConfig = await axios.get('http://localhost:8000/api/config');
             await axios.post('http://localhost:8000/api/config', {
-                folders: currentConfig.data.folders || [],
-                auto_index: currentConfig.data.auto_index,
-                openai_api_key: currentConfig.data.openai_api_key,
+                ...currentConfig.data,
                 provider: 'local',
                 local_model_path: modelPath
             });

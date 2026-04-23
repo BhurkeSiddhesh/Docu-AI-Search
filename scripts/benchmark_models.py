@@ -104,6 +104,23 @@ TEST_QUERIES = [
 
 
 class BenchmarkResult:
+    """
+    Data container for model benchmark results.
+
+    Attributes:
+        model_name (str): Human-readable name of the model.
+        model_path (str): Absolute path to the .gguf file.
+        model_size_mb (float): Size of the model file in megabytes.
+        load_time_s (float): Time taken to load the model into memory in seconds.
+        embedding_latency_ms (float): Time taken for a single embedding query in milliseconds.
+        first_token_latency_ms (float): Estimated time for the first token in milliseconds.
+        tokens_per_second (float): Generation speed in tokens per second.
+        total_generation_time_s (float): Total time spent in generation across all samples.
+        peak_memory_mb (float): Cumulative memory increase during the benchmark.
+        fact_retention_score (float): Percentage of key concepts retained in summaries.
+        samples_tested (int): Number of test samples successfully processed.
+        errors (List[str]): List of error messages encountered during testing.
+    """
     def __init__(self, model_name: str):
         self.model_name = model_name
         self.model_path = ""
@@ -138,6 +155,12 @@ class BenchmarkResult:
         return (tps_norm * 0.45) + (accuracy_norm * 0.45) + (load_norm * 0.05) + (mem_norm * 0.05)
 
     def to_dict(self) -> Dict[str, Any]:
+        """
+        Converts the benchmark results to a serializable dictionary.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing all benchmark metrics rounded to 2 decimal places.
+        """
         d = {
             "model_name": self.model_name,
             "model_path": self.model_path,
@@ -157,13 +180,27 @@ class BenchmarkResult:
 
 
 def get_memory_usage_mb() -> float:
-    """Get current process memory usage in MB."""
+    """
+    Get current process memory usage in MB.
+
+    Returns:
+        float: The Resident Set Size (RSS) memory usage of the current process in megabytes.
+    """
     process = psutil.Process(os.getpid())
     return process.memory_info().rss / (1024 * 1024)
 
 
 def calculate_fact_retention(summary: str, key_concepts: List[str]) -> float:
-    """Calculate what percentage of key concepts appear in the summary, with basic noise filtering."""
+    """
+    Calculate what percentage of key concepts appear in the summary, with basic noise filtering.
+
+    Args:
+        summary (str): The generated summary text.
+        key_concepts (List[str]): A list of keywords/concepts that should be present.
+
+    Returns:
+        float: The percentage (0-100) of key concepts found in the summary.
+    """
     if not summary or not key_concepts:
         return 0.0
     
@@ -181,7 +218,12 @@ def calculate_fact_retention(summary: str, key_concepts: List[str]) -> float:
 
 
 def get_local_models() -> List[Dict[str, Any]]:
-    """Get list of downloaded models."""
+    """
+    Scans the models directory and returns a list of downloaded models.
+
+    Returns:
+        List[Dict[str, Any]]: A list of dictionaries, each containing 'name', 'filename', 'path', and 'size_mb'.
+    """
     models = []
     if os.path.exists(MODELS_DIR):
         for f in os.listdir(MODELS_DIR):
@@ -198,7 +240,23 @@ def get_local_models() -> List[Dict[str, Any]]:
 
 
 def benchmark_model(model_info: Dict[str, Any], verbose: bool = True) -> BenchmarkResult:
-    """Run benchmark suite on a single model."""
+    """
+    Run the full benchmark suite on a single LLM model.
+
+    Evaluates the model across several dimensions:
+    - Load time
+    - Embedding latency
+    - Generation speed (tokens per second)
+    - Fact retention (using summary extraction accuracy)
+    - Peak memory usage
+
+    Args:
+        model_info (Dict[str, Any]): Dictionary containing model name, path, and size.
+        verbose (bool): If True, prints detailed progress to the console.
+
+    Returns:
+        BenchmarkResult: An object containing all the measured metrics.
+    """
     result = BenchmarkResult(model_info["name"])
     result.model_path = model_info["path"]
     result.model_size_mb = model_info["size_mb"]
@@ -308,7 +366,15 @@ def benchmark_model(model_info: Dict[str, Any], verbose: bool = True) -> Benchma
 
 
 def run_all_benchmarks(verbose: bool = True) -> List[BenchmarkResult]:
-    """Run benchmarks on all downloaded models."""
+    """
+    Identifies all local GGUF models and runs the benchmark suite on each.
+
+    Args:
+        verbose (bool): If True, prints detailed progress for each model.
+
+    Returns:
+        List[BenchmarkResult]: A list of result objects for all successfully benchmarked models.
+    """
     models = get_local_models()
     
     if not models:
@@ -329,7 +395,16 @@ def run_all_benchmarks(verbose: bool = True) -> List[BenchmarkResult]:
 
 
 def save_results(results: List[BenchmarkResult]):
-    """Save results to JSON and Markdown files."""
+    """
+    Persists benchmark results to both JSON and Markdown formats.
+
+    Outputs:
+        - data/benchmark_results.json: Raw data for programmatic consumption.
+        - data/benchmark_results.md: Human-readable report with analysis.
+
+    Args:
+        results (List[BenchmarkResult]): The list of results to save.
+    """
     # JSON output
     json_data = {
         "timestamp": datetime.now().isoformat(),
@@ -384,7 +459,12 @@ def save_results(results: List[BenchmarkResult]):
 
 
 def print_summary(results: List[BenchmarkResult]):
-    """Print a summary table to console."""
+    """
+    Prints a tabulated summary of the benchmark results to the console.
+
+    Args:
+        results (List[BenchmarkResult]): The list of results to display.
+    """
     print("\n" + "="*80)
     print(" BENCHMARK SUMMARY")
     print("="*80)
@@ -399,6 +479,16 @@ def print_summary(results: List[BenchmarkResult]):
 
 
 def main():
+    """
+    Main entry point for the model benchmark suite.
+    
+    Parses command-line arguments to either benchmark all downloaded models
+    or a specific model file. Results are saved to JSON and Markdown after 
+    completion.
+
+    Returns:
+        int: Exit status code (0 for success, 1 if no results generated).
+    """
     parser = argparse.ArgumentParser(description="Benchmark LLM models")
     parser.add_argument("--all", action="store_true", help="Benchmark all downloaded models")
     parser.add_argument("--model", type=str, help="Benchmark a specific model by filename")

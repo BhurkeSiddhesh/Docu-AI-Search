@@ -1,4 +1,9 @@
-"""Quick model diagnostic script"""
+"""
+Quick Model Diagnostic Script
+
+Attempts to load several common local LLM models and perform a simple 
+integrity check (2+2) to ensure the models and llama-cpp are functional.
+"""
 import os
 from llama_cpp import Llama
 

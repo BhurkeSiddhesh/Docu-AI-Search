@@ -1,3 +1,10 @@
+"""
+Environment Configuration Diagnostic Script
+
+Verifies the installation of llama-cpp-python, checks for GPU support 
+capabilities, and reports the number of available CPU hardware threads 
+for local inference optimization.
+"""
 try:
     from llama_cpp import Llama
     print("llama_cpp imported successfully")

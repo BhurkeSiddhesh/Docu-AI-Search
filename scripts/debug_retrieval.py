@@ -15,11 +15,21 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INDEX_PATH = os.path.join(PROJECT_ROOT, 'data', 'index.faiss')
 
 def debug_retrieval():
+    """
+    Performs a deep-dive search for a specific complex query and logs the results.
+
+    This debugging tool:
+    1. Loads the current FAISS index and BM25 metadata.
+    2. Executes a search using the local embedding provider.
+    3. Retrieves file metadata (like filenames) from the database for each search result.
+    4. Writes detailed results (top 5) to 'retrieval_debug.txt' for manual inspection.
+    """
     if not os.path.exists(INDEX_PATH):
         print("Index not found.")
         return
 
-    index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25 = load_index(INDEX_PATH)
+    res = load_index(INDEX_PATH)
+    index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25 = res[:7]
     embeddings = get_embeddings(provider='local')
     
     results, context_snippets = search(

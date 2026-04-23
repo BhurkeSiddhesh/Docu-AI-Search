@@ -1,3 +1,10 @@
+"""
+Qwen 3.5 35B A3B Model Diagnostic
+
+Verifies the integration and performance of the Qwen 3.5 35B model.
+Handles automatic model download, environment readiness checks, 
+and triggers a test generation with a mocked RAG context.
+"""
 import os
 import sys
 import time
@@ -12,6 +19,13 @@ MODEL_ID = "Qwen3.5-35B-A3B-UD-Q4_K_M"
 MODEL_PATH = os.path.join(MODELS_DIR, f"{MODEL_ID}.gguf")
 
 def main():
+    """
+    Diagnostic script for testing the Qwen 3.5 35B model in a local environment.
+
+    The script confirms the existence of the model (downloading it if necessary), 
+    sets up a mockup RAG context, and triggers a text generation to verify 
+    performance and resource compatibility (RAM/VRAM).
+    """
     print("=== Testing Qwen 3.5 35B A3B Model ===")
     print(f"Expected path: {MODEL_PATH}")
 

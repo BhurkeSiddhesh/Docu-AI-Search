@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import SearchBar from '../components/SearchBar'
 
 describe('SearchBar Shortcuts', () => {
@@ -10,7 +10,9 @@ describe('SearchBar Shortcuts', () => {
         // Ensure input is not focused initially
         expect(document.activeElement).not.toBe(input)
 
-        fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+        act(() => {
+            fireEvent.keyDown(window, { key: 'k', ctrlKey: true })
+        })
 
         expect(document.activeElement).toBe(input)
     })
@@ -21,7 +23,9 @@ describe('SearchBar Shortcuts', () => {
 
         expect(document.activeElement).not.toBe(input)
 
-        fireEvent.keyDown(window, { key: '/' })
+        act(() => {
+            fireEvent.keyDown(window, { key: '/' })
+        })
 
         expect(document.activeElement).toBe(input)
     })
