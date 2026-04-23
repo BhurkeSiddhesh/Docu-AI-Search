@@ -791,16 +791,19 @@ class TestAPIEmbeddingSettings(unittest.TestCase):
     def setUp(self):
         """Set up test client before each test method."""
         self.client = TestClient(app)
-
-    @patch('backend.settings.get_embedding_config_from_ini')
-    def test_get_embedding_settings(self, mock_get_config):
-        """Test getting embedding settings."""
-        mock_get_config.return_value = {
+        # Seed app.state with a known embedding config so GET works predictably
+        app.state.embedding_config = {
             'provider_type': 'local',
             'model_name': 'test-model',
-            'api_key_set': False
+            'api_key': '',
         }
 
+    def tearDown(self):
+        """Clean up app.state after each test."""
+        app.state.embedding_config = None
+
+    def test_get_embedding_settings(self):
+        """Test getting embedding settings."""
         response = self.client.get("/api/settings/embeddings")
 
         self.assertEqual(response.status_code, 200)
@@ -808,12 +811,13 @@ class TestAPIEmbeddingSettings(unittest.TestCase):
         self.assertIn('provider_type', data)
         self.assertIn('model_name', data)
         self.assertIn('api_key_set', data)
+        self.assertEqual(data['provider_type'], 'local')
+        self.assertEqual(data['model_name'], 'test-model')
+        self.assertFalse(data['api_key_set'])
 
-    @patch('backend.settings.save_embedding_config')
-    def test_update_embedding_settings_local(self, mock_save):
+    @patch('backend.settings._write_embedding_section')
+    def test_update_embedding_settings_local(self, mock_write):
         """Test updating embedding settings to local provider."""
-        mock_save.return_value = None
-
         response = self.client.post("/api/settings/embeddings", json={
             "provider_type": "local",
             "model_name": "new-local-model"
@@ -822,12 +826,11 @@ class TestAPIEmbeddingSettings(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data['status'], 'success')
+        mock_write.assert_called_once()
 
-    @patch('backend.settings.save_embedding_config')
-    def test_update_embedding_settings_commercial(self, mock_save):
+    @patch('backend.settings._write_embedding_section')
+    def test_update_embedding_settings_commercial(self, mock_write):
         """Test updating embedding settings with API key."""
-        mock_save.return_value = None
-
         response = self.client.post("/api/settings/embeddings", json={
             "provider_type": "commercial_api",
             "model_name": "text-embedding-ada-002",
@@ -835,6 +838,7 @@ class TestAPIEmbeddingSettings(unittest.TestCase):
         })
 
         self.assertEqual(response.status_code, 200)
+        mock_write.assert_called_once()
 
     def test_update_embedding_settings_missing_api_key(self):
         """Test updating embedding settings without required API key."""

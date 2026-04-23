@@ -580,7 +580,7 @@ class TestDatabaseClusters(unittest.TestCase):
         self.assertEqual(len(clusters), 0)
 
 
-class TestDatabaseCleanup(unittest.TestCase):
+class TestDatabaseCleanup(TestDatabaseBase):
     """Test cleanup functionality."""
 
     def test_cleanup_test_data(self):
