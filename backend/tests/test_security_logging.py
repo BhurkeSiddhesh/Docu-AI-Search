@@ -78,10 +78,14 @@ class TestSecurityLogging(unittest.TestCase):
         from backend.search import search
 
         mock_index = MagicMock()
+        mock_index.d = 128
         mock_index.search.return_value = ([[1.0]], [[0]])
 
         mock_bm25 = MagicMock()
         mock_bm25.get_scores.return_value = [0.5]
+
+        mock_embeddings = MagicMock()
+        mock_embeddings.embed_query.return_value = [0.1] * 128
 
         docs = [{'text': 'doc', 'filepath': 'path'}]
         tags = ['tag']
@@ -92,7 +96,7 @@ class TestSecurityLogging(unittest.TestCase):
                 index=mock_index,
                 docs=docs,
                 tags=tags,
-                embeddings_model=MagicMock(),
+                embeddings_model=mock_embeddings,
                 bm25=mock_bm25
             )
 

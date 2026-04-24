@@ -14,15 +14,6 @@ import numpy as np
 from unittest.mock import MagicMock, patch
 
 # Mock dependencies BEFORE imports
-sys.modules['sklearn'] = MagicMock()
-sys.modules['sklearn.cluster'] = MagicMock()
-sys.modules['faiss'] = MagicMock()
-sys.modules['sentence_transformers'] = MagicMock()
-sys.modules['langchain_text_splitters'] = MagicMock()
-sys.modules['langchain'] = MagicMock()
-sys.modules['langchain_community'] = MagicMock()
-sys.modules['backend.llm_integration'] = MagicMock()
-sys.modules['rank_bm25'] = MagicMock()
 
 
 # Ensure we can import from root
@@ -855,7 +846,7 @@ class TestIndexingWithEmbeddingClient(unittest.TestCase):
                 api_key="fake_key",
                 embedding_client=mock_embedding_client
             )
-            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
             self.assertIsNotNone(index)
             # Verify embedding client was used (not get_embeddings)
@@ -887,7 +878,7 @@ class TestIndexingWithEmbeddingClient(unittest.TestCase):
                 api_key="fake_key",
                 embedding_client=None  # Explicitly None
             )
-            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res
+            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
             self.assertIsNotNone(index)
             # Verify get_embeddings was called as fallback
@@ -1110,6 +1101,13 @@ class TestIndexingErrorRecovery(unittest.TestCase):
         from backend import database
         database.init_database()
         self.temp_dir = tempfile.mkdtemp()
+        
+        self.pp_patcher = patch('concurrent.futures.ProcessPoolExecutor', side_effect=MockExecutor)
+        self.tp_patcher = patch('concurrent.futures.ThreadPoolExecutor', side_effect=MockExecutor)
+        self.ac_patcher = patch('concurrent.futures.as_completed', side_effect=lambda fs: fs)
+        self.pp_patcher.start()
+        self.tp_patcher.start()
+        self.ac_patcher.start()
 
     def tearDown(self):
         """
@@ -1117,15 +1115,25 @@ class TestIndexingErrorRecovery(unittest.TestCase):
         
         If the directory referenced by self.temp_dir exists, delete it and all its contents.
         """
+        self.pp_patcher.stop()
+        self.tp_patcher.stop()
+        self.ac_patcher.stop()
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
+    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.extract_text')
     @patch('backend.indexing.get_embeddings')
-    def test_create_index_handles_embedding_failure_gracefully(self, mock_get_embeddings):
+    def test_create_index_handles_embedding_failure_gracefully(self, mock_get_embeddings, mock_extract_text, mock_splitter_cls):
         """Test that indexing handles embedding failures."""
         # Create a file
         with open(os.path.join(self.temp_dir, "test.txt"), 'w') as f:
             f.write("Test")
+
+        # Force extraction and chunking
+        mock_extract_text.return_value = "Test"
+        mock_splitter_instance = mock_splitter_cls.return_value
+        mock_splitter_instance.split_text.return_value = ["Test"]
 
         # Make embeddings fail
         mock_get_embeddings.side_effect = Exception("Embedding API error")

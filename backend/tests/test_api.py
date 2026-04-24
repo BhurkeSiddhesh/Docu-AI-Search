@@ -13,7 +13,6 @@ from backend.api import app
 
 # We will use class-level or method-level patches instead of global ones to avoid inter-test pollution
 
-sys.modules['fastapi.responses'] = MagicMock()
 
 class TestAPIConfig(unittest.TestCase):
     """Test cases for configuration endpoints."""
@@ -347,6 +346,8 @@ class TestAPIIndexing(unittest.TestCase):
     def setUp(self):
         """Set up test client before each test method."""
         self.client = TestClient(app)
+        from backend.api import indexing_status
+        indexing_status["running"] = False
 
     @patch('backend.api.load_config')
     @patch('backend.api.BackgroundTasks.add_task')
@@ -679,6 +680,8 @@ class TestAPIIndexingEdgeCases(unittest.TestCase):
     def setUp(self):
         """Set up test client before each test method."""
         self.client = TestClient(app)
+        from backend.api import indexing_status
+        indexing_status["running"] = False
 
     @patch('backend.api.load_config')
     def test_trigger_indexing_with_no_folders(self, mock_load_config):
@@ -1043,6 +1046,8 @@ class TestAPIMultipleFoldersIndexing(unittest.TestCase):
     def setUp(self):
         """Set up test client before each test method."""
         self.client = TestClient(app)
+        from backend.api import indexing_status
+        indexing_status["running"] = False
 
     @patch('backend.api.load_config')
     @patch('backend.api.BackgroundTasks.add_task')

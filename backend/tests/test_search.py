@@ -11,10 +11,6 @@ import sys
 import os
 
 # Mock dependencies BEFORE import
-sys.modules['faiss'] = MagicMock()
-sys.modules['sentence_transformers'] = MagicMock()
-sys.modules['rank_bm25'] = MagicMock()
-sys.modules['numpy'] = MagicMock()
 
 import numpy as np
 
@@ -102,15 +98,7 @@ class TestSearch(unittest.TestCase):
         # Mock embeddings model
         self.mock_embeddings_model = MagicMock()
         # Mock ThreadPoolExecutor
-        self.mock_embeddings_model.embed_query.return_value = [0.1, 0.2, 0.3]
-
-        # Since numpy is globally mocked, configure the full call chain so the
-        # dimension guard ( query_embedding.shape[1] == index.d ) is controllable.
-        #   np.array([...]).astype('float32')  → mock_array
-        #   mock_array.shape[1]               → 128
-        mock_array = MagicMock()
-        mock_array.shape.__getitem__ = MagicMock(return_value=128)  # dim = 128
-        np.array.return_value.astype.return_value = mock_array
+        self.mock_embeddings_model.embed_query.return_value = [0.1] * 128
 
         self.patcher = patch('concurrent.futures.ThreadPoolExecutor')
         self.mock_executor_cls = self.patcher.start()
@@ -418,15 +406,10 @@ class TestSearchEdgeCases(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.mock_embeddings_model = MagicMock()
-        self.mock_embeddings_model.embed_query.return_value = [0.1, 0.2, 0.3]
+        self.mock_embeddings_model.embed_query.return_value = [0.1] * 128
 
-        # Since numpy is globally mocked, configure the full call chain so the
-        # dimension guard ( query_embedding.shape[1] == index.d ) is controllable.
-        #   np.array([...]).astype('float32')  → mock_array
-        #   mock_array.shape[1]               → 128
-        mock_array = MagicMock()
-        mock_array.shape.__getitem__ = MagicMock(return_value=128)  # dim = 128
-        np.array.return_value.astype.return_value = mock_array
+        # Numpy is no longer globally mocked during suite runs.
+        # The embedding now returns 128 dimensions to match index.d.
 
         self.patcher = patch('concurrent.futures.ThreadPoolExecutor')
         self.mock_executor_cls = self.patcher.start()
@@ -499,8 +482,9 @@ class TestSearchEdgeCases(unittest.TestCase):
         self.mock_future.result.return_value = (mock_dists, mock_idxs)
 
         # Should handle empty query
+        print(f"DEBUG: type(search) is {type(search)}")
         results, context = search(query, index, docs, tags, self.mock_embeddings_model)
-
+        
         self.assertIsInstance(results, list)
 
     def test_search_bm25_error_handling(self):

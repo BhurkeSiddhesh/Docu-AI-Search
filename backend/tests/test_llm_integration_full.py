@@ -7,16 +7,6 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Mock dependencies
-sys.modules['faiss'] = MagicMock()
-sys.modules['sentence_transformers'] = MagicMock()
-sys.modules['rank_bm25'] = MagicMock()
-sys.modules['llama_cpp'] = MagicMock()
-sys.modules['langchain_core'] = MagicMock()
-sys.modules['langchain_core.messages'] = MagicMock()
-sys.modules['langchain_openai'] = MagicMock()
-sys.modules['langchain_google_genai'] = MagicMock()
-sys.modules['langchain_anthropic'] = MagicMock()
-sys.modules['langchain_huggingface'] = MagicMock()
 
 from backend.llm_integration import generate_ai_answer
 

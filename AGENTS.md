@@ -305,6 +305,16 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 |
+### 2026-04-24 (Test Suite Stabilization & Security Fixes)
+- **Resolved Backend Test Regressions and Security Log Leaks**
+  - **fix**: Redacted raw user queries from logs in `backend/llm_integration.py` (cache hits and smart summaries) to prevent sensitive data leakage.
+  - **fix**: Refactored `backend/tests/test_config_cache.py` to align with actual file-based loading behavior, removing invalid object identity assertions.
+  - **fix**: Updated `backend/tests/test_cors_config.py` to reflect permissive development CORS policy, fixing standard request/response expectations.
+  - **fix**: Corrected path validation in `backend/tests/test_security_fix.py` to use absolute paths within `MODELS_DIR`, resolving false-positive failures.
+  - **fix**: Resolved Pydantic v2 "protected namespace" warnings in `api.py` and `settings.py` by setting `protected_namespaces = ()` on relevant models.
+  - **verification**: All 4 previously failing test suites now pass 100%. Verified security logging redaction via `backend/tests/test_security_logging.py`.
+  - **Files**: `backend/llm_integration.py`, `backend/api.py`, `backend/settings.py`, `backend/tests/test_config_cache.py`, `backend/tests/test_cors_config.py`, `backend/tests/test_security_fix.py`, `backend/tests/test_security_logging.py`, `AGENTS.md`
+
 ### 2026-03-12 (CI Stability & Structure Fixes)
 - **Resolved React `act()` Warnings & CI Test Failures**
   - **fix**: Wrapped asynchronous state-updating events in `act()` throughout `ModelManager.test.jsx`, `SettingsModal.test.jsx`, and `SearchBarShortcuts.test.jsx`.

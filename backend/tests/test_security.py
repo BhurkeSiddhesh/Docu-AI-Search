@@ -5,7 +5,6 @@ import sys
 from unittest.mock import MagicMock, patch
 
 # Ensure module overrides before importing app
-sys.modules['fastapi.responses'] = MagicMock()
 
 from fastapi.testclient import TestClient
 from backend.api import app, verify_local_request

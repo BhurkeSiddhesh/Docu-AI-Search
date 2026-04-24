@@ -8,22 +8,9 @@ import asyncio
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Mock heavy dependencies BEFORE import
-sys.modules['faiss'] = MagicMock()
-sys.modules['sentence_transformers'] = MagicMock()
-sys.modules['rank_bm25'] = MagicMock()
-sys.modules['pdfplumber'] = MagicMock()
-sys.modules['docx'] = MagicMock()
-sys.modules['pptx'] = MagicMock()
-sys.modules['openpyxl'] = MagicMock()
-sys.modules['llama_cpp'] = MagicMock()
-sys.modules['numpy'] = MagicMock()
-sys.modules['pypdf'] = MagicMock()
-sys.modules['psutil'] = MagicMock()
 
 # Mock langchain related modules
 mock_langchain_core = MagicMock()
-sys.modules['langchain_core'] = mock_langchain_core
-sys.modules['langchain_core.messages'] = mock_langchain_core
 
 # Define dummy classes
 class SystemMessage:

@@ -7,9 +7,6 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Mock dependencies
-sys.modules['requests'] = MagicMock()
-sys.modules['psutil'] = MagicMock()
-sys.modules['huggingface_hub'] = MagicMock()
 
 # Import after mocks
 from backend.model_manager import MODELS_DIR

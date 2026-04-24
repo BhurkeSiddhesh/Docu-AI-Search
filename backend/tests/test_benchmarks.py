@@ -7,9 +7,6 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Mock dependencies
-sys.modules['faiss'] = MagicMock()
-sys.modules['sentence_transformers'] = MagicMock()
-sys.modules['psutil'] = MagicMock()
 
 # Import
 try:

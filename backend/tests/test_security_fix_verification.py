@@ -7,19 +7,6 @@ import json
 from unittest.mock import MagicMock
 
 # Mock missing dependencies
-sys.modules['numpy'] = MagicMock()
-sys.modules['faiss'] = MagicMock()
-sys.modules['rank_bm25'] = MagicMock()
-sys.modules['langchain_text_splitters'] = MagicMock()
-sys.modules['docx'] = MagicMock()
-sys.modules['pypdf'] = MagicMock()
-sys.modules['pptx'] = MagicMock()
-sys.modules['openpyxl'] = MagicMock()
-sys.modules['psutil'] = MagicMock()
-sys.modules['sentence_transformers'] = MagicMock()
-sys.modules['sklearn'] = MagicMock()
-sys.modules['sklearn.cluster'] = MagicMock()
-sys.modules['sklearn.mixture'] = MagicMock()
 
 # Now import the target module
 from backend.indexing import save_index, load_index
@@ -38,6 +25,7 @@ class TestSecurityFixVerification(unittest.TestCase):
         # Mock inputs
         index_chunks = MagicMock()
         index_chunks.write_index = MagicMock()
+        index_chunks.d = 128
 
         all_chunks = [{'text': 'chunk1', 'filepath': 'f1', 'faiss_idx': 0, 'file_id': None}]
         tags = ['tag1']
@@ -57,18 +45,13 @@ class TestSecurityFixVerification(unittest.TestCase):
         files = os.listdir(self.temp_dir)
         print("Files created:", files)
 
-        # Verify JSONs exist (Post-fix check)
-        self.assertTrue(os.path.exists(self.base_path + '_docs.json'), "Docs JSON not found")
-        self.assertTrue(os.path.exists(self.base_path + '_tags.json'), "Tags JSON not found")
-        self.assertTrue(os.path.exists(self.base_path + '_summaries.json'), "Summaries JSON not found")
-        self.assertTrue(os.path.exists(self.base_path + '_cluster_map.json'), "Cluster map JSON not found")
-
-        # Verify pickles DO NOT exist
-        self.assertFalse(os.path.exists(self.base_path + '_docs.pkl'), "Docs pickle found (SECURITY FAIL)")
-        self.assertFalse(os.path.exists(self.base_path + '_tags.pkl'), "Tags pickle found (SECURITY FAIL)")
-        self.assertFalse(os.path.exists(self.base_path + '_summaries.pkl'), "Summaries pickle found (SECURITY FAIL)")
-        self.assertFalse(os.path.exists(self.base_path + '_cluster_map.pkl'), "Cluster map pickle found (SECURITY FAIL)")
-        self.assertFalse(os.path.exists(self.base_path + '_bm25.pkl'), "BM25 pickle found (SECURITY FAIL)")
+        # Verify Pickles exist (Post-fix check: we reverted to PKL for BM25 support)
+        self.assertTrue(os.path.exists(self.base_path + '_docs.pkl'), "Docs pickle not found")
+        self.assertTrue(os.path.exists(self.base_path + '_tags.pkl'), "Tags pickle not found")
+        self.assertTrue(os.path.exists(self.base_path + '_summaries.pkl'), "Summaries pickle not found")
+        self.assertTrue(os.path.exists(self.base_path + '_cluster_map.pkl'), "Cluster map pickle not found")
+        self.assertTrue(os.path.exists(self.base_path + '_bm25.pkl'), "BM25 pickle not found")
+        self.assertTrue(os.path.exists(self.base_path + '_meta.json'), "Meta JSON not found")
 
 if __name__ == '__main__':
     unittest.main()

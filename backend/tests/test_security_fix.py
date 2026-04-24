@@ -2,7 +2,7 @@ import unittest
 import os
 import tempfile
 import shutil
-from backend.model_manager import delete_model, is_safe_path
+from backend.model_manager import delete_model, is_safe_model_path
 
 # Mocking MODELS_DIR for the module would be tricky with unittest parallel execution.
 # However, delete_model and is_safe_path take explicit paths or use global MODELS_DIR.
@@ -24,7 +24,7 @@ class TestSecurityFix(unittest.TestCase):
     def test_is_safe_path_valid(self):
         file_path = os.path.join(self.temp_dir, "file.txt")
         # Ensure base dir exists
-        self.assertTrue(is_safe_path(self.temp_dir, file_path))
+        self.assertTrue(is_safe_model_path(file_path))
 
     def test_is_safe_path_traversal(self):
         # Create a sibling directory
@@ -35,10 +35,28 @@ class TestSecurityFix(unittest.TestCase):
             traversal_path = os.path.join(self.temp_dir, "..", os.path.basename(sibling_dir), "secret.txt")
 
             # Should be False because it resolves to sibling_dir which is not under base_dir
-            self.assertFalse(is_safe_path(self.temp_dir, traversal_path))
+            self.assertFalse(is_safe_model_path(traversal_path))
         finally:
             if os.path.exists(sibling_dir):
                 shutil.rmtree(sibling_dir)
+
+    def test_is_safe_model_path(self):
+        """Test the path traversal prevention logic directly"""
+        import backend.model_manager as mm
+        # Safe paths: absolute paths inside MODELS_DIR (patched to self.temp_dir)
+        inside_path = os.path.join(self.temp_dir, "test-model.gguf")
+        inside_path2 = os.path.join(self.temp_dir, "some_model_v2.gguf")
+        self.assertTrue(is_safe_model_path(inside_path))
+        self.assertTrue(is_safe_model_path(inside_path2))
+
+        # Unsafe paths
+        self.assertFalse(is_safe_model_path("../test.gguf"))          # relative traversal
+        self.assertFalse(is_safe_model_path("..\\test.gguf"))          # Windows traversal
+        self.assertFalse(is_safe_model_path("/absolute/path.gguf"))    # unrelated absolute
+        self.assertFalse(is_safe_model_path("C:\\windows\\system32"))  # system path
+        self.assertFalse(is_safe_model_path(
+            os.path.join(self.temp_dir, "..", "windows", "system32")   # traversal via join
+        ))
 
     def test_delete_model_valid(self):
         # Create a file inside temp_models_dir

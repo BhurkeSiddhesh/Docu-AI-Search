@@ -684,6 +684,8 @@ class SearchRequest(BaseModel):
         query (str): The search query text.
         context (Optional[List[str]]): Optional context strings to refine search.
     """
+    model_config = {'protected_namespaces': ()}
+
     query: str
     context: Optional[List[str]] = None
     system_prompt_id: Optional[int] = None

@@ -52,6 +52,7 @@ _DEFAULT_EMBEDDING_CONFIG = {
 
 class EmbeddingConfig(BaseModel):
     """Payload accepted by POST /api/settings/embeddings."""
+    model_config = {'protected_namespaces': ()}
 
     provider_type: str
     model_name: str
@@ -79,6 +80,7 @@ class EmbeddingConfig(BaseModel):
 
 class EmbeddingConfigResponse(BaseModel):
     """Shape returned by GET /api/settings/embeddings (key masked)."""
+    model_config = {'protected_namespaces': ()}
 
     provider_type: str
     model_name: str
