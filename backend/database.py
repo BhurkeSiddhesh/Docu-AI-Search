@@ -241,19 +241,38 @@ def add_files_batch(files_data: List[Dict]):
     finally:
         conn.close()
 
-def get_all_files() -> List[Dict]:
+def get_all_files(limit: int = 100, offset: int = 0) -> List[Dict]:
     """
-    Retrieve all indexed files from the database.
+    Retrieve indexed files from the database with pagination.
+
+    Args:
+        limit (int): Maximum number of rows to return. Defaults to 100.
+        offset (int): Number of rows to skip. Defaults to 0.
 
     Returns:
         List[Dict]: A list of rows representing indexed files.
     """
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM files ORDER BY filename')
+    cursor.execute('SELECT * FROM files ORDER BY filename LIMIT ? OFFSET ?', (limit, offset))
     files = [dict(row) for row in cursor.fetchall()]
     conn.close()
     return files
+
+
+def count_files() -> int:
+    """
+    Return the total number of indexed files in the database.
+
+    Returns:
+        int: Total file count.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) FROM files')
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
 
 def get_file_by_path(path: str) -> Optional[Dict]:
     """
