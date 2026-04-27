@@ -1395,22 +1395,29 @@ async def open_file(request: dict, req: Request, _=Depends(verify_local_request)
         raise HTTPException(status_code=500, detail=f"Failed to open file: {str(e)}")
 
 @app.get("/api/files")
-async def list_indexed_files(request: Request):
+async def list_indexed_files(request: Request, limit: int = 100, offset: int = 0):
     """
-    List all documents currently in the database.
+    List indexed documents with pagination.
 
     Args:
         request (Request): The incoming request.
+        limit (int): Maximum number of files to return (default 100, capped at 500).
+        offset (int): Number of files to skip for pagination (default 0).
 
     Returns:
-        List[dict]: Metadata for all indexed files.
+        dict: {"files": [...], "total": int, "limit": int, "offset": int}
 
     Raises:
-        HTTPException: 500 if database retrieval fails.
+        HTTPException: 400 for invalid pagination params, 500 if database retrieval fails.
     """
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
+    if offset < 0:
+        raise HTTPException(status_code=400, detail="offset must be non-negative")
     try:
-        files = await asyncio.to_thread(database.get_all_files)
-        return files
+        files = await asyncio.to_thread(database.get_all_files, limit, offset)
+        total = await asyncio.to_thread(database.count_files)
+        return {"files": files, "total": total, "limit": limit, "offset": offset}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
