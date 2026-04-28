@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 import json
 import asyncio
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Tuple
 import uvicorn
 import os
@@ -686,7 +686,7 @@ class SearchRequest(BaseModel):
     """
     model_config = {'protected_namespaces': ()}
 
-    query: str
+    query: str = Field(..., min_length=1, max_length=1000)
     context: Optional[List[str]] = None
     system_prompt_id: Optional[int] = None
     provider_override: Optional[str] = None
