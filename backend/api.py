@@ -1486,6 +1486,48 @@ async def list_indexed_files(request: Request, limit: int = 100, offset: int = 0
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/api/files/preview")
+async def preview_file(path: str, request: Request, chars: int = 2000):
+    """
+    Return a text preview of an indexed file (path traversal protected).
+
+    Query params:
+        path (str): The indexed file path.
+        chars (int): Maximum characters to return (default 2000, max 10000).
+    """
+    if not path:
+        raise HTTPException(status_code=400, detail="path is required")
+
+    # Normalize and verify the file is indexed
+    real_path = os.path.realpath(os.path.normpath(path))
+    file_info = database.get_file_by_path(real_path)
+    if not file_info:
+        raise HTTPException(status_code=403, detail="Access denied: file is not in the index")
+
+    if not os.path.exists(real_path):
+        raise HTTPException(status_code=404, detail="File not found")
+
+    chars = min(max(chars, 1), 10000)
+
+    try:
+        from backend.file_processing import extract_text
+        text = await asyncio.to_thread(extract_text, real_path)
+        if not text:
+            raise HTTPException(status_code=422, detail="Could not extract text from this file")
+        return {
+            "path": real_path,
+            "filename": file_info.get("filename"),
+            "file_type": file_info.get("file_type"),
+            "preview": text[:chars],
+            "total_chars": len(text),
+            "truncated": len(text) > chars,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/folders/history")
 async def get_folder_history(request: Request):
     """
