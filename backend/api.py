@@ -1019,7 +1019,7 @@ async def search_files(request: SearchRequest, req: Request):
                 file_name = file_info.get('filename')
             
             # OPTIMIZATION: Use fast summary for all results to avoid blocking
-            summary = summarize(result['document'], provider, api_key, model_path, question=request.query)
+            summary = cached_smart_summary(result['document'], provider, api_key, model_path, question=request.query)
             
             # Add file context to snippets for AI answer
             file_prefix = f"[From: {file_name}] " if file_name else ""
@@ -1147,7 +1147,7 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request):
         # Prepare context
         for result in results:
              # Use fast fallback summary for streaming context (no new LLM calls)
-             summary = summarize(result['document'], provider, api_key, model_path, question=request.query)
+             summary = cached_smart_summary(result['document'], provider, api_key, model_path, question=request.query)
 
              faiss_idx = result.get('faiss_idx')
              file_name = result.get('file_name')
