@@ -520,6 +520,7 @@ async def list_local_models(request: Request):
     return get_local_models()
 
 @app.post("/api/models/download/{model_id}")
+@limiter.limit("3/minute")
 async def download_model_endpoint(model_id: str, request: Request):
     """
     Trigger a background task to download a specific model.
@@ -849,6 +850,7 @@ async def get_config(request: Request):
     }
 
 @app.post("/api/config")
+@limiter.limit("10/minute")
 async def update_config(config_data: ConfigModel, request: Request):
     """
     Update the application configuration.
@@ -905,6 +907,7 @@ async def update_config(config_data: ConfigModel, request: Request):
     return {"status": "success", "message": "Configuration saved"}
 
 @app.post("/api/search")
+@limiter.limit("30/minute")
 async def search_files(request: SearchRequest, req: Request, _auth=Depends(require_auth)):
     """
     Perform a semantic search on the indexed documents.
@@ -1080,6 +1083,7 @@ async def search_files(request: SearchRequest, req: Request, _auth=Depends(requi
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/stream-answer")
+@limiter.limit("30/minute")
 async def stream_answer_endpoint(request: SearchRequest, req: Request, _auth=Depends(require_auth)):
     """
     Stream the AI answer for a given search query.
@@ -1611,6 +1615,7 @@ async def get_indexing_status(request: Request):
     return indexing_status
 
 @app.post("/api/index")
+@limiter.limit("5/minute")
 async def trigger_indexing(background_tasks: BackgroundTasks, request: Request):
     """
     Manually trigger the background indexing process for configured folders.
