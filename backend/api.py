@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Depends, Security
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Depends, Security, WebSocket, WebSocketDisconnect
 from backend.auth import require_auth, _get_or_create_token, AUTH_ENABLED
+from backend.websocket_manager import manager as ws_manager
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -1687,6 +1688,20 @@ def indexing_progress_callback(current, total, message=None):
     if indexing_status["progress"] % 10 == 0 or message:
         logger.info(f"Indexing Progress: {indexing_status['progress']}% - {indexing_status['current_file']}")
 
+    # Broadcast to WebSocket clients (fire-and-forget via asyncio task)
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            loop.create_task(ws_manager.broadcast({
+                "type": "indexing_progress",
+                "percent": indexing_status["progress"],
+                "current_file": indexing_status.get("current_file", ""),
+                "total": total,
+            }))
+    except Exception:
+        pass
+
 @app.get("/api/agent/chat")
 async def agent_chat(query: str, request: Request):
     """
@@ -1802,6 +1817,18 @@ def run_indexing(config, folders):
         logger.error(f"Error during indexing: {e}")
         indexing_status["running"] = False
         indexing_status["error"] = str(e)
+
+@app.websocket("/ws/progress")
+async def websocket_progress(websocket: WebSocket):
+    """WebSocket endpoint for real-time indexing and download progress updates."""
+    await ws_manager.connect(websocket)
+    try:
+        while True:
+            # Keep connection alive; server pushes events via ws_manager.broadcast()
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
