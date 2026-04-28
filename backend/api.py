@@ -331,9 +331,21 @@ async def health_check(request: Request):
         request (Request): The incoming request.
 
     Returns:
-        dict: A dictionary with the status 'ok'.
+        dict: Status of the API, database connectivity, and index readiness.
     """
-    return {"status": "ok"}
+    from fastapi.responses import JSONResponse
+    try:
+        conn = database.get_connection()
+        conn.connection.execute("SELECT 1")
+        db_status = "connected"
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={"status": "degraded", "database": "error", "error": str(e)},
+        )
+    with _index_lock:
+        idx_loaded = index is not None
+    return {"status": "ok", "database": db_status, "index_loaded": idx_loaded}
 
 def load_config():
     """
