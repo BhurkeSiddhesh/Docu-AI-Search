@@ -741,6 +741,10 @@ class SearchRequest(BaseModel):
     model_override: Optional[str] = None
     api_key_override: Optional[str] = None
     base_url_override: Optional[str] = None
+    # Search filters
+    file_types: Optional[List[str]] = None  # e.g. ["pdf", "docx"]
+    min_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    sort_by: Optional[str] = Field(default=None, pattern="^(relevance|date|filename|file_size)$")
 
 class SearchResult(BaseModel):
     """
@@ -1021,19 +1025,34 @@ async def search_files(request: SearchRequest, req: Request, _auth=Depends(requi
 
         processed_results = []
         context_snippets = []
-        
+
+        # Build normalised filter values once
+        _file_type_filter = {ft.lower().lstrip('.') for ft in (request.file_types or [])}
+
         for result in results:
             faiss_idx = result.get('faiss_idx')
-            
+
+            # Apply min_score filter
+            if request.min_score is not None:
+                score = result.get('score', 1.0)
+                if score < request.min_score:
+                    continue
+
             # Use file info from search result first (it comes from FAISS doc metadata)
             file_path = result.get('file_path')
             file_name = result.get('file_name')
-            
+
             # If not in search result, use batched lookup map
             if not file_path and faiss_idx in file_lookup_map:
                 file_info = file_lookup_map[faiss_idx]
                 file_path = file_info.get('path')
                 file_name = file_info.get('filename')
+
+            # Apply file type filter
+            if _file_type_filter and file_path:
+                ext = os.path.splitext(file_path)[1].lower().lstrip('.')
+                if ext not in _file_type_filter:
+                    continue
             
             # OPTIMIZATION: Use fast summary for all results to avoid blocking
             summary = cached_smart_summary(result['document'], provider, api_key, model_path, question=request.query)
@@ -1061,6 +1080,15 @@ async def search_files(request: SearchRequest, req: Request, _auth=Depends(requi
                 file_name=file_name
             ))
         
+        # Apply sort_by if requested (default is relevance from FAISS)
+        if request.sort_by and request.sort_by != "relevance":
+            if request.sort_by == "filename":
+                processed_results.sort(key=lambda r: (r.file_name or "").lower())
+            elif request.sort_by == "file_size":
+                processed_results.sort(key=lambda r: os.path.getsize(r.file_path) if r.file_path and os.path.exists(r.file_path) else 0, reverse=True)
+            elif request.sort_by == "date":
+                processed_results.sort(key=lambda r: os.path.getmtime(r.file_path) if r.file_path and os.path.exists(r.file_path) else 0, reverse=True)
+
         # Return results immediately - AI Answer will be streamed via separate endpoint
         active_model_name = provider.capitalize()
         if provider == 'local' and model_path:
