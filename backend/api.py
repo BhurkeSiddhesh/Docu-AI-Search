@@ -294,6 +294,29 @@ app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Return structured JSON for unhandled exceptions and log the traceback."""
+    import traceback
+    from fastapi.responses import JSONResponse
+    logger.error(
+        "Unhandled exception on %s %s: %s\n%s",
+        request.method,
+        request.url.path,
+        exc,
+        traceback.format_exc(),
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": True,
+            "message": "An unexpected error occurred. Please try again.",
+            "error_code": "INTERNAL_SERVER_ERROR",
+        },
+    )
+
+
 # Register embedding settings router
 from backend.settings import router as embedding_router
 app.include_router(embedding_router)
