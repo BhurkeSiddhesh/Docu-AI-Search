@@ -290,18 +290,24 @@ class TestAPIFileOperations(unittest.TestCase):
     def tearDown(self):
         app.dependency_overrides = {}
 
+    @patch('backend.database.count_files')
     @patch('backend.database.get_all_files')
-    def test_list_indexed_files(self, mock_get_files):
-        """Test listing indexed files."""
+    def test_list_indexed_files(self, mock_get_files, mock_count_files):
+        """Test listing indexed files returns paginated response."""
         mock_get_files.return_value = [
             {'id': 1, 'filename': 'test.pdf', 'path': '/test.pdf', 'size_bytes': 1024}
         ]
-        
+        mock_count_files.return_value = 1
+
         response = self.client.get("/api/files")
-        
+
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertIsInstance(data, list)
+        self.assertIsInstance(data, dict)
+        self.assertIn('files', data)
+        self.assertIn('total', data)
+        self.assertEqual(data['total'], 1)
+        self.assertEqual(len(data['files']), 1)
 
     def test_validate_path_valid(self):
         """Test validating a valid path."""
