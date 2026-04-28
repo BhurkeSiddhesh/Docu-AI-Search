@@ -952,12 +952,19 @@ async def search_files(request: SearchRequest, req: Request):
 
         # Run Search — use the active embedding client from settings state
         from backend.search import EmbeddingDimensionMismatchError
+        _search_timeout = int(os.getenv("SEARCH_TIMEOUT_SECONDS", "30"))
         try:
-            results, _context_snippets = search(
-                request.query, index, docs, tags,
-                get_active_embedding_client(req.app),
-                index_summaries, cluster_summaries, cluster_map, bm25
+            results, _context_snippets = await asyncio.wait_for(
+                asyncio.to_thread(
+                    search,
+                    request.query, index, docs, tags,
+                    get_active_embedding_client(req.app),
+                    index_summaries, cluster_summaries, cluster_map, bm25
+                ),
+                timeout=_search_timeout,
             )
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail="Search timed out. The embedding service may be unavailable.")
         except EmbeddingDimensionMismatchError as dim_err:
             raise HTTPException(
                 status_code=409,
