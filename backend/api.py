@@ -1553,12 +1553,25 @@ async def validate_path(request: dict, req: Request):
     path = request.get('path', '')
     if not path:
         return {"valid": False, "error": "Path is required"}
-    
-    if not os.path.exists(path):
+
+    # Normalize to prevent path traversal tricks
+    normalized = os.path.realpath(os.path.normpath(path))
+
+    # Reject system directories
+    _FORBIDDEN_PREFIXES = [
+        "/etc", "/sys", "/proc", "/dev", "/boot", "/run",
+        "C:\\Windows", "C:\\System32", "C:\\SysWOW64",
+    ]
+    if any(normalized.startswith(p) for p in _FORBIDDEN_PREFIXES):
+        return {"valid": False, "error": "Cannot index system directories"}
+
+    if not os.path.exists(normalized):
         return {"valid": False, "error": "Path does not exist"}
-    
-    if not os.path.isdir(path):
+
+    if not os.path.isdir(normalized):
         return {"valid": False, "error": "Path is not a directory"}
+
+    path = normalized
     
     # Count supported files
     supported_extensions = {'.txt', '.pdf', '.docx', '.xlsx', '.pptx'}
