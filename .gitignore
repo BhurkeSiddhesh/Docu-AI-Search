@@ -27,6 +27,7 @@ node_modules/
 .env
 .env.local
 *.env.*
+!.env.example
 
 # Models and Large Binaries
 models/

@@ -13,6 +13,8 @@ import uvicorn
 import os
 import time
 import configparser
+from dotenv import load_dotenv
+load_dotenv()
 
 # Path configuration for new folder structure
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -348,6 +350,19 @@ def load_config():
     
     config = configparser.ConfigParser()
     config.read(CONFIG_PATH)
+    # Override API keys from environment variables if set
+    env_key_map = {
+        'OPENAI_API_KEY': ('APIKeys', 'openai_api_key'),
+        'GEMINI_API_KEY': ('APIKeys', 'gemini_api_key'),
+        'ANTHROPIC_API_KEY': ('APIKeys', 'anthropic_api_key'),
+        'GROK_API_KEY': ('APIKeys', 'grok_api_key'),
+    }
+    for env_var, (section, key) in env_key_map.items():
+        val = os.environ.get(env_var)
+        if val:
+            if not config.has_section(section):
+                config.add_section(section)
+            config.set(section, key, val)
     return config
 
 def save_config_file(config):
