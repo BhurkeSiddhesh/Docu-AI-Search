@@ -280,7 +280,16 @@ ALLOWED_EXTENSIONS = {'.pdf', '.docx', '.pptx', '.xlsx', '.txt'}
 
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["100/minute"])
-app = FastAPI()
+app = FastAPI(
+    title="Docu-AI-Search API",
+    description=(
+        "Semantic document search powered by FAISS vector embeddings and local/cloud LLMs. "
+        "Interactive docs available at /docs (Swagger UI) and /redoc (ReDoc)."
+    ),
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
