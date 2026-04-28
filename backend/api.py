@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Depends
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Depends, Security
+from backend.auth import require_auth, _get_or_create_token, AUTH_ENABLED
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -346,6 +347,18 @@ async def health_check(request: Request):
     with _index_lock:
         idx_loaded = index is not None
     return {"status": "ok", "database": db_status, "index_loaded": idx_loaded}
+
+
+@app.get("/api/auth/token")
+async def get_auth_token(req: Request, _=Depends(verify_local_request)):
+    """Return the API auth token (localhost-only). Only available on first retrieval."""
+    if not AUTH_ENABLED:
+        return {"auth_enabled": False, "message": "Set AUTH_ENABLED=true to enable authentication"}
+    token = _get_or_create_token()
+    if not token:
+        return {"auth_enabled": True, "message": "Token already retrieved. Check config.ini or reset it manually."}
+    return {"auth_enabled": True, "token": token}
+
 
 def load_config():
     """
@@ -892,7 +905,7 @@ async def update_config(config_data: ConfigModel, request: Request):
     return {"status": "success", "message": "Configuration saved"}
 
 @app.post("/api/search")
-async def search_files(request: SearchRequest, req: Request):
+async def search_files(request: SearchRequest, req: Request, _auth=Depends(require_auth)):
     """
     Perform a semantic search on the indexed documents.
 
@@ -1067,7 +1080,7 @@ async def search_files(request: SearchRequest, req: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/stream-answer")
-async def stream_answer_endpoint(request: SearchRequest, req: Request):
+async def stream_answer_endpoint(request: SearchRequest, req: Request, _auth=Depends(require_auth)):
     """
     Stream the AI answer for a given search query.
 
