@@ -1356,8 +1356,8 @@ async def open_file(request: dict, req: Request, _=Depends(verify_local_request)
     if not file_path:
         raise HTTPException(status_code=400, detail="File path is required")
     
-    # Normalize path - fix mixed slashes from FAISS metadata
-    file_path = os.path.normpath(file_path)
+    # Normalize and resolve symlinks to prevent path traversal
+    file_path = os.path.realpath(os.path.normpath(file_path))
 
     # Security: Prevent argument injection (files starting with -)
     if os.path.basename(file_path).startswith("-"):
