@@ -6,6 +6,7 @@ import SearchHistory from './components/SearchHistory';
 import SettingsModal from './components/SettingsModal';
 import AgentChat from './components/AgentChat';
 import CosmicBackground from './components/CosmicBackground';
+import ErrorBoundary from './components/ErrorBoundary';
 import axios from 'axios';
 import { History } from 'lucide-react';
 
@@ -255,11 +256,13 @@ function App() {
                         />
                     </div>
 
-                    {isAgentMode && agentQuery ? (
-                        <AgentChat query={agentQuery} />
-                    ) : (
-                        <SearchResults results={searchResults} aiAnswer={aiAnswer} />
-                    )}
+                    <ErrorBoundary>
+                        {isAgentMode && agentQuery ? (
+                            <AgentChat query={agentQuery} />
+                        ) : (
+                            <SearchResults results={searchResults} aiAnswer={aiAnswer} />
+                        )}
+                    </ErrorBoundary>
                 </div>
             </main>
 
