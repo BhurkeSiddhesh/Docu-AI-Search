@@ -233,7 +233,7 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
         embeddings_model = get_embeddings(provider, api_key, model_path)
     
     # Embed in batches to be efficient but safe
-    batch_size = 100 
+    batch_size = int(os.getenv("EMBEDDING_BATCH_SIZE", "100"))
     batches = [chunk_strings[i:i + batch_size] for i in range(0, len(chunk_strings), batch_size)]
     
     # Use ThreadPool for Network/GPU bound
