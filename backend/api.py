@@ -299,6 +299,7 @@ app.add_middleware(
 )
 
 # Global state
+import threading
 index = None
 docs = []
 tags = []
@@ -306,6 +307,7 @@ index_summaries = None
 cluster_summaries = []
 cluster_map = None
 bm25 = None
+_index_lock = threading.Lock()
 
 @app.get("/")
 async def root(request: Request):
@@ -414,8 +416,9 @@ async def load_initial_index():
             logger.info("Loading existing index in background...")
             res = await asyncio.to_thread(load_index, INDEX_PATH)
             # Unpack 8-tuple (7 data items + meta dict added in latest indexing.py)
-            index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25 = res[:7]
             _index_meta = res[7] if len(res) > 7 else {}
+            with _index_lock:
+                index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25 = res[:7]
             logger.info(
                 "Loaded existing index successfully. "
                 "Model: %s, dim: %s",
@@ -424,13 +427,14 @@ async def load_initial_index():
             )
         except Exception as e:
             logger.error(f"Error loading index: {e}")
-            index = None
-            docs = []
-            tags = []
-            index_summaries = None
-            cluster_summaries = []
-            cluster_map = None
-            bm25 = None
+            with _index_lock:
+                index = None
+                docs = []
+                tags = []
+                index_summaries = None
+                cluster_summaries = []
+                cluster_map = None
+                bm25 = None
 
 @app.get("/api/browse")
 async def browse_folder(request: Request):
@@ -897,9 +901,16 @@ async def search_files(request: SearchRequest, req: Request):
         HTTPException: 400 if index not loaded, 409 if embedding dimension mismatch.
     """
     global index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25
-    
-    if not index:
+
+    with _index_lock:
+        index_snap, docs_snap, tags_snap = index, docs, tags
+        isumm_snap, csumm_snap, cmap_snap, bm25_snap = index_summaries, cluster_summaries, cluster_map, bm25
+
+    if not index_snap:
         raise HTTPException(status_code=400, detail="Index not loaded. Please configure and index a folder first.")
+
+    index, docs, tags = index_snap, docs_snap, tags_snap
+    index_summaries, cluster_summaries, cluster_map, bm25 = isumm_snap, csumm_snap, cmap_snap, bm25_snap
 
     print(f"\n[API] POST /api/search - Query: <redacted>")
 
@@ -1712,9 +1723,10 @@ def run_indexing(config, folders):
                 new_summ_index, new_summ_docs, new_cluster_map, new_bm25,
                 model_name=_model_name, embedding_dim=_embedding_dim,
             )
-            index, docs, tags = new_index, new_docs, new_tags
-            index_summaries, cluster_summaries, cluster_map = new_summ_index, new_summ_docs, new_cluster_map
-            bm25 = new_bm25
+            with _index_lock:
+                index, docs, tags = new_index, new_docs, new_tags
+                index_summaries, cluster_summaries, cluster_map = new_summ_index, new_summ_docs, new_cluster_map
+                bm25 = new_bm25
             
             logger.info("Indexing completed successfully.")
             indexing_status["running"] = False
