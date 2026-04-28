@@ -18,6 +18,30 @@ import string
 # Metadata sidecar filename suffix
 _META_SUFFIX = '_meta.json'
 
+# Checkpoint file for resume-on-failure support
+_CHECKPOINT_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'index_checkpoint.json')
+
+
+def _load_checkpoint() -> dict:
+    if os.path.exists(_CHECKPOINT_PATH):
+        try:
+            with open(_CHECKPOINT_PATH) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _save_checkpoint(checkpoint: dict):
+    os.makedirs(os.path.dirname(_CHECKPOINT_PATH), exist_ok=True)
+    with open(_CHECKPOINT_PATH, 'w') as f:
+        json.dump(checkpoint, f)
+
+
+def _clear_checkpoint():
+    if os.path.exists(_CHECKPOINT_PATH):
+        os.remove(_CHECKPOINT_PATH)
+
 def tokenize(text: str) -> List[str]:
     """
     Simple tokenization for BM25 keyword matching.
@@ -110,18 +134,28 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
     # 3. Parallel Text Extraction (CPU Bound) - 0% to 20%
     print("Step 1/5: Extracting Text (Parallel)...")
     valid_docs = [] # List of (filepath, text)
-    
+
+    # Load checkpoint to resume after a failure
+    checkpoint = _load_checkpoint()
+    files_to_extract = [f for f in all_files if f not in checkpoint]
+    # Restore already-extracted docs from checkpoint
+    for cached_path, cached_text in checkpoint.items():
+        if cached_path in all_files and cached_text:
+            valid_docs.append((cached_path, cached_text))
+
     # Use fewer workers for CPU bound tasks to keep UI responsive
     with concurrent.futures.ProcessPoolExecutor(max_workers=4) as executor:
-        future_to_file = {executor.submit(safe_extract_text, f): f for f in all_files}
-        
-        compete_count = 0
+        future_to_file = {executor.submit(safe_extract_text, f): f for f in files_to_extract}
+
+        compete_count = len(checkpoint)
         total_files = len(all_files)
         for future in concurrent.futures.as_completed(future_to_file):
             filepath, text = future.result()
             if text:
                 valid_docs.append((filepath, text))
-            
+            checkpoint[filepath] = text or ""
+            _save_checkpoint(checkpoint)
+
             compete_count += 1
             if progress_callback:
                 # Map 0-total_files to 0-20%
@@ -332,6 +366,7 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
         'model_name': _model_name,
         'embedding_dim': _embedding_dim,
     }
+    _clear_checkpoint()
     return index_chunks, all_chunks, tags, index_summaries, cluster_summaries, final_cluster_map, bm25, meta
 
 def save_index(index_chunks: faiss.Index, all_chunks: List[Dict], tags: List[str], 
