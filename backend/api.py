@@ -887,7 +887,7 @@ async def update_config(config_data: ConfigModel, request: Request):
             for folder in config_data.folders:
                 database.add_folder_to_history(folder)
     except Exception as e:
-        print(f"Failed to update folder history: {e}")
+        logger.info(f"Failed to update folder history: {e}")
         
     return {"status": "success", "message": "Configuration saved"}
 
@@ -924,7 +924,7 @@ async def search_files(request: SearchRequest, req: Request):
     index, docs, tags = index_snap, docs_snap, tags_snap
     index_summaries, cluster_summaries, cluster_map, bm25 = isumm_snap, csumm_snap, cmap_snap, bm25_snap
 
-    print(f"\n[API] POST /api/search - Query: <redacted>")
+    logger.info(f"\n[API] POST /api/search - Query: <redacted>")
 
     try:
         start_time = time.time()
@@ -944,7 +944,7 @@ async def search_files(request: SearchRequest, req: Request):
         is_agentic = config.get('General', 'agent_mode', fallback='False').lower() == 'true'
         
         if is_agentic:
-            print("[API] Running in AGENTIC mode.")
+            logger.info("[API] Running in AGENTIC mode.")
             from backend.agent import ReActAgent
             agent = ReActAgent({
                 'index': index, 'docs': docs, 'tags': tags, 'config': config,
@@ -1115,7 +1115,7 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request):
     final_context_snippets = []
 
     if request.context:
-        print(f"[API] Using provided context ({len(request.context)} snippets) for streaming answer")
+        logger.info(f"[API] Using provided context ({len(request.context)} snippets) for streaming answer")
         final_context_snippets = request.context
     else:
         # Re-run search to get context
