@@ -923,7 +923,7 @@ async def search_files(request: SearchRequest, req: Request):
         if is_agentic:
             print("[API] Running in AGENTIC mode.")
             from backend.agent import ReActAgent
-            agent = ReActAgent(provider, api_key, {
+            agent = ReActAgent({
                 'index': index, 'docs': docs, 'tags': tags, 'config': config,
                 'index_summaries': index_summaries, 'cluster_summaries': cluster_summaries,
                 'cluster_map': cluster_map, 'bm25': bm25
