@@ -243,7 +243,7 @@ function App() {
                         </div>
                     )}
 
-                    <div className="w-full">
+                    <div className="w-full" role="search" aria-label="Document search">
                         <SearchBar
                             onSearch={handleSearch}
                             isLoading={isLoading}

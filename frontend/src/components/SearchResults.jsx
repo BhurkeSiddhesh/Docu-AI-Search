@@ -40,7 +40,7 @@ const SearchResults = ({ results, aiAnswer }) => {
                 transition={{ duration: 0.3, delay: index * 0.05 }}
                 className="result-card group/card cursor-pointer hover:ring-2 hover:ring-primary/50 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none transition-all"
                 onClick={() => result.file_path && handleOpenFile(result.file_path)}
-                role="button"
+                role="listitem"
                 tabIndex={0}
                 aria-label={`Open ${result.file_name}`}
                 onKeyDown={(e) => {
@@ -88,9 +88,12 @@ const SearchResults = ({ results, aiAnswer }) => {
 
     return (
         <div className="w-full mt-8 pb-20">
+            <p className="sr-only" aria-live="polite" aria-atomic="true">
+                {results.length} search result{results.length !== 1 ? 's' : ''} found
+            </p>
             <div className="flex gap-6">
                 {/* Main Results Column */}
-                <div className="flex-1 space-y-4">
+                <div className="flex-1 space-y-4" role="list" aria-label="Search results">
                     {resultsList}
                 </div>
 

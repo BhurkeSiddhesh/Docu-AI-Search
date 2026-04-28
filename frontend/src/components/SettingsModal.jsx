@@ -388,13 +388,19 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                     if (e.target === e.currentTarget) onClose();
                 }}
                 onKeyDown={(e) => {
-                    if (e.key === 'Escape' && e.target === e.currentTarget) onClose();
+                    if (e.key === 'Escape') onClose();
                 }}
                 tabIndex={-1}
+                aria-hidden="true"
             >
-                <div className="glass-overlay w-[96vw] max-w-6xl h-[88vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+                <div
+                    className="glass-overlay w-[96vw] max-w-6xl h-[88vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="settings-modal-title"
+                >
                     <div className="sticky top-0 z-20 flex items-center justify-between p-4 border-b border-border/30 bg-background/85 backdrop-blur-md">
-                        <h2 className="text-lg font-bold flex items-center gap-3">
+                        <h2 id="settings-modal-title" className="text-lg font-bold flex items-center gap-3">
                             <div className="p-2 rounded-xl bg-primary/10">
                                 <Settings className="w-5 h-5 text-primary" />
                             </div>
