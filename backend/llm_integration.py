@@ -43,7 +43,7 @@ try:
     logger.info(f"Python Path: {sys.path}")
     logger.info(f"CWD: {os.getcwd()}")
 except Exception as e:
-    print(f"DEBUG ERROR: {e}")
+    logger.error(f"{e}")
 
 # IMPORTS FIXED: Lazy loading to prevent startup crashes
 # from langchain_huggingface import HuggingFaceEmbeddings
@@ -74,7 +74,7 @@ def get_embeddings(provider: str, api_key: str = None, model_path: str = None) -
     if cache_key in _embeddings_cache:
         return _embeddings_cache[cache_key]
     
-    print(f"Loading embeddings for provider: {provider}")
+    logger.info(f"Loading embeddings for provider: {provider}")
 
     # DEBUG: Log environment when actually requesting embeddings
     try:
@@ -98,7 +98,7 @@ def get_embeddings(provider: str, api_key: str = None, model_path: str = None) -
         # Assuming Grok users might want local embeddings to save cost/latency if not specified otherwise.
         # But actually, let's just use HuggingFace local for everything else to keep it simple and free.
         # Unless user specifically wants cloud embeddings.
-        print("Using local embeddings for Grok provider.")
+        logger.info("Using local embeddings for Grok provider.")
         embeddings = HuggingFaceEmbeddings(
             model_name="all-MiniLM-L6-v2",
             model_kwargs={'device': 'cpu'},
@@ -106,7 +106,7 @@ def get_embeddings(provider: str, api_key: str = None, model_path: str = None) -
         )
     else:
         # Default / Local
-        print("Loading local embeddings (HuggingFace)...")
+        logger.info("Loading local embeddings (HuggingFace)...")
         if HuggingFaceEmbeddings is None:
             import logging
             logger = logging.getLogger(__name__)
@@ -120,7 +120,7 @@ def get_embeddings(provider: str, api_key: str = None, model_path: str = None) -
         )
 
     
-    print("Embeddings loaded!")
+    logger.info("Embeddings loaded!")
     _embeddings_cache[cache_key] = embeddings
     return embeddings
 
@@ -247,18 +247,18 @@ def get_local_llm(model_path: str, tensor_split: List[float] = None) -> Any:
         Any: An initialized Llama instance, or None if loading fails.
     """
     if Llama is None:
-        print("llama_cpp not installed")
+        logger.warning("llama_cpp not installed")
         return None
 
         
     if not model_path or not os.path.exists(model_path):
-        print(f"Model not found at {model_path}")
+        logger.info(f"Model not found at {model_path}")
         return None
 
     if model_path in _llm_cache:
         return _llm_cache[model_path]
 
-    print(f"Loading Local LLM from {model_path}...")
+    logger.info(f"Loading Local LLM from {model_path}...")
     try:
         # Load with reasonable defaults for CPU inference
         # Advanced performance tuning for "blazing fast" inference
@@ -276,10 +276,10 @@ def get_local_llm(model_path: str, tensor_split: List[float] = None) -> Any:
             verbose=False         # Disable verbose logs for cleaner console unless debugging
         )
         _llm_cache[model_path] = llm
-        print("Local LLM loaded!")
+        logger.info("Local LLM loaded!")
         return llm
     except Exception as e:
-        print(f"Failed to load Local LLM: {e}")
+        logger.error(f"Failed to load Local LLM: {e}")
         return None
 
 def warmup_local_model(model_path: str, tensor_split: List[float] = None) -> None:
@@ -315,25 +315,25 @@ def get_llm_client(provider: str, api_key: str = None, model_path: str = None, b
     try:
         if provider == 'openai':
             if not api_key:
-                print("OpenAI API Key missing")
+                logger.warning("OpenAI API Key missing")
                 return None
             client = ChatOpenAI(api_key=api_key, model="gpt-4o-mini", temperature=0.3)
 
         elif provider == 'gemini':
             if not api_key:
-                print("Gemini API Key missing")
+                logger.warning("Gemini API Key missing")
                 return None
             client = ChatGoogleGenerativeAI(google_api_key=api_key, model="gemini-1.5-flash", temperature=0.3)
 
         elif provider == 'anthropic':
             if not api_key:
-                print("Anthropic API Key missing")
+                logger.warning("Anthropic API Key missing")
                 return None
             client = ChatAnthropic(api_key=api_key, model="claude-3-haiku-20240307", temperature=0.3)
 
         elif provider == 'grok':
             if not api_key:
-                print("Grok API Key missing")
+                logger.warning("Grok API Key missing")
                 return None
             # Grok uses OpenAI-compatible endpoint
             client = ChatOpenAI(
@@ -347,7 +347,7 @@ def get_llm_client(provider: str, api_key: str = None, model_path: str = None, b
             # For local, we don't return a LangChain object because we are using llama-cpp-python directly
             # for better control over the 'create_completion' call in generate_ai_answer currently.
             if not model_path or not os.path.exists(model_path):
-                print("Local model path missing or invalid")
+                logger.warning("Local model path missing or invalid")
                 return None
             client = "LOCAL:" + model_path
 
@@ -362,11 +362,11 @@ def get_llm_client(provider: str, api_key: str = None, model_path: str = None, b
                 # Stash the provider instance for reuse in generate/stream
                 _llm_client_cache[f"__ext_instance__{provider}"] = ext_provider
             except Exception as e:
-                print(f"Error initializing external provider '{provider}': {e}")
+                logger.error(f"Error initializing external provider '{provider}': {e}")
                 return None
 
     except Exception as e:
-        print(f"Error initializing LLM client for {provider}: {e}")
+        logger.error(f"Error initializing LLM client for {provider}: {e}")
         return None
 
     if client:
@@ -510,7 +510,7 @@ def generate_ai_answer(context: str, question: str, provider: str,
             return response.content.strip()
 
     except Exception as e:
-        print(f"Generation error ({provider}): {e}")
+        logger.error(f"Generation error ({provider}): {e}")
         return f"Error generating answer: {str(e)}"
 
 def stream_ai_answer(context: str, question: str, provider: str,
@@ -603,7 +603,7 @@ Only answer based on the provided documents. Quote facts and reference file name
                  yield chunk.content
 
     except Exception as e:
-        print(f"Streaming error ({provider}): {e}")
+        logger.error(f"Streaming error ({provider}): {e}")
         yield f"Error generating answer: {str(e)}"
 
 # -----------------------------------------------------------------------------
@@ -661,10 +661,10 @@ def cached_generate_ai_answer(context: str, question: str, provider: str,
     # 1. Check Cache
     cached_text = database.get_cached_response(query_hash, context_hash, model_id, "ai_answer")
     if cached_text:
-        print(f"[CACHE] Hit for AI answer on query: '{query_hash[:8]}...'")
+        logger.info(f"[CACHE] Hit for AI answer on query: '{query_hash[:8]}...'")
         return cached_text
     
-    print(f"[CACHE] Miss for AI answer. Generating with {model_id}...")
+    logger.info(f"[CACHE] Miss for AI answer. Generating with {model_id}...")
     answer = generate_ai_answer(context, question, provider, api_key, model_path, tensor_split=tensor_split)
     
     # 3. Store in Cache (if valid response)
@@ -708,10 +708,10 @@ def cached_smart_summary(text: str, query: str, provider: str,
     # 1. Check Cache
     cached_text = database.get_cached_response(query_hash, context_hash, model_id, "smart_summary")
     if cached_text:
-        print(f"[CACHE] Hit for smart_summary in {file_name or 'unknown'}")
+        logger.info(f"[CACHE] Hit for smart_summary in {file_name or 'unknown'}")
         return cached_text
     
-    print(f"[CACHE] Miss for smart_summary in {file_name or 'unknown'}. Generating...")
+    logger.info(f"[CACHE] Miss for smart_summary in {file_name or 'unknown'}. Generating...")
 
     # 2. Generate
     summary = smart_summary(text, query, provider, api_key, model_path, file_name)
@@ -749,11 +749,11 @@ def smart_summary(text: str, query: str, provider: str,
 
     client = get_llm_client(provider, api_key, model_path)
     if not client:
-        print(f"[AI] Error: get_llm_client returned None for provider {provider}")
+        logger.error(f"[AI] Error: get_llm_client returned None for provider {provider}")
         # Fallback to regex summary if no model available
         return summarize(text, provider, api_key, model_path, query)
     
-    print(f"[AI] Smart Summary: Analyzing '{file_name or 'unnamed document'}' for query '{query[:3]}***'")
+    logger.info(f"[AI] Smart Summary: Analyzing '{file_name or 'unnamed document'}' for query '{query[:3]}***'")
 
     # Truncate text to avoid token limits (approx 3000 chars ~ 750 tokens)
     truncated_text = text[:3000]
@@ -801,7 +801,7 @@ Key findings:"""
         return result
 
     except Exception as e:
-        print(f"Smart summary error: {e}")
+        logger.error(f"Smart summary error: {e}")
         return summarize(text, provider, api_key, model_path, query) # Fallback
 
 def extract_answer(text: str, question: str) -> str:
@@ -882,7 +882,7 @@ def summarize(text: str, provider: str = None, api_key: str = None,
             return ' '.join(summary_sentences)
         return text[:150] + "..." if len(text) > 150 else text
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error(f"Error: {e}")
         return ""
 
 def get_tags(text: str, provider: str, api_key: str = None, 

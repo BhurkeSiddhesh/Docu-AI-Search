@@ -1,8 +1,11 @@
 import os
+import logging
 from docx import Document
 from pypdf import PdfReader
 from pptx import Presentation
 from openpyxl import load_workbook
+
+logger = logging.getLogger(__name__)
 
 def extract_text(filepath):
     """
@@ -53,8 +56,8 @@ def extract_text(filepath):
                             text.append(str(cell.value))
             return "\n".join(text)
         else:
-            print(f"Unsupported file type: {ext}")
+            logger.warning(f"Unsupported file type: {ext}")
             return None
     except Exception as e:
-        print(f"Error extracting text from {filepath}: {e}")
+        logger.error(f"Error extracting text from {filepath}: {e}")
         return None
