@@ -393,6 +393,15 @@ This verifies:
 3. Click "Select" on the downloaded model
 4. Try indexing again
 
+### Error: Embedding dimension mismatch
+
+**Cause**: You changed the embedding model (or switched providers) after documents were already indexed. The existing FAISS index was built with a different vector size and is incompatible with the new model.
+
+**Solution**:
+1. Delete `data/index.faiss` (and `data/index.faiss_meta.json` if present)
+2. Go to Settings and confirm the correct embedding model is selected
+3. Click "Index Now" to rebuild the index with the new model's dimensions
+
 ### Model download stuck or failed
 
 **Cause**: Network interruption or timeout.
