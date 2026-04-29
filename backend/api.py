@@ -299,9 +299,9 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 async def global_exception_handler(request: Request, exc: Exception):
     """Return structured JSON for unhandled exceptions and log the traceback."""
     import traceback
-    from fastapi import HTTPException
+    from fastapi.exceptions import RequestValidationError
     from fastapi.responses import JSONResponse
-    if isinstance(exc, HTTPException):
+    if isinstance(exc, (HTTPException, RequestValidationError)):
         raise exc
     logger.error(
         "Unhandled exception on %s %s: %s\n%s",
