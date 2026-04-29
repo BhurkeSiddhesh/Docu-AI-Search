@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh issue *)",
+      "Bash(git checkout *)",
+      "Bash(python -m pytest backend/tests/test_api.py::TestFilesEndpoints::test_list_indexed_files backend/tests/test_database.py::TestDatabaseCleanup::test_get_files_with_limit_and_offset -v)",
+      "Bash(python -m pytest \"backend/tests/test_database.py::TestDatabaseEdgeCases::test_get_files_with_limit_and_offset\" -v)",
+      "Bash(python -m pytest backend/tests/test_database.py -v --tb=short)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(gh pr create --repo BhurkeSiddhesh/Docu-AI-Search --base main --head fix/api-files-pagination --title 'fix\\(api\\): add pagination to /api/files endpoint' --body ' *)",
+      "Bash(gh pr *)"
+    ]
+  }
+}
