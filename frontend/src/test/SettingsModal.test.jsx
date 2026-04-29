@@ -85,7 +85,7 @@ describe('SettingsModal Component', () => {
 
         // Local LLM
         fireEvent.click(screen.getByText('Local LLM'))
-        await screen.findByText('System Engine', {}, { timeout: 8000 })
+        await screen.findByText('Model Manager Mock', {}, { timeout: 8000 })
     }, 20000)
 
     it('removes a folder', async () => {
