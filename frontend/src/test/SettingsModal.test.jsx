@@ -493,8 +493,8 @@ describe('SettingsModal Component', () => {
             expect(screen.getByText('Settings saved successfully!')).toBeDefined()
         })
 
-        // Fast-forward 3 seconds
-        act(() => {
+        // Fast-forward 3 seconds and flush React state updates
+        await act(async () => {
             vi.advanceTimersByTime(3000)
         })
 
