@@ -311,6 +311,11 @@ python scripts/verify_golden_set.py
   - **docs**: Updated backend tech stack version note in `AGENTS.md` from `Python 3.8+` to `Python 3.10+`.
   - **Files**: `README.md`, `AGENTS.md`
 
+### 2026-04-29 (CI Dependency Resolver Fix)
+- **Resolved pip dependency conflict introduced by grouped dependency bump**
+  - **fix**: Updated `langchain-core` pin in `requirements.txt` from `1.2.28` to `1.2.31` to satisfy `langchain-text-splitters==1.1.2` minimum constraint (`langchain-core>=1.2.31`) and unblock CI dependency installation.
+  - **Files**: `requirements.txt`, `AGENTS.md`
+
 ### 2026-04-24 (Test Suite Stabilization & Security Fixes)
 - **Resolved Backend Test Regressions and Security Log Leaks**
   - **fix**: Redacted raw user queries from logs in `backend/llm_integration.py` (cache hits and smart summaries) to prevent sensitive data leakage.
