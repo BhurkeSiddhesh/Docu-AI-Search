@@ -482,10 +482,11 @@ describe('SettingsModal Component', () => {
     })
 
     it('dismisses toast after 3 seconds', async () => {
-        vi.useFakeTimers()
+        // shouldAdvanceTime keeps real time flowing so waitFor polling works,
+        // while still letting us control the fake clock for the toast timer.
+        vi.useFakeTimers({ shouldAdvanceTime: true })
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        // waitFor uses MutationObserver so it works even with fake timers
         await waitFor(() => screen.getByText('Settings'))
 
         fireEvent.click(screen.getByText('Save Changes'))
@@ -494,12 +495,14 @@ describe('SettingsModal Component', () => {
             expect(screen.getByText('Settings saved successfully!')).toBeDefined()
         })
 
-        // Drain all pending timers asynchronously so React can flush the state update
-        await act(async () => {
-            await vi.runAllTimersAsync()
-        })
+        // Advance the fake clock past the 3 s auto-dismiss threshold
+        act(() => { vi.advanceTimersByTime(3000) })
 
-        expect(screen.queryByText('Settings saved successfully!')).toBeNull()
+        // Poll for the DOM update instead of asserting synchronously — React
+        // may batch the state update and re-render asynchronously
+        await waitFor(() => {
+            expect(screen.queryByText('Settings saved successfully!')).toBeNull()
+        })
 
         vi.useRealTimers()
     })
