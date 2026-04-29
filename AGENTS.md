@@ -11,7 +11,7 @@ npm run start          # Start backend (8000) + frontend (5173)
 
 ## Tech Stack
 
-**Backend (Python 3.8+):**
+**Backend (Python 3.10+):**
 - FastAPI - REST API with async support
 - FAISS - Vector similarity search
 - LangChain - LLM integration framework
@@ -305,6 +305,12 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 |
+### 2026-04-29 (Dependency Baseline Compatibility Follow-up)
+- **Aligned documented Python baseline with updated dependency constraints**
+  - **docs**: Updated Python version badge and runtime requirement in `README.md` from `3.8+` to `3.10+` to reflect current dependency support windows after recent dependency upgrades.
+  - **docs**: Updated backend tech stack version note in `AGENTS.md` from `Python 3.8+` to `Python 3.10+`.
+  - **Files**: `README.md`, `AGENTS.md`
+
 ### 2026-04-24 (Test Suite Stabilization & Security Fixes)
 - **Resolved Backend Test Regressions and Security Log Leaks**
   - **fix**: Redacted raw user queries from logs in `backend/llm_integration.py` (cache hits and smart summaries) to prevent sensitive data leakage.
