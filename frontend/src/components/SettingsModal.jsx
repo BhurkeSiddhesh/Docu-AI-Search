@@ -1,13 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { X, Settings, FolderOpen, Loader2, Save, Key, Cpu, Trash2, CheckCircle2, Database, Wifi, WifiOff, RefreshCw, Server } from 'lucide-react';
 import ModelManager from './ModelManager';
 
 const API = 'http://localhost:8000';
 
-// ---------------------------------------------------------------------------
-// Inline toast — no extra npm package needed
-// ---------------------------------------------------------------------------
 const Toast = ({ message, type = 'success', onDismiss }) => {
     useEffect(() => {
         const t = setTimeout(onDismiss, 3000);
@@ -15,30 +11,26 @@ const Toast = ({ message, type = 'success', onDismiss }) => {
     }, [onDismiss]);
 
     const colours = {
-        success: 'bg-green-500/90 text-white border-green-400/30',
-        error:   'bg-destructive/90 text-white border-destructive/30',
-        info:    'bg-primary/90 text-white border-primary/30',
+        success: 'bg-green-500 text-white shadow-green-500/20',
+        error:   'bg-red-500 text-white shadow-red-500/20',
+        info:    'bg-primary text-white shadow-primary/20',
     };
 
     return (
-        <div
-            id="settings-toast"
-            className={`fixed bottom-6 right-6 z-[200] flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border backdrop-blur-md text-sm font-medium animate-in slide-in-from-bottom-4 duration-300 ${colours[type]}`}
-        >
-            {type === 'success' && <CheckCircle2 className="w-4 h-4 flex-shrink-0" />}
-            {type === 'error'   && <X            className="w-4 h-4 flex-shrink-0" />}
+        <div className={`fixed bottom-8 right-8 z-[200] flex items-center gap-4 px-6 py-4 rounded-3xl shadow-2xl backdrop-blur-xl text-sm font-bold animate-in slide-in-from-bottom-8 duration-500 ${colours[type]}`}>
+            <span className="material-symbols-outlined">{type === 'success' ? 'check_circle' : (type === 'error' ? 'error' : 'info')}</span>
             <span>{message}</span>
-            <button type="button" onClick={onDismiss} className="ml-2 opacity-70 hover:opacity-100" aria-label="Dismiss notification">
-                <X className="w-3 h-3" />
+            <button type="button" onClick={onDismiss} className="ml-2 opacity-70 hover:opacity-100">
+                <span className="material-symbols-outlined text-sm">close</span>
             </button>
         </div>
     );
 };
 
 const EMBEDDING_PROVIDER_TYPES = [
-    { value: 'local',           label: 'Local (HuggingFace on-device)',       needsKey: false },
-    { value: 'huggingface_api', label: 'HuggingFace Inference API',           needsKey: true  },
-    { value: 'commercial_api',  label: 'Commercial API (OpenAI / Gemini)',    needsKey: true  },
+    { value: 'local',           label: 'Local (On-device)',       needsKey: false },
+    { value: 'huggingface_api', label: 'HuggingFace API',           needsKey: true  },
+    { value: 'commercial_api',  label: 'Cloud (OpenAI/Gemini)',    needsKey: true  },
 ];
 
 const DEFAULT_EMBEDDING_CONFIG = {
@@ -52,32 +44,23 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
         folders: [],
         auto_index: false,
         provider: 'local',
-        // API Keys for different providers
         openai_api_key: '',
         gemini_api_key: '',
         anthropic_api_key: '',
         grok_api_key: '',
-        // Local model settings
         local_model_path: '',
         local_model_type: 'llamacpp'
     });
     const [embeddingConfig, setEmbeddingConfig] = useState(DEFAULT_EMBEDDING_CONFIG);
-    const [toast, setToast] = useState(null);  // { message, type }
+    const [toast, setToast] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
-    const [indexingStatus, setIndexingStatus] = useState({
-        running: false,
-        progress: 0,
-        current_file: '',
-        total_files: 0,
-        processed_files: 0
-    });
+    const [indexingStatus, setIndexingStatus] = useState({ running: false, progress: 0 });
     const [activeSection, setActiveSection] = useState('folders');
     const [folderHistory, setFolderHistory] = useState([]);
     const [showHistory, setShowHistory] = useState(false);
     const [cacheStats, setCacheStats] = useState({ total_entries: 0, total_hits: 0 });
-    // External Provider state
-    const [extProviderType, setExtProviderType] = useState('lmstudio'); // 'ollama' or 'lmstudio'
-    const [extHealth, setExtHealth] = useState(null); // { status, models_available, message }
+    const [extProviderType, setExtProviderType] = useState('lmstudio');
+    const [extHealth, setExtHealth] = useState(null);
     const [extModels, setExtModels] = useState([]);
     const [extLoadingHealth, setExtLoadingHealth] = useState(false);
     const [extLoadingModels, setExtLoadingModels] = useState(false);
@@ -91,6 +74,8 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
         if (isOpen) {
             fetchConfig();
             fetchEmbeddingConfig();
+            fetchFolderHistory();
+            fetchCacheStats();
         }
     }, [isOpen]);
 
@@ -103,40 +88,15 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
         return () => clearInterval(interval);
     }, [isOpen]);
 
-    useEffect(() => {
-        if (isOpen) {
-            fetchFolderHistory();
-            fetchCacheStats();
-        }
-    }, [isOpen]);
-
-    useEffect(() => {
-        const handleKeyDown = (e) => {
-            if (e.key === 'Escape' && isOpen) {
-                onClose();
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onClose]);
-
     const fetchConfig = async () => {
         try {
             const response = await axios.get(`${API}/api/config`);
             const data = response.data;
-            // Backend returns _set booleans, not actual keys — keep form fields empty
             const normalized = { ...data };
             ['openai', 'gemini', 'anthropic', 'grok'].forEach(p => {
                 normalized[`${p}_api_key`] = '';
-                delete normalized[`${p}_api_key_set`];
             });
-            setConfig(prev => ({ ...prev, ...normalized, _apiKeySet: {
-                openai: data.openai_api_key_set,
-                gemini: data.gemini_api_key_set,
-                anthropic: data.anthropic_api_key_set,
-                grok: data.grok_api_key_set,
-            }}));
+            setConfig(prev => ({ ...prev, ...normalized }));
         } catch (error) {
             console.error('Failed to fetch config:', error);
         }
@@ -145,14 +105,11 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
     const fetchEmbeddingConfig = async () => {
         try {
             const response = await axios.get(`${API}/api/settings/embeddings`);
-            // Map api_key_set back to empty string for the input field
-            setEmbeddingConfig(prev => ({
-                ...DEFAULT_EMBEDDING_CONFIG,
+            setEmbeddingConfig({
                 provider_type: response.data.provider_type,
                 model_name:    response.data.model_name,
-                // If key was set server-side, show placeholder; user can overwrite
                 api_key: response.data.api_key_set ? '••••••••' : '',
-            }));
+            });
         } catch (error) {
             console.error('Failed to fetch embedding config:', error);
         }
@@ -185,87 +142,25 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
         }
     };
 
-    // -- External Provider API calls --
-    const getExtBaseUrl = () => {
-        return extProviderType === 'ollama'
-            ? (config.ollama_base_url || 'http://localhost:11434')
-            : (config.lmstudio_base_url || 'http://127.0.0.1:1234');
-    };
-
-    const checkExtHealth = async () => {
-        setExtLoadingHealth(true);
-        setExtHealth(null);
-        try {
-            const resp = await axios.post(`${API}/api/providers/health`, {
-                provider_type: extProviderType,
-                base_url: getExtBaseUrl(),
-                api_key: config.external_api_key || '',
-            });
-            setExtHealth(resp.data);
-            if (resp.data.status === 'ok') {
-                showToast(`${extProviderType === 'ollama' ? 'Ollama' : 'LM Studio'} connected!`, 'success');
-            }
-        } catch (err) {
-            setExtHealth({ status: 'error', message: err.response?.data?.detail || 'Connection failed' });
-            showToast('Provider unreachable', 'error');
-        } finally {
-            setExtLoadingHealth(false);
-        }
-    };
-
-    const fetchExtModels = async () => {
-        setExtLoadingModels(true);
-        setExtModels([]);
-        try {
-            const resp = await axios.post(`${API}/api/providers/models`, {
-                provider_type: extProviderType,
-                base_url: getExtBaseUrl(),
-                api_key: config.external_api_key || '',
-            });
-            setExtModels(resp.data.models || []);
-        } catch (err) {
-            showToast('Failed to fetch models', 'error');
-        } finally {
-            setExtLoadingModels(false);
-        }
-    };
-
     const handleSave = async () => {
         setIsLoading(true);
         try {
-            // 1. Save general config
             await axios.post(`${API}/api/config`, config);
-
-            // 2. Save embedding config (only send api_key if user typed a new value)
             const embPayload = {
                 provider_type: embeddingConfig.provider_type,
                 model_name:    embeddingConfig.model_name,
             };
-            const keyIsPlaceholder = embeddingConfig.api_key === '••••••••';
-            if (!keyIsPlaceholder && embeddingConfig.api_key) {
+            if (embeddingConfig.api_key !== '••••••••' && embeddingConfig.api_key) {
                 embPayload.api_key = embeddingConfig.api_key;
             }
             await axios.post(`${API}/api/settings/embeddings`, embPayload);
-
-            showToast('Settings saved successfully!', 'success');
+            showToast('Configuration updated!');
             onSave();
             onClose();
         } catch (error) {
-            console.error('Failed to save config:', error);
-            const detail = error.response?.data?.detail || 'Failed to save settings.';
-            showToast(detail, 'error');
+            showToast(error.response?.data?.detail || 'Update failed', 'error');
         } finally {
             setIsLoading(false);
-        }
-    };
-
-    const saveConfigData = async (newConfig) => {
-        try {
-            await axios.post(`${API}/api/config`, newConfig);
-            // Refresh history after save
-            fetchFolderHistory();
-        } catch (error) {
-            console.error('Failed to save config:', error);
         }
     };
 
@@ -273,591 +168,322 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
         try {
             const response = await axios.get(`${API}/api/browse`);
             if (response.data.folder && !config.folders.includes(response.data.folder)) {
-                const newConfig = {
-                    ...config,
-                    folders: [...config.folders, response.data.folder]
-                };
-                setConfig(newConfig);
-                await saveConfigData(newConfig);
+                const newFolders = [...config.folders, response.data.folder];
+                setConfig(prev => ({ ...prev, folders: newFolders }));
+                await axios.post(`${API}/api/config`, { ...config, folders: newFolders });
+                fetchFolderHistory();
             }
         } catch (error) {
             console.error('Failed to browse:', error);
         }
     };
 
-    const handleAddFromHistory = async (folder) => {
-        if (!config.folders.includes(folder)) {
-            const newConfig = {
-                ...config,
-                folders: [...config.folders, folder]
-            };
-            setConfig(newConfig);
-            await saveConfigData(newConfig);
-            setShowHistory(false);
-        }
-    };
-
-    const handleRemoveFolder = async (folderToRemove) => {
-        const newConfig = {
-            ...config,
-            folders: config.folders.filter(f => f !== folderToRemove)
-        };
-        setConfig(newConfig);
-        await saveConfigData(newConfig);
-    };
-
-    const handleRemoveFromHistory = async (folder, e) => {
-        e.stopPropagation();  // Prevent adding the folder when clicking delete
-        try {
-            await axios.delete(`${API}/api/folders/history/item`, {
-                data: { path: folder }
-            });
-            fetchFolderHistory();  // Refresh the list
-        } catch (error) {
-            console.error('Failed to remove folder from history:', error);
-        }
-    };
-
-    const handleClearAllHistory = async () => {
-        if (confirm('Clear all folder history?')) {
-            try {
-                await axios.delete(`${API}/api/folders/history`);
-                setFolderHistory([]);
-                setShowHistory(false);
-            } catch (error) {
-                console.error('Failed to clear folder history:', error);
-            }
-        }
-    };
-
-    const handleIndex = async () => {
-        await handleSave();
-        try {
-            await axios.post(`${API}/api/index`);
-        } catch (error) {
-            console.error('Failed to index:', error);
-        }
-    };
-
-    const handleDeleteAllHistory = async () => {
-        if (confirm('Delete all search history?')) {
-            try {
-                await axios.delete(`${API}/api/search/history`);
-                alert('History cleared!');
-            } catch (error) {
-                console.error('Failed to clear history:', error);
-            }
-        }
-    };
-
-    const handleClearCache = async () => {
-        if (confirm('Clear all AI response cache? This will reset the learning.')) {
-            try {
-                await axios.post(`${API}/api/cache/clear`);
-                await fetchCacheStats();
-                alert('Cache cleared!');
-            } catch (error) {
-                console.error('Failed to clear cache:', error);
-            }
-        }
-    };
-
-    const apiProviders = [
-        { id: 'openai', name: 'OpenAI (ChatGPT)', key: 'openai_api_key', placeholder: 'sk-...' },
-        { id: 'gemini', name: 'Google Gemini', key: 'gemini_api_key', placeholder: 'AIza...' },
-        { id: 'anthropic', name: 'Anthropic (Claude)', key: 'anthropic_api_key', placeholder: 'sk-ant-...' },
-        { id: 'grok', name: 'xAI (Grok)', key: 'grok_api_key', placeholder: 'xai-...' },
-    ];
-
     if (!isOpen) return null;
 
-    const settingsSections = [
-        { id: 'folders', label: 'Indexed Folders', icon: FolderOpen },
-        { id: 'providers', label: 'AI Provider', icon: Key },
-        { id: 'external', label: 'External Providers', icon: Server },
-        { id: 'embeddings', label: 'Embedding Provider', icon: Database },
-        { id: 'local', label: 'Local Models', icon: Cpu },
-        { id: 'data', label: 'Data Management', icon: Trash2 },
+    const sections = [
+        { id: 'folders', label: 'Library', icon: 'folder_open' },
+        { id: 'providers', label: 'Cloud AI', icon: 'cloud' },
+        { id: 'external', label: 'External', icon: 'dns' },
+        { id: 'embeddings', label: 'Embeddings', icon: 'database' },
+        { id: 'local', label: 'Local LLM', icon: 'memory' },
+        { id: 'data', label: 'System', icon: 'settings' },
     ];
 
     return (
-        <>
-            <div
-                className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-                onClick={(e) => {
-                    if (e.target === e.currentTarget) onClose();
-                }}
-                onKeyDown={(e) => {
-                    if (e.key === 'Escape') onClose();
-                }}
-                tabIndex={-1}
-                aria-hidden="true"
-            >
-                <div
-                    className="glass-overlay w-[96vw] max-w-6xl h-[88vh] rounded-2xl shadow-2xl overflow-hidden flex flex-col"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="settings-modal-title"
-                >
-                    <div className="sticky top-0 z-20 flex items-center justify-between p-4 border-b border-border/30 bg-background/85 backdrop-blur-md">
-                        <h2 id="settings-modal-title" className="text-lg font-bold flex items-center gap-3">
-                            <div className="p-2 rounded-xl bg-primary/10">
-                                <Settings className="w-5 h-5 text-primary" />
-                            </div>
-                            Settings
-                        </h2>
-                        <button type="button"
-                            onClick={onClose}
-                            className="p-2 rounded-xl hover:bg-secondary transition-colors"
-                            aria-label="Close settings"
-                        >
-                            <X className="w-4 h-4" />
-                        </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()} onKeyDown={(e) => e.key === 'Escape' && onClose()} tabIndex={-1} aria-hidden="true">
+            <div className="glass-overlay w-[96vw] max-w-6xl h-[88vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+                {/* Header */}
+                <div className="px-8 py-6 border-b border-border/30 bg-background/85 backdrop-blur-md flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                            <span className="material-symbols-outlined text-2xl">settings</span>
+                        </div>
+                        <div>
+                            <h2 id="settings-modal-title" className="text-xl font-bold font-headline text-[#191b22] dark:text-white uppercase tracking-tight">System Configuration</h2>
+                            <p className="text-[10px] font-black opacity-40 uppercase tracking-widest">Adjust your AI workspace parameters</p>
+                        </div>
                     </div>
+                    <button onClick={onClose} aria-label="Close settings" className="w-12 h-12 rounded-full hover:bg-secondary/50 flex items-center justify-center transition-all">
+                        <span className="material-symbols-outlined">close</span>
+                    </button>
+                </div>
 
-                    <div className="flex-1 overflow-hidden grid grid-cols-1 md:grid-cols-[260px_1fr]">
-                        <aside className="border-r border-border/30 bg-card/30 p-3 overflow-y-auto">
-                            <nav className="space-y-1">
-                                {settingsSections.map((section) => {
-                                    const Icon = section.icon;
-                                    const isActive = activeSection === section.id;
-                                    return (
-                                        <button type="button"
-                                            key={section.id}
-                                            onClick={() => setActiveSection(section.id)}
-                                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm transition-colors ${
-                                                isActive
-                                                    ? 'bg-primary/15 text-primary font-semibold border border-primary/20'
-                                                    : 'text-muted-foreground hover:bg-secondary/60 hover:text-foreground'
-                                            }`}
+                <div className="flex-1 flex overflow-hidden">
+                    {/* Sidebar */}
+                    <aside className="w-72 bg-[#f3f3fd] dark:bg-slate-950/40 p-6 space-y-2 border-r border-[#f3f3fd] dark:border-slate-800">
+                        {sections.map(s => (
+                            <button
+                                key={s.id}
+                                onClick={() => setActiveSection(s.id)}
+                                className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl transition-all font-headline ${activeSection === s.id ? 'bg-white dark:bg-slate-900 text-primary shadow-sm font-bold scale-105' : 'text-[#434656] dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-900/50'}`}
+                            >
+                                <span className={`material-symbols-outlined ${activeSection === s.id ? 'fill-current' : ''}`}>{s.icon}</span>
+                                <span className="text-sm">{s.label}</span>
+                            </button>
+                        ))}
+                    </aside>
+
+                    {/* Content */}
+                    <main className="flex-1 overflow-y-auto p-10 custom-scrollbar space-y-12">
+                        {!config ? (
+                            <div className="flex items-center justify-center h-full">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                            </div>
+                        ) : (
+                            <>
+                                {activeSection === 'folders' && (
+                            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+                                <div className="space-y-6">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3 px-2">
+                                            <h3 className="text-2xl font-bold font-headline">Knowledge Library</h3>
+                                            <div className="h-1.5 w-1.5 rounded-full bg-primary"></div>
+                                            <span className="text-[10px] font-black uppercase tracking-tighter opacity-40">{config.folders.length} Connected</span>
+                                        </div>
+                                        <button 
+                                            onClick={() => setShowHistory(!showHistory)} 
+                                            className={`p-3 rounded-2xl transition-all ${showHistory ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-white dark:bg-slate-900 text-primary hover:bg-primary/5'}`}
                                         >
-                                            <Icon className="w-4 h-4" />
-                                            {section.label}
+                                            <span className="material-symbols-outlined text-lg">history</span>
                                         </button>
-                                    );
-                                })}
-                            </nav>
-                        </aside>
+                                    </div>
 
-                        <main className="overflow-y-auto p-5 space-y-5">
-                            {indexingStatus.running && (
-                                <div className="p-4 rounded-xl glass-v2 border border-primary/20 bg-primary/5">
-                                    <div className="flex justify-between items-center mb-2">
-                                        <span className="text-sm font-bold text-primary flex items-center gap-2">
-                                            <Loader2 className="w-4 h-4 animate-spin" />
-                                            Indexing...
-                                        </span>
-                                        <span className="text-xs font-mono font-bold text-primary">
-                                            {indexingStatus.progress}%
-                                        </span>
-                                    </div>
-                                    <div className="w-full bg-primary/10 rounded-full h-2 overflow-hidden">
-                                        <div
-                                            className="bg-primary h-full transition-all duration-300"
-                                            style={{ width: `${indexingStatus.progress}%` }}
-                                        />
-                                    </div>
-                                    <div className="text-[10px] text-muted-foreground truncate opacity-80 font-mono mt-1">
-                                        {indexingStatus.current_file}
-                                    </div>
-                                </div>
-                            )}
-
-                            {indexingStatus.error && !indexingStatus.running && (
-                                <div className="p-4 rounded-xl glass-v2 border border-destructive/20 bg-destructive/5 flex items-center gap-3">
-                                    <div className="p-2 rounded-full bg-destructive/10 text-destructive">
-                                        <X className="w-4 h-4" />
-                                    </div>
-                                    <div className="text-sm font-medium text-destructive">{indexingStatus.error}</div>
-                                </div>
-                            )}
-
-                            {activeSection === 'folders' && (
-                                <section className="space-y-4">
-                                    <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Indexed Folders</h3>
-                                    <div className="flex items-center gap-2">
-                                        <button type="button"
-                                            onClick={handleAddFolder}
-                                            className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
+                                    <div className="flex gap-4">
+                                        <button 
+                                            onClick={async () => {
+                                                try {
+                                                    await axios.post(`${API}/api/index`);
+                                                    showToast('Index rebuild started', 'info');
+                                                } catch (e) {
+                                                    showToast('Failed to start indexing', 'error');
+                                                }
+                                            }}
+                                            className="flex-1 bg-white dark:bg-slate-900 border border-[#d1d1f0] dark:border-slate-800 p-4 rounded-3xl font-bold text-xs flex items-center justify-center gap-3 hover:border-primary/40 hover:bg-primary/5 transition-all group"
                                         >
+                                            <span className="material-symbols-outlined text-primary group-hover:rotate-180 transition-transform duration-500">sync</span>
+                                            Rebuild Index
+                                        </button>
+                                        <button onClick={handleAddFolder} className="bg-primary text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:shadow-lg hover:shadow-primary/20 transition-all active:scale-95">
+                                            <span className="material-symbols-outlined text-sm">add</span>
                                             Add Folder
-                                        </button>
-                                        <button type="button"
-                                            title="Previously indexed folders"
-                                            onClick={() => setShowHistory((prev) => !prev)}
-                                            className="px-3 py-2 rounded-lg border border-border text-sm hover:bg-secondary"
-                                        >
-                                            Recent History
                                         </button>
                                     </div>
 
                                     {showHistory && (
-                                        <div className="p-3 rounded-lg border border-border bg-card/50 space-y-2">
-                                            <div className="flex items-center justify-between">
-                                                <h4 className="text-sm font-medium">Previously Indexed</h4>
-                                                <button type="button"
-                                                    onClick={handleClearAllHistory}
-                                                    className="text-xs text-destructive hover:underline"
+                                        <div className="bg-[#f3f3fd] dark:bg-slate-950/40 rounded-3xl p-6 border border-[#d1d1f0] dark:border-slate-800 space-y-4 animate-in slide-in-from-top-4 duration-300">
+                                            <div className="flex items-center justify-between px-2">
+                                                <h4 className="text-xs font-black uppercase tracking-widest opacity-40">Previously Indexed</h4>
+                                                <button 
+                                                    onClick={async () => {
+                                                        if (confirm('Clear folder history?')) {
+                                                            await axios.delete(`${API}/api/folders/history`);
+                                                            fetchFolderHistory();
+                                                        }
+                                                    }}
+                                                    className="text-[10px] font-black uppercase tracking-widest text-red-500 hover:underline"
                                                 >
                                                     Clear All
                                                 </button>
                                             </div>
-                                            {folderHistory.length === 0 ? (
-                                                <p className="text-xs text-muted-foreground">No indexed folders yet.</p>
-                                            ) : (
-                                                folderHistory.map((folder) => (
-                                                    <button type="button"
-                                                        key={folder}
-                                                        onClick={() => handleAddFromHistory(folder)}
-                                                        className="w-full flex items-center justify-between gap-3 px-2 py-1.5 rounded-md hover:bg-secondary text-left"
-                                                    >
-                                                        <span className="text-xs truncate">{folder}</span>
-                                                        <Trash2
-                                                            className="w-3.5 h-3.5 text-destructive flex-shrink-0"
-                                                            onClick={(e) => handleRemoveFromHistory(folder, e)}
-                                                        />
-                                                    </button>
-                                                ))
-                                            )}
+                                            <div className="space-y-2">
+                                                {folderHistory.length === 0 ? (
+                                                    <p className="text-xs opacity-40 px-2">No indexed folders yet.</p>
+                                                ) : (
+                                                    folderHistory.map(h => (
+                                                        <div key={h} className="flex items-center justify-between p-3 rounded-2xl hover:bg-white dark:hover:bg-slate-900 transition-all group">
+                                                            <span className="text-xs font-medium truncate flex-1">{h}</span>
+                                                            <button 
+                                                                onClick={async () => {
+                                                                    if (!config.folders.includes(h)) {
+                                                                        const next = [...config.folders, h];
+                                                                        setConfig(prev => ({ ...prev, folders: next }));
+                                                                        await axios.post(`${API}/api/config`, { ...config, folders: next });
+                                                                    }
+                                                                    setShowHistory(false);
+                                                                }}
+                                                                className="px-3 py-1.5 rounded-xl bg-primary/10 text-primary text-[10px] font-black uppercase opacity-0 group-hover:opacity-100 transition-all"
+                                                            >
+                                                                Restore
+                                                            </button>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
                                         </div>
                                     )}
-
-                                    <div className="space-y-2">
-                                        {config.folders.length === 0 ? (
-                                            <p className="text-sm text-muted-foreground">No folders selected. Add a folder to build your index.</p>
-                                        ) : (
-                                            config.folders.map((folder) => (
-                                                <div key={folder} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border bg-card/30">
-                                                    <div className="flex items-center gap-2 min-w-0">
-                                                        <FolderOpen className="w-4 h-4 text-primary flex-shrink-0" />
-                                                        <span className="text-sm truncate">{folder}</span>
-                                                    </div>
-                                                    <button type="button"
-                                                        onClick={() => handleRemoveFolder(folder)}
-                                                        aria-label={`Remove ${folder} from index`}
-                                                        className="p-1.5 rounded-md hover:bg-destructive/10 text-destructive"
-                                                    >
-                                                        <X className="w-4 h-4" />
-                                                    </button>
+                                </div>
+                                
+                                <div className="space-y-4">
+                                    {config.folders.length === 0 ? (
+                                        <div className="p-12 rounded-[2.5rem] bg-[#f3f3fd] dark:bg-slate-950/40 border-2 border-dashed border-[#d1d1f0] dark:border-slate-800 flex flex-col items-center text-center">
+                                            <span className="material-symbols-outlined text-5xl text-[#d1d1f0] mb-4">folder_off</span>
+                                            <p className="font-bold text-[#434656] opacity-60">No folders connected to AI Index</p>
+                                        </div>
+                                    ) : (
+                                        config.folders.map(f => (
+                                            <div key={f} className="bg-[#f3f3fd] dark:bg-slate-800/40 p-5 rounded-3xl flex items-center justify-between group">
+                                                <div className="flex items-center gap-4 min-w-0">
+                                                    <span className="material-symbols-outlined text-primary">folder</span>
+                                                    <span className="font-bold truncate text-sm">{f}</span>
                                                 </div>
-                                            ))
-                                        )}
-                                    </div>
+                                                <button 
+                                                    onClick={() => setConfig(prev => ({ ...prev, folders: prev.folders.filter(x => x !== f) }))}
+                                                    aria-label={`Remove ${f} from index`}
+                                                    className="w-10 h-10 rounded-full hover:bg-red-500/10 text-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+                                                >
+                                                    <span className="material-symbols-outlined text-lg">delete</span>
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
 
-                                    <div className="pt-2">
-                                        <button type="button"
-                                            onClick={handleIndex}
-                                            disabled={isLoading || indexingStatus.running}
-                                            className="px-4 py-2 rounded-lg btn-cosmic text-sm font-medium disabled:opacity-60"
-                                        >
-                                            Rebuild Index
-                                        </button>
+                                {indexingStatus.running && (
+                                    <div className="bg-primary/5 border border-primary/10 p-8 rounded-[2.5rem] space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <span className="material-symbols-outlined animate-spin text-primary">progress_activity</span>
+                                                <span className="font-bold">Neural Indexing in Progress</span>
+                                            </div>
+                                            <span className="font-black text-primary">{indexingStatus.progress}%</span>
+                                        </div>
+                                        <div className="h-3 w-full bg-primary/10 rounded-full overflow-hidden">
+                                            <div className="h-full bg-primary transition-all duration-500" style={{ width: `${indexingStatus.progress}%` }}></div>
+                                        </div>
+                                        <p className="text-[10px] font-black uppercase tracking-widest opacity-40 truncate">{indexingStatus.current_file}</p>
                                     </div>
-                                </section>
-                            )}
+                                )}
+                            </div>
+                        )}
 
-                            {activeSection === 'providers' && (
-                                <section className="space-y-4">
-                                    <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">API Keys</h3>
-                                    {apiProviders.map(provider => (
-                                        <div key={provider.id} className="space-y-1">
-                                            <label htmlFor={provider.id} className="text-sm font-medium">{provider.name}</label>
-                                            <input
-                                                id={provider.id}
+                        {activeSection === 'providers' && (
+                            <div className="space-y-10 animate-in fade-in slide-in-from-right-4 duration-500">
+                                <h3 className="text-2xl font-bold font-headline">Cloud Intelligence</h3>
+                                <div className="grid grid-cols-1 gap-6">
+                                    {[
+                                        { id: 'openai', name: 'OpenAI (GPT-4)', key: 'openai_api_key' },
+                                        { id: 'gemini', name: 'Google (Gemini Pro)', key: 'gemini_api_key' },
+                                        { id: 'anthropic', name: 'Anthropic (Claude)', key: 'anthropic_api_key' },
+                                        { id: 'grok', name: 'xAI (Grok)', key: 'grok_api_key' },
+                                    ].map(p => (
+                                        <div key={p.id} className="space-y-3">
+                                            <label className="text-xs font-black uppercase tracking-widest opacity-40 px-2">{p.name}</label>
+                                            <input 
                                                 type="password"
-                                                value={config[provider.key] || ''}
-                                                onChange={(e) => setConfig({ ...config, [provider.key]: e.target.value })}
-                                                className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
-                                                placeholder={provider.placeholder}
+                                                className="w-full bg-[#f3f3fd] dark:bg-slate-950/40 p-5 rounded-3xl border-2 border-transparent focus:border-primary/20 outline-none transition-all font-body text-sm"
+                                                placeholder="Enter API Key..."
+                                                value={config[p.key] || ''}
+                                                onChange={(e) => setConfig({ ...config, [p.key]: e.target.value })}
                                             />
                                         </div>
                                     ))}
-                                    <p className="text-xs text-muted-foreground">API keys are stored locally and used only when that provider is selected.</p>
-                                </section>
-                            )}
+                                </div>
+                            </div>
+                        )}
 
-                            {activeSection === 'embeddings' && (
-                                <section className="space-y-4" id="embedding-config-panel">
-                                    <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Embedding Provider</h3>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground" htmlFor="embedding-provider-select">Provider Type</label>
-                                        <select
-                                            id="embedding-provider-select"
-                                            value={embeddingConfig.provider_type}
-                                            onChange={(e) => setEmbeddingConfig(prev => ({ ...prev, provider_type: e.target.value, api_key: '' }))}
-                                            className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
-                                        >
-                                            {EMBEDDING_PROVIDER_TYPES.map(pt => (
-                                                <option key={pt.value} value={pt.value}>{pt.label}</option>
-                                            ))}
-                                        </select>
+                        {activeSection === 'local' && (
+                            <div className="animate-in fade-in slide-in-from-right-4 duration-500">
+                                <ModelManager onModelSelect={(m) => setConfig(prev => ({ ...prev, local_model_path: m.path }))} activeModelPath={config.local_model_path} />
+                            </div>
+                        )}
+
+                        {activeSection === 'embeddings' && (
+                            <div className="space-y-10 animate-in fade-in slide-in-from-right-4 duration-500">
+                                <h3 className="text-2xl font-bold font-headline">Neural Embeddings</h3>
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-3 gap-4">
+                                        {EMBEDDING_PROVIDER_TYPES.map(t => (
+                                            <button
+                                                key={t.value}
+                                                onClick={() => setEmbeddingConfig(prev => ({ ...prev, provider_type: t.value }))}
+                                                className={`p-6 rounded-[2rem] text-left transition-all border-2 ${embeddingConfig.provider_type === t.value ? 'bg-primary/5 border-primary text-primary shadow-lg shadow-primary/5' : 'bg-[#f3f3fd] dark:bg-slate-950/40 border-transparent hover:bg-[#ebebfa]'}`}
+                                            >
+                                                <span className="material-symbols-outlined mb-3 block">hub</span>
+                                                <span className="font-bold text-sm leading-tight block">{t.label}</span>
+                                            </button>
+                                        ))}
                                     </div>
 
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground" htmlFor="embedding-model-name">Model Name / Repo ID</label>
-                                        <input
-                                            id="embedding-model-name"
+                                    <div className="space-y-3 pt-4">
+                                        <label className="text-xs font-black uppercase tracking-widest opacity-40 px-2">Model Architecture</label>
+                                        <input 
                                             type="text"
+                                            className="w-full bg-[#f3f3fd] dark:bg-slate-950/40 p-5 rounded-3xl border-2 border-transparent focus:border-primary/20 outline-none transition-all font-mono text-xs"
                                             value={embeddingConfig.model_name}
                                             onChange={(e) => setEmbeddingConfig(prev => ({ ...prev, model_name: e.target.value }))}
-                                            className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background font-mono"
-                                            placeholder="e.g. Alibaba-NLP/gte-Qwen2-1.5B-instruct"
                                         />
                                     </div>
-
-                                    {EMBEDDING_PROVIDER_TYPES.find(pt => pt.value === embeddingConfig.provider_type)?.needsKey && (
-                                        <div className="space-y-1">
-                                            <label className="text-xs font-medium text-muted-foreground" htmlFor="embedding-api-key">
-                                                API Key
-                                                {embeddingConfig.api_key === '••••••••' && (
-                                                    <span className="ml-2 text-[10px] bg-green-500/10 text-green-600 px-1.5 py-0.5 rounded font-semibold">Stored</span>
-                                                )}
-                                            </label>
-                                            <input
-                                                id="embedding-api-key"
+                                    
+                                    {EMBEDDING_PROVIDER_TYPES.find(x => x.value === embeddingConfig.provider_type)?.needsKey && (
+                                        <div className="space-y-3">
+                                            <label className="text-xs font-black uppercase tracking-widest opacity-40 px-2">Embedding API Key</label>
+                                            <input 
                                                 type="password"
+                                                className="w-full bg-[#f3f3fd] dark:bg-slate-950/40 p-5 rounded-3xl border-2 border-transparent focus:border-primary/20 outline-none transition-all font-body text-sm"
                                                 value={embeddingConfig.api_key}
                                                 onChange={(e) => setEmbeddingConfig(prev => ({ ...prev, api_key: e.target.value }))}
-                                                className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
-                                                placeholder={embeddingConfig.api_key === '••••••••' ? 'Leave blank to keep current key' : 'Paste your API key'}
                                             />
                                         </div>
                                     )}
-
-                                    <p className="text-[11px] text-muted-foreground leading-relaxed">The embedding provider is used to convert documents and queries into vectors for semantic search. Changes take effect on the next index rebuild.</p>
-                                </section>
-                            )}
-
-                            {activeSection === 'external' && (
-                                <section className="space-y-5">
-                                    <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">External LLM Providers</h3>
-                                    <p className="text-xs text-muted-foreground -mt-2">Connect to Ollama or LM Studio running locally or on your network.</p>
-
-                                    {/* Provider Type Selector */}
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground" htmlFor="ext-provider-select">Provider</label>
-                                        <select
-                                            id="ext-provider-select"
-                                            value={extProviderType}
-                                            onChange={(e) => { setExtProviderType(e.target.value); setExtHealth(null); setExtModels([]); }}
-                                            className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
-                                        >
-                                            <option value="lmstudio">LM Studio</option>
-                                            <option value="ollama">Ollama</option>
-                                        </select>
-                                    </div>
-
-                                    {/* Base URL */}
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground" htmlFor="ext-base-url">Base URL</label>
-                                        <input
-                                            id="ext-base-url"
-                                            type="text"
-                                            value={extProviderType === 'ollama' ? (config.ollama_base_url || '') : (config.lmstudio_base_url || '')}
-                                            onChange={(e) => {
-                                                const key = extProviderType === 'ollama' ? 'ollama_base_url' : 'lmstudio_base_url';
-                                                setConfig(prev => ({ ...prev, [key]: e.target.value }));
-                                            }}
-                                            className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background font-mono"
-                                            placeholder={extProviderType === 'ollama' ? 'http://localhost:11434' : 'http://127.0.0.1:1234'}
-                                        />
-                                    </div>
-
-                                    {/* API Key (optional) */}
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground" htmlFor="ext-api-key">API Key <span className="text-muted-foreground/60">(optional for local)</span></label>
-                                        <input
-                                            id="ext-api-key"
-                                            type="password"
-                                            value={config.external_api_key || ''}
-                                            onChange={(e) => setConfig(prev => ({ ...prev, external_api_key: e.target.value }))}
-                                            className="w-full px-3 py-2 text-sm rounded-lg border border-input bg-background"
-                                            placeholder="Leave empty for local servers"
-                                        />
-                                    </div>
-
-                                    {/* Health Check & Model Discovery */}
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={checkExtHealth}
-                                            disabled={extLoadingHealth}
-                                            className="px-3 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
-                                        >
-                                            {extLoadingHealth ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wifi className="w-3.5 h-3.5" />}
-                                            Test Connection
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={fetchExtModels}
-                                            disabled={extLoadingModels}
-                                            className="px-3 py-2 rounded-lg border border-border text-sm font-medium hover:bg-secondary disabled:opacity-50 flex items-center gap-2"
-                                        >
-                                            {extLoadingModels ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                                            Refresh Models
-                                        </button>
-                                    </div>
-
-                                    {/* Health Status Indicator */}
-                                    {extHealth && (
-                                        <div className={`p-3 rounded-xl border flex items-center gap-3 ${
-                                            extHealth.status === 'ok'
-                                                ? 'border-green-500/30 bg-green-500/5'
-                                                : 'border-destructive/30 bg-destructive/5'
-                                        }`}>
-                                            {extHealth.status === 'ok'
-                                                ? <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />
-                                                : <WifiOff className="w-5 h-5 text-destructive flex-shrink-0" />
-                                            }
-                                            <div>
-                                                <div className={`text-sm font-semibold ${extHealth.status === 'ok' ? 'text-green-500' : 'text-destructive'}`}>
-                                                    {extHealth.status === 'ok' ? 'Connected' : 'Unreachable'}
-                                                </div>
-                                                <div className="text-xs text-muted-foreground">
-                                                    {extHealth.status === 'ok'
-                                                        ? `${extHealth.models_available} model${extHealth.models_available !== 1 ? 's' : ''} available`
-                                                        : (extHealth.message || 'Check URL and ensure the server is running')
-                                                    }
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Model Selector */}
-                                    {extModels.length > 0 && (
-                                        <div className="space-y-2">
-                                            <label className="text-xs font-medium text-muted-foreground">Available Models</label>
-                                            <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                                                {extModels.map((model) => {
-                                                    const isSelected = config.external_model_name === model.id;
-                                                    return (
-                                                        <button
-                                                            type="button"
-                                                            key={model.id}
-                                                            onClick={() => {
-                                                                setConfig(prev => ({ ...prev, external_model_name: model.id, provider: extProviderType }));
-                                                            }}
-                                                            className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-left text-sm transition-all ${
-                                                                isSelected
-                                                                    ? 'bg-primary/15 border border-primary/30 text-primary font-semibold'
-                                                                    : 'border border-border bg-card/30 hover:bg-secondary/60'
-                                                            }`}
-                                                        >
-                                                            <div className="min-w-0">
-                                                                <div className="font-medium truncate">{model.name}</div>
-                                                                <div className="text-[10px] text-muted-foreground truncate">
-                                                                    {model.owned_by && `by ${model.owned_by}`}
-                                                                    {model.format && ` • ${model.format.toUpperCase()}`}
-                                                                    {model.size_bytes > 0 && ` • ${(model.size_bytes / 1e9).toFixed(1)} GB`}
-                                                                </div>
-                                                            </div>
-                                                            {isSelected && (
-                                                                <div className="px-2 py-0.5 bg-primary text-primary-foreground text-[10px] rounded-md font-bold uppercase tracking-widest flex-shrink-0">
-                                                                    Selected
-                                                                </div>
-                                                            )}
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Currently Selected Model */}
-                                    {config.external_model_name && (
-                                        <div className="p-3 rounded-xl bg-primary/5 border border-primary/15">
-                                            <div className="text-[10px] uppercase font-bold text-primary tracking-wider mb-0.5">Active External Model</div>
-                                            <div className="text-sm font-bold flex items-center gap-2">
-                                                <Server className="w-4 h-4 text-primary" />
-                                                {config.external_model_name}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                                        Select a provider and click "Test Connection" to verify reachability. Use "Refresh Models" to discover available models.
-                                        The selected model will be used for AI-powered search answers when the provider is set as active.
-                                    </p>
-                                </section>
-                            )}
-
-                            {activeSection === 'local' && (
-                                <section className="space-y-4">
-                                    <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Local Model Settings</h3>
-                                    {activeModel && (
-                                        <div className="p-4 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-between">
-                                            <div>
-                                                <div className="text-[10px] uppercase font-bold text-primary tracking-wider mb-0.5">Currently Active</div>
-                                                <div className="text-sm font-bold flex items-center gap-2">
-                                                    <Cpu className="w-4 h-4 text-primary" />
-                                                    {activeModel}
-                                                </div>
-                                            </div>
-                                            <div className="px-2 py-0.5 bg-primary text-primary-foreground text-[10px] rounded-md font-bold uppercase tracking-widest">Active</div>
-                                        </div>
-                                    )}
-                                    <ModelManager
-                                        onSelectModel={(path) => setConfig({ ...config, local_model_path: path })}
-                                        activeModel={activeModel}
-                                        selectedPath={config.local_model_path}
-                                    />
-                                </section>
-                            )}
-
-                            {activeSection === 'data' && (
-                                <section className="space-y-4">
-                                    <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Data Management</h3>
-                                    <div className="flex items-center justify-between p-3 rounded-lg border border-border bg-card/50">
+                                </div>
+                            </div>
+                        )}
+                        
+                        {activeSection === 'data' && (
+                            <div className="space-y-10 animate-in fade-in slide-in-from-right-4 duration-500">
+                                <h3 className="text-2xl font-bold font-headline">System Hygiene</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="bg-[#f3f3fd] dark:bg-slate-950/40 p-8 rounded-[2.5rem] space-y-6">
                                         <div>
-                                            <div className="text-sm font-semibold flex items-center gap-2"><span className="text-primary">⚡</span> AI Response Cache</div>
-                                            <div className="text-xs text-muted-foreground">{cacheStats.total_entries} entries • {cacheStats.total_hits} hits saved</div>
+                                            <h4 className="font-bold text-lg mb-1 text-primary">Response Cache</h4>
+                                            <p className="text-xs font-medium opacity-60 leading-relaxed">Stored patterns for instant retrieval of complex answers.</p>
                                         </div>
-                                        <button type="button"
-                                            onClick={handleClearCache}
-                                            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
-                                        >
-                                            Clear Cache
+                                        <div className="flex items-center gap-8">
+                                            <div>
+                                                <p className="text-2xl font-black">{cacheStats.total_entries}</p>
+                                                <p className="text-[10px] font-black uppercase opacity-40">Entries</p>
+                                            </div>
+                                            <div className="h-8 w-px bg-[#d1d1f0] dark:bg-slate-800"></div>
+                                            <div>
+                                                <p className="text-2xl font-black text-primary">{cacheStats.total_hits}</p>
+                                                <p className="text-[10px] font-black uppercase opacity-40">Total Hits</p>
+                                            </div>
+                                        </div>
+                                        <button onClick={async () => { await axios.post(`${API}/api/cache/clear`); fetchCacheStats(); showToast('Cache Purged'); }} className="w-full py-4 rounded-2xl bg-white dark:bg-slate-900 font-bold text-xs hover:bg-red-500 hover:text-white transition-all shadow-sm">
+                                            Purge AI Cache
                                         </button>
                                     </div>
-                                    <button type="button"
-                                        onClick={handleDeleteAllHistory}
-                                        className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                        Clear Search History
-                                    </button>
-                                </section>
-                            )}
-                        </main>
-                    </div>
 
-                    <div className="sticky bottom-0 p-4 border-t border-border/30 bg-background/85 backdrop-blur-md flex justify-end gap-3">
-                        <button type="button"
-                            onClick={onClose}
-                            className="px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-secondary transition-colors"
-                        >
-                            Cancel
-                        </button>
-                        <button type="button"
-                            onClick={handleSave}
-                            disabled={isLoading}
-                            className="px-5 py-2.5 rounded-xl btn-cosmic text-sm font-semibold flex items-center gap-2 disabled:opacity-50"
-                        >
-                            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                            Save Changes
+                                    <div className="bg-red-500/5 p-8 rounded-[2.5rem] space-y-6 border border-red-500/10">
+                                        <div>
+                                            <h4 className="font-bold text-lg mb-1 text-red-500 text-on-red">Privacy Reset</h4>
+                                            <p className="text-xs font-medium opacity-60 leading-relaxed text-on-red">Wipe all search queries and local indexing history.</p>
+                                        </div>
+                                        <button onClick={async () => { if(confirm('Wipe history?')) { await axios.delete(`${API}/api/search/history`); showToast('History Cleared'); } }} className="w-full py-4 rounded-2xl bg-red-500 text-white font-bold text-xs hover:bg-red-600 transition-all shadow-lg shadow-red-500/20">
+                                            Clear All History
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </>
+                )}
+                    </main>
+                </div>
+
+                {/* Footer */}
+                <div className="px-8 py-6 bg-[#f3f3fd] dark:bg-slate-950/60 border-t border-[#f3f3fd] dark:border-slate-800 flex items-center justify-between">
+                    <p className="text-xs font-bold opacity-40">v2.4.0 • Neural Search Engine</p>
+                    <div className="flex items-center gap-4">
+                        <button onClick={onClose} className="px-8 py-3 rounded-2xl font-bold text-sm hover:bg-[#ebebfa] dark:hover:bg-slate-800 transition-all">Cancel</button>
+                        <button onClick={handleSave} disabled={isLoading} className="px-10 py-3 rounded-2xl bg-primary text-white font-bold text-sm hover:shadow-xl hover:shadow-primary/20 transition-all active:scale-95 disabled:opacity-50">
+                            {isLoading ? 'Saving...' : 'Apply Changes'}
                         </button>
                     </div>
                 </div>
             </div>
-
-            {toast && (
-                <Toast
-                    message={toast.message}
-                    type={toast.type}
-                    onDismiss={dismissToast}
-                />
-            )}
-        </>
+            {toast && <Toast message={toast.message} type={toast.type} onDismiss={dismissToast} />}
+        </div>
     );
 };
 

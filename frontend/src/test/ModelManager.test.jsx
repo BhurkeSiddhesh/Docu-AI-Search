@@ -29,7 +29,7 @@ describe('ModelManager Component', () => {
             if (url.includes('/api/models/available')) return Promise.resolve({ data: mockAvailableModels })
             if (url.includes('/api/models/local')) return Promise.resolve({ data: mockLocalModels })
             if (url.includes('/api/models/status')) return Promise.resolve({ data: { downloading: false } })
-            return Promise.resolve({ data: {} })
+            return Promise.resolve({ data: [] })
         })
     })
 
@@ -51,8 +51,8 @@ describe('ModelManager Component', () => {
         await waitFor(() => screen.getAllByText('TinyLlama')[0])
 
         const cards = screen.getAllByText('TinyLlama').map(el => el.closest('.border'))
-        const card = cards.find(c => within(c).queryByText(/Download/i))
-        const downloadBtn = within(card).getByRole('button', { name: /Download/i })
+        const card = cards.find(c => within(c).queryByText(/Fetch/i))
+        const downloadBtn = within(card).getByRole('button', { name: /Fetch/i })
         
         await act(async () => {
             fireEvent.click(downloadBtn)
@@ -63,19 +63,19 @@ describe('ModelManager Component', () => {
 
     it('triggers select model callback', async () => {
         const onSelectModel = vi.fn()
-        render(<ModelManager activeModel="" onSelectModel={onSelectModel} selectedPath="" />)
-
-        await waitFor(() => screen.getAllByText('Phi-2')[0])
-
-        // Find the Select button. It might be multiple if multiple models?
-        // But only downloaded models have Select button.
-        const selectBtn = screen.getByText('Select')
+        render(<ModelManager onSelectModel={onSelectModel} />)
+        
+        await waitFor(() => {
+            expect(screen.getAllByText('Phi-2').length).toBeGreaterThan(0)
+        })
         
         await act(async () => {
+            const selectBtn = screen.getByText('Initialize Model')
             fireEvent.click(selectBtn)
         })
 
-        expect(onSelectModel).toHaveBeenCalledWith('/models/phi-2.gguf')
+        expect(onSelectModel).toHaveBeenCalled()
+        expect(onSelectModel.mock.calls[0][0]).toMatchObject({ path: '/models/phi-2.gguf' })
     })
 
     it('triggers delete model when delete button is clicked', async () => {
@@ -93,7 +93,7 @@ describe('ModelManager Component', () => {
 
         expect(global.confirm).toHaveBeenCalled()
         expect(axios.delete).toHaveBeenCalledWith(
-            'http://localhost:8000/api/models/delete',
+            'http://localhost:8000/api/models',
             expect.objectContaining({ data: { path: '/models/phi-2.gguf' } })
         )
     })

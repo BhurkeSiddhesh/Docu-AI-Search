@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Search, Loader2, Bot, Zap } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 const SearchBar = ({ onSearch, isLoading, isAgentMode, onToggleAgent, systemPrompts = [], selectedPromptId, onPromptChange }) => {
     const [query, setQuery] = useState('');
@@ -9,17 +8,14 @@ const SearchBar = ({ onSearch, isLoading, isAgentMode, onToggleAgent, systemProm
     const inputRef = useRef(null);
 
     useEffect(() => {
-        // Detect platform for correct shortcut hint
         const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
         setShortcutHint(isMac ? '⌘K' : 'Ctrl + K');
 
         const handleKeyDown = (e) => {
-            // Cmd+K or Ctrl+K
             if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
                 e.preventDefault();
                 inputRef.current?.focus();
             }
-            // Slash key (/)
             if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
                 e.preventDefault();
                 inputRef.current?.focus();
@@ -38,27 +34,25 @@ const SearchBar = ({ onSearch, isLoading, isAgentMode, onToggleAgent, systemProm
     };
 
     return (
-        <div className="w-full">
+        <div className="w-full max-w-4xl mx-auto">
             <form onSubmit={handleSubmit}>
                 <motion.div
-                    className={`relative flex items-center rounded-2xl transition-all duration-300 ${isFocused
-                            ? 'glass-card shadow-lg shadow-primary/10'
-                            : 'glass-card'
+                    className={`relative flex items-center rounded-3xl transition-all duration-500 bg-white dark:bg-slate-900 shadow-lg ${isFocused
+                            ? 'ring-4 ring-primary/10 shadow-2xl'
+                            : 'shadow-xl'
                         }`}
                     animate={isFocused ? { scale: 1.01 } : { scale: 1 }}
-                    transition={{ duration: 0.2 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
                 >
-                    {/* Search Icon with Glow */}
-                    <div className={`absolute left-5 transition-all duration-300 ${isFocused ? 'text-primary' : 'text-muted-foreground'}`}>
-                        <Search className="w-5 h-5" />
+                    <div className={`absolute left-6 transition-all duration-300 ${isFocused ? 'text-primary' : 'text-[#434656] dark:text-slate-400'}`}>
+                        <span className="material-symbols-outlined text-2xl" style={isFocused ? { fontVariationSettings: "'FILL' 1" } : {}}>search</span>
                     </div>
 
-                    {/* Input Field */}
                     <input
                         ref={inputRef}
                         type="text"
                         aria-label="Search query"
-                        className="w-full bg-transparent py-4 pl-14 pr-32 text-base placeholder:text-muted-foreground/70 focus:outline-none"
+                        className="w-full bg-transparent py-6 pl-16 pr-44 text-lg font-medium placeholder:text-[#434656]/40 dark:placeholder:text-slate-500 focus:outline-none text-[#191b22] dark:text-white font-body"
                         placeholder={isAgentMode ? "Ask the AI Researcher a complex question..." : "Search your documents..."}
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
@@ -67,79 +61,77 @@ const SearchBar = ({ onSearch, isLoading, isAgentMode, onToggleAgent, systemProm
                         disabled={isLoading}
                     />
 
-                    {/* Keyboard Shortcut Hint */}
                     {!isFocused && !query && (
-                        <div className="absolute right-28 pointer-events-none hidden md:flex items-center gap-1">
-                            <span className="text-xs font-medium text-muted-foreground/50 border border-border/50 rounded px-1.5 py-0.5 bg-background/50 backdrop-blur-sm">
+                        <div className="absolute right-32 pointer-events-none hidden md:flex items-center gap-1">
+                            <span className="text-[10px] font-bold text-[#434656]/50 dark:text-slate-500 bg-[#f3f3fd] dark:bg-slate-800 rounded-lg px-2 py-1 tracking-widest uppercase">
                                 {shortcutHint}
                             </span>
                         </div>
                     )}
 
-                    {/* Right Side Actions */}
-                    <div className="absolute right-3 flex items-center gap-2">
-                        {/* Agent Mode Toggle */}
+                    <div className="absolute right-4 flex items-center gap-2">
                         {onToggleAgent && (
                             <button
                                 type="button"
                                 onClick={onToggleAgent}
                                 aria-label="Toggle AI Agent Mode"
-                                className={`p-2 rounded-xl transition-all duration-200 ${isAgentMode
-                                        ? 'bg-accent/20 text-accent border border-accent/30'
-                                        : 'hover:bg-secondary text-muted-foreground'
+                                className={`p-3 rounded-2xl transition-all duration-300 ${isAgentMode
+                                        ? 'bg-primary/10 text-primary'
+                                        : 'hover:bg-surface-container text-[#434656] dark:text-slate-400'
                                     }`}
                                 title={isAgentMode ? "Agent Mode Active" : "Enable Agent Mode"}
                             >
-                                <Bot className="w-4 h-4" />
+                                <span className="material-symbols-outlined" style={isAgentMode ? { fontVariationSettings: "'FILL' 1" } : {}}>smart_toy</span>
                             </button>
                         )}
-
-                        {/* Search Button */}
+ 
                         <button
                             type="submit"
                             aria-label="Submit Search"
                             disabled={isLoading || !query.trim()}
-                            className="p-2.5 rounded-xl btn-cosmic disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                            className="p-3 px-6 rounded-2xl bg-gradient-to-r from-primary to-primary-container text-white disabled:opacity-40 disabled:grayscale transition-all shadow-lg shadow-primary/20 flex items-center gap-2 active:scale-95"
                         >
                             {isLoading ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
                             ) : (
-                                <Zap className="w-4 h-4" />
+                                <>
+                                    <span className="font-bold text-sm">Analyze</span>
+                                    <span className="material-symbols-outlined text-sm">bolt</span>
+                                </>
                             )}
                         </button>
                     </div>
                 </motion.div>
             </form>
 
-            {/* Agent Mode Indicator */}
             {isAgentMode && (
                 <motion.div
                     initial={{ opacity: 0, y: -5 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mt-3 flex items-center justify-center gap-2 text-xs text-accent"
+                    className="mt-6 flex items-center justify-center gap-3 text-xs font-bold text-primary bg-primary/5 py-3 px-6 rounded-full w-fit mx-auto border border-primary/10"
                 >
-                    <Bot className="w-3.5 h-3.5" />
-                    <span>AI Researcher Mode - Complex reasoning enabled</span>
+                    <span className="material-symbols-outlined text-sm">auto_awesome</span>
+                    <span className="uppercase tracking-widest">AI Researcher Mode Active</span>
                 </motion.div>
             )}
 
-            {/* System Prompt Selector */}
             {!isAgentMode && systemPrompts.length > 0 && (
                 <motion.div 
                     initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }}
-                    className="mt-3 flex justify-center w-full"
+                    className="mt-8 flex flex-wrap justify-center gap-3"
                 >
-                    <div className="flex items-center gap-2 text-xs md:text-sm text-muted-foreground bg-background/50 backdrop-blur border border-border/50 rounded-full px-3 py-1.5 shadow-sm">
-                        <Bot className="w-3.5 h-3.5 text-primary" />
-                        <span>AI Persona:</span>
+                    <div className="flex items-center gap-4 text-[11px] text-[#434656] dark:text-slate-400 bg-white dark:bg-slate-900 border border-[#f3f3fd] dark:border-slate-800 rounded-2xl px-6 py-3 shadow-sm hover:shadow-md transition-all">
+                        <span className="material-symbols-outlined text-primary text-sm">psychology</span>
+                        <span className="font-black uppercase tracking-widest opacity-60">Search Strategy</span>
+                        <div className="h-4 w-px bg-[#f3f3fd] dark:bg-slate-800"></div>
                         <select 
-                            className="bg-transparent border-none focus:ring-0 cursor-pointer font-medium text-foreground p-0 min-w-[120px]"
+                            className="bg-transparent border-none focus:ring-0 cursor-pointer font-bold text-[#191b22] dark:text-white p-0 min-w-[140px] outline-none"
                             value={selectedPromptId || ''}
                             onChange={(e) => onPromptChange(Number(e.target.value))}
                             disabled={isLoading}
                         >
                             {systemPrompts.map(p => (
-                                <option key={p.id} value={p.id} className="bg-background">{p.name}</option>
+                                <option key={p.id} value={p.id} className="bg-white dark:bg-slate-900">{p.name}</option>
                             ))}
                         </select>
                     </div>
