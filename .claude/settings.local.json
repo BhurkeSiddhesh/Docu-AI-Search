@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh pr create --draft --title 'fix: stop exposing raw API keys in GET /api/config response' --body ' *)",
+      "Bash(gh pr *)",
+      "Bash(gh api *)"
+    ]
+  }
+}
