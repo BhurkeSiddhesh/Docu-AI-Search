@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest backend/tests/ --collect-only -q)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(gh pr create --title 'fix: re-raise HTTPException in global exception handler' --body ' *)",
+      "Bash(gh pr *)",
+      "Bash(gh run *)"
+    ]
+  }
+}
