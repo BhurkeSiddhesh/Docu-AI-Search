@@ -482,9 +482,10 @@ describe('SettingsModal Component', () => {
     })
 
     it('dismisses toast after 3 seconds', async () => {
-        vi.useFakeTimers({ shouldAdvanceTime: true })
+        vi.useFakeTimers()
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        // waitFor uses MutationObserver so it works even with fake timers
         await waitFor(() => screen.getByText('Settings'))
 
         fireEvent.click(screen.getByText('Save Changes'))
@@ -493,9 +494,9 @@ describe('SettingsModal Component', () => {
             expect(screen.getByText('Settings saved successfully!')).toBeDefined()
         })
 
-        // Fast-forward 3 seconds and flush React state updates
+        // Drain all pending timers asynchronously so React can flush the state update
         await act(async () => {
-            vi.advanceTimersByTime(3000)
+            await vi.runAllTimersAsync()
         })
 
         expect(screen.queryByText('Settings saved successfully!')).toBeNull()
