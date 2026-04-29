@@ -12,9 +12,10 @@ describe('Header Component', () => {
         onModelChange: vi.fn()
     };
 
-    it('renders the File Search brand', () => {
+    it('renders the DocuAI brand', () => {
         render(<Header {...defaultProps} />);
-        expect(screen.getByText('File Search')).toBeDefined();
+        expect(screen.getByText(/Docu/i)).toBeDefined();
+        expect(screen.getByText(/AI/i)).toBeDefined();
     });
 
     it('renders settings and theme toggle buttons', () => {
