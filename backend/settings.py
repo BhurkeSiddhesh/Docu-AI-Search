@@ -180,10 +180,11 @@ async def update_embedding_config(body: EmbeddingConfig, request: Request):
     # Refresh app.state (hot-reload without restart)
     request.app.state.embedding_config = new_cfg
 
+    # Log using original request body fields, not new_cfg which contains the api_key
     logger.info(
         "[Settings] Embedding config updated: provider_type=%s, model_name=%s",
-        new_cfg["provider_type"],
-        new_cfg["model_name"],
+        body.provider_type,
+        body.model_name,
     )
     return {
         "status": "success",

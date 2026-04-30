@@ -379,9 +379,10 @@ async def health_check(request: Request):
         conn.execute("SELECT 1")
         db_status = "connected"
     except Exception as e:
+        logger.error("[Health] Database connectivity check failed: %s", e)
         return JSONResponse(
             status_code=503,
-            content={"status": "degraded", "database": "error", "error": str(e)},
+            content={"status": "degraded", "database": "error", "error": "Database connection failed"},
         )
     with _index_lock:
         idx_loaded = index is not None
@@ -620,7 +621,8 @@ async def delete_model(request: dict, req: Request):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("[API] Failed to delete model: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to delete model")
 
 @app.get("/api/cache/stats")
 def cache_stats_endpoint():
@@ -1037,9 +1039,10 @@ async def search_files(search_data: SearchRequest, request: Request, background_
         except asyncio.TimeoutError:
             raise HTTPException(status_code=504, detail="Search timed out. The embedding service may be unavailable.")
         except EmbeddingDimensionMismatchError as dim_err:
+            logger.error("[Search] Embedding dimension mismatch: %s", dim_err)
             raise HTTPException(
                 status_code=409,
-                detail=str(dim_err),
+                detail="Embedding dimension mismatch: the index was built with a different model. Please re-index your documents.",
             )
         
         # OPTIMIZATION: Batch database lookups for missing file info
@@ -1144,10 +1147,8 @@ async def search_files(search_data: SearchRequest, request: Request, background_
     except HTTPException:
         raise  # re-raise HTTP exceptions (409 dimension mismatch, etc.) with original status
     except Exception as e:
-        logger.error(f"Search error: {e}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Search error: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="An error occurred processing your search request")
 
 @app.post("/api/stream-answer")
 @limiter.limit("30/minute")
@@ -1261,11 +1262,14 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
             system_instruction = prompt_data["content"]
 
     async def generate():
-        for token in stream_ai_answer(
-            context_text, search_data.query, provider, api_key, model_path, 
-            tensor_split, system_instruction, base_url=search_data.base_url_override
-        ):
-            yield token
+        try:
+            for token in stream_ai_answer(
+                context_text, search_data.query, provider, api_key, model_path, 
+                tensor_split, system_instruction, base_url=search_data.base_url_override
+            ):
+                yield token
+        except Exception as _stream_err:
+            logger.error("[Stream] Answer generation error: %s", _stream_err)
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -1496,9 +1500,12 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
     
     # Security: Only allow opening files that are in the index
     # This prevents opening arbitrary files on the system
-    if not database.get_file_by_path(file_path):
-        logger.warning(f"Security: Attempt to open non-indexed file: {file_path}")
+    _indexed_file = database.get_file_by_path(file_path)
+    if not _indexed_file:
+        logger.warning("[Security] Attempt to open non-indexed file: %s", file_path)
         raise HTTPException(status_code=403, detail="Access denied: File is not in the index")
+    # Use the canonical path stored in the database to break taint from user input
+    file_path = _indexed_file.get("path") or file_path
 
     # Security: File type validation (additional layer)
     _, ext = os.path.splitext(file_path)
@@ -1507,7 +1514,7 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
         raise HTTPException(status_code=403, detail="Access denied: File type not allowed")
 
     if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
+        raise HTTPException(status_code=404, detail="File not found")
 
     try:
         import subprocess
@@ -1522,7 +1529,8 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
         
         return {"status": "success", "message": f"Opened {os.path.basename(file_path)}"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to open file: {str(e)}")
+        logger.error("[API] Failed to open file: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to open file")
 
 @app.get("/api/files")
 async def list_indexed_files(request: Request, limit: int = 100, offset: int = 0):
@@ -1568,6 +1576,8 @@ async def preview_file(path: str, request: Request, chars: int = 2000):
     file_info = database.get_file_by_path(real_path)
     if not file_info:
         raise HTTPException(status_code=403, detail="Access denied: file is not in the index")
+    # Use the canonical path stored in the database to break taint from user input
+    real_path = file_info.get("path") or real_path
 
     if not os.path.exists(real_path):
         raise HTTPException(status_code=404, detail="File not found")
@@ -1590,7 +1600,8 @@ async def preview_file(path: str, request: Request, chars: int = 2000):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("[API] File preview error: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to read file preview")
 
 
 @app.get("/api/folders/history")
@@ -1680,7 +1691,11 @@ async def validate_path(body: dict, request: Request):
         return {"valid": False, "error": "Path is required"}
 
     # Normalize to prevent path traversal tricks
-    normalized = os.path.realpath(os.path.normpath(path))
+    import pathlib
+    try:
+        normalized = str(pathlib.Path(path).resolve())
+    except (ValueError, OSError):
+        return {"valid": False, "error": "Invalid path"}
 
     # Reject system directories
     _FORBIDDEN_PREFIXES = [
@@ -1856,7 +1871,8 @@ async def agent_chat(query: str, request: Request):
             async for event in agent.stream_chat(query):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
+            logger.error("[Agent] Stream error: %s", e)
+            yield f"data: {json.dumps({'type': 'error', 'content': 'An error occurred processing your request'})}\n\n"
             
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

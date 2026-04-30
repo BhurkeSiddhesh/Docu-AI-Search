@@ -709,9 +709,11 @@ def delete_model(model_path):
         print(f"Security Warning: Attempt to delete unsafe path: {model_path}")
         return False
 
-    if os.path.exists(model_path):
+    # Use the validated absolute path for all filesystem operations
+    abs_model_path = os.path.abspath(model_path)
+    if os.path.exists(abs_model_path):
         try:
-            os.remove(model_path)
+            os.remove(abs_model_path)
             return True
         except OSError as e:
             print(f"Error deleting model: {e}")
