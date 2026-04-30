@@ -20,7 +20,7 @@ const Toast = ({ message, type = 'success', onDismiss }) => {
         <div className={`fixed bottom-8 right-8 z-[200] flex items-center gap-4 px-6 py-4 rounded-3xl shadow-2xl backdrop-blur-xl text-sm font-bold animate-in slide-in-from-bottom-8 duration-500 ${colours[type]}`}>
             <span className="material-symbols-outlined">{type === 'success' ? 'check_circle' : (type === 'error' ? 'error' : 'info')}</span>
             <span>{message}</span>
-            <button type="button" onClick={onDismiss} className="ml-2 opacity-70 hover:opacity-100">
+            <button type="button" onClick={onDismiss} aria-label="Dismiss notification" className="ml-2 opacity-70 hover:opacity-100">
                 <span className="material-symbols-outlined text-sm">close</span>
             </button>
         </div>
@@ -190,7 +190,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
     ];
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()} onKeyDown={(e) => e.key === 'Escape' && onClose()} tabIndex={-1} aria-hidden="true">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()} onKeyDown={(e) => e.key === 'Escape' && onClose()} tabIndex={-1}>
             <div className="glass-overlay w-[96vw] max-w-6xl h-[88vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
                 {/* Header */}
                 <div className="px-8 py-6 border-b border-border/30 bg-background/85 backdrop-blur-md flex items-center justify-between">

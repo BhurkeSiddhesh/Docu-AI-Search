@@ -1,8 +1,9 @@
 import json
-import os
+import sys
+from pathlib import Path
 
-file_path = r'C:\Users\siddh\.gemini\antigravity\brain\efae1060-aa30-4e5e-803c-5c3570d3dbf8\.system_generated\steps\515\output.txt'
-with open(file_path, 'r', encoding='utf-8') as f:
+file_path = Path(sys.argv[1])
+with file_path.open(encoding='utf-8') as f:
     data = json.load(f)
 
 print(f"{'#':<5} {'Branch':<40} {'Title'}")

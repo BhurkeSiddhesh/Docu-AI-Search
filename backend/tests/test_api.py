@@ -557,7 +557,7 @@ class TestAPIHealthEndpoints(unittest.TestCase):
     def test_health_check_endpoint(self, mock_get_connection):
         """Test dedicated health check endpoint."""
         mock_conn = MagicMock()
-        mock_conn.connection.execute.return_value = None
+        mock_conn.execute.return_value = None
         mock_get_connection.return_value = mock_conn
 
         response = self.client.get("/api/health")
@@ -566,6 +566,7 @@ class TestAPIHealthEndpoints(unittest.TestCase):
         data = response.json()
         self.assertIn('status', data)
         self.assertEqual(data['status'], 'ok')
+        mock_conn.execute.assert_called_once_with("SELECT 1")
 
 
 class TestAPISecurityFeatures(unittest.TestCase):
