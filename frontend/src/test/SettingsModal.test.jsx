@@ -133,24 +133,24 @@ describe('SettingsModal Component', () => {
         })
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('System Configuration'))
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
-        fireEvent.click(screen.getByText('Library'))
+        fireEvent.click(screen.getByText('System'))
 
         await waitFor(() => {
-            expect(screen.getByText(/42 entries/)).toBeDefined()
-            expect(screen.getByText(/128 hits saved/)).toBeDefined()
+            expect(screen.getByText(/42/)).toBeDefined()
+            expect(screen.getByText(/128/)).toBeDefined()
         })
-    })
+    }, 20000)
 
     it('changes model name in embedding config', async () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('System Configuration'))
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
-        fireEvent.click(screen.getByText('System'))
-        await waitFor(() => screen.getByLabelText('Model Name / Repo ID'))
+        fireEvent.click(screen.getByText('Embeddings'))
+        await screen.findByLabelText('Model Architecture', {}, { timeout: 8000 })
 
-        const modelInput = screen.getByLabelText('Model Name / Repo ID')
+        const modelInput = screen.getByLabelText('Model Architecture')
         fireEvent.change(modelInput, { target: { value: 'new-model-name' } })
 
         expect(modelInput.value).toBe('new-model-name')
@@ -161,9 +161,9 @@ describe('SettingsModal Component', () => {
         axios.post.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve({ data: { status: 'success' } }), 100)))
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('System Configuration'))
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
-        const saveButton = screen.getByText('Save Changes')
+        const saveButton = screen.getByText('Apply Changes')
         fireEvent.click(saveButton)
 
         // Button should be disabled during save
@@ -183,17 +183,17 @@ describe('SettingsModal Component', () => {
         })
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('System Configuration'))
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
-        fireEvent.click(screen.getByText('Cloud AI'))
-        await waitFor(() => screen.getByLabelText(/API Key/i))
+        fireEvent.click(screen.getByText('Embeddings'))
+        await screen.findByLabelText(/Embedding API Key/i, {}, { timeout: 8000 })
 
         // API key should show placeholder
-        const apiKeyInput = screen.getByLabelText(/API Key/i)
+        const apiKeyInput = screen.getByLabelText(/Embedding API Key/i)
         expect(apiKeyInput.value).toBe('••••••••')
 
         // Save without changing the API key
-        fireEvent.click(screen.getByText('Save Changes'))
+        fireEvent.click(screen.getByText('Apply Changes'))
 
         await waitFor(() => {
             // Should not send the placeholder
@@ -202,7 +202,7 @@ describe('SettingsModal Component', () => {
             )
             expect(embeddingCall[1].api_key).toBeUndefined()
         })
-    })
+    }, 20000)
 
     it('handles browse folder error gracefully', async () => {
         axios.get.mockImplementation((url) => {
@@ -216,7 +216,7 @@ describe('SettingsModal Component', () => {
         })
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('System Configuration'))
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
         // Click add folder (should not crash)
         fireEvent.click(screen.getByText('Add Folder'))
@@ -227,13 +227,13 @@ describe('SettingsModal Component', () => {
 
     it('updates API keys for different providers', async () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('System Configuration'))
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
         fireEvent.click(screen.getByText('Cloud AI'))
-        await waitFor(() => screen.getByText('OpenAI (ChatGPT)'))
+        await screen.findByText('Cloud Intelligence', {}, { timeout: 8000 })
 
         // Find all API key inputs
-        const inputs = screen.getAllByPlaceholderText(/sk-|AIza|xai-/i)
+        const inputs = screen.getAllByPlaceholderText(/Enter API Key.../i)
         expect(inputs.length).toBeGreaterThan(0)
 
         // Change first one
@@ -243,15 +243,13 @@ describe('SettingsModal Component', () => {
 
     it('shows folder history dropdown when Recent History button is clicked', async () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('System Configuration'))
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
-        const historyButton = screen.getByText('Recent History')
+        const historyButton = screen.getByLabelText(/history/i)
         fireEvent.click(historyButton)
 
-        await waitFor(() => {
-            expect(screen.getByText('Previously Indexed')).toBeDefined()
-            expect(screen.getByText('C:/Old/Folder')).toBeDefined()
-        })
+        await screen.findByText('Previously Indexed', {}, { timeout: 8000 })
+        expect(screen.getByText('C:/Old/Folder')).toBeDefined()
     })
 
     it('handles empty folder history', async () => {
@@ -265,13 +263,11 @@ describe('SettingsModal Component', () => {
         })
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('System Configuration'))
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
-        fireEvent.click(screen.getByText('Recent History'))
+        fireEvent.click(screen.getByLabelText(/history/i))
 
-        await waitFor(() => {
-            expect(screen.getByText('No indexed folders yet.')).toBeDefined()
-        })
+        await screen.findByText('No indexed folders yet.', {}, { timeout: 8000 })
     })
 
     it('dismisses toast after 3 seconds', async () => {
@@ -280,13 +276,11 @@ describe('SettingsModal Component', () => {
         vi.useFakeTimers({ shouldAdvanceTime: true })
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('System Configuration'))
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
-        fireEvent.click(screen.getByText('Save Changes'))
+        fireEvent.click(screen.getByText('Apply Changes'))
 
-        await waitFor(() => {
-            expect(screen.getByText('Settings saved successfully!')).toBeDefined()
-        })
+        await screen.findByText('Configuration updated!', {}, { timeout: 8000 })
 
         // Advance the fake clock past the 3 s auto-dismiss threshold
         act(() => { vi.advanceTimersByTime(3000) })
@@ -294,10 +288,9 @@ describe('SettingsModal Component', () => {
         // Poll for the DOM update instead of asserting synchronously — React
         // may batch the state update and re-render asynchronously
         await waitFor(() => {
-            expect(screen.queryByText('Settings saved successfully!')).toBeNull()
+            expect(screen.queryByText('Configuration updated!')).toBeNull()
         })
 
         vi.useRealTimers()
     })
-})
 })

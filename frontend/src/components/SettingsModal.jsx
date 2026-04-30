@@ -242,6 +242,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                         </div>
                                         <button 
                                             onClick={() => setShowHistory(!showHistory)} 
+                                            aria-label="Recent History"
                                             className={`p-3 rounded-2xl transition-all ${showHistory ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-white dark:bg-slate-900 text-primary hover:bg-primary/5'}`}
                                         >
                                             <span className="material-symbols-outlined text-lg">history</span>
@@ -367,8 +368,9 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                         { id: 'grok', name: 'xAI (Grok)', key: 'grok_api_key' },
                                     ].map(p => (
                                         <div key={p.id} className="space-y-3">
-                                            <label className="text-xs font-black uppercase tracking-widest opacity-40 px-2">{p.name}</label>
+                                            <label htmlFor={p.key} className="text-xs font-black uppercase tracking-widest opacity-40 px-2">{p.name}</label>
                                             <input 
+                                                id={p.key}
                                                 type="password"
                                                 className="w-full bg-[#f3f3fd] dark:bg-slate-950/40 p-5 rounded-3xl border-2 border-transparent focus:border-primary/20 outline-none transition-all font-body text-sm"
                                                 placeholder="Enter API Key..."
@@ -405,8 +407,9 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                     </div>
 
                                     <div className="space-y-3 pt-4">
-                                        <label className="text-xs font-black uppercase tracking-widest opacity-40 px-2">Model Architecture</label>
+                                        <label htmlFor="emb-model-name" className="text-xs font-black uppercase tracking-widest opacity-40 px-2">Model Architecture</label>
                                         <input 
+                                            id="emb-model-name"
                                             type="text"
                                             className="w-full bg-[#f3f3fd] dark:bg-slate-950/40 p-5 rounded-3xl border-2 border-transparent focus:border-primary/20 outline-none transition-all font-mono text-xs"
                                             value={embeddingConfig.model_name}
@@ -416,8 +419,9 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                     
                                     {EMBEDDING_PROVIDER_TYPES.find(x => x.value === embeddingConfig.provider_type)?.needsKey && (
                                         <div className="space-y-3">
-                                            <label className="text-xs font-black uppercase tracking-widest opacity-40 px-2">Embedding API Key</label>
+                                            <label htmlFor="emb-api-key" className="text-xs font-black uppercase tracking-widest opacity-40 px-2">Embedding API Key</label>
                                             <input 
+                                                id="emb-api-key"
                                                 type="password"
                                                 className="w-full bg-[#f3f3fd] dark:bg-slate-950/40 p-5 rounded-3xl border-2 border-transparent focus:border-primary/20 outline-none transition-all font-body text-sm"
                                                 value={embeddingConfig.api_key}
