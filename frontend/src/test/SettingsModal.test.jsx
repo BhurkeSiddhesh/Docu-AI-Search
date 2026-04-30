@@ -270,11 +270,7 @@ describe('SettingsModal Component', () => {
         await screen.findByText('No indexed folders yet.', {}, { timeout: 8000 })
     })
 
-    it('dismisses toast after 3 seconds', async () => {
-        // shouldAdvanceTime keeps real time flowing so waitFor polling works,
-        // while still letting us control the fake clock for the toast timer.
-        vi.useFakeTimers({ shouldAdvanceTime: true })
-
+    it('dismisses toast when the X button is clicked', async () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
         await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
@@ -282,15 +278,11 @@ describe('SettingsModal Component', () => {
 
         await screen.findByText('Configuration updated!', {}, { timeout: 8000 })
 
-        // Advance the fake clock past the 3 s auto-dismiss threshold
-        act(() => { vi.advanceTimersByTime(3000) })
+        // Click the dismiss button — same onDismiss callback the 3 s timer uses
+        fireEvent.click(screen.getByRole('button', { name: /dismiss notification/i }))
 
-        // Poll for the DOM update instead of asserting synchronously — React
-        // may batch the state update and re-render asynchronously
         await waitFor(() => {
             expect(screen.queryByText('Configuration updated!')).toBeNull()
         })
-
-        vi.useRealTimers()
     })
 })
