@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Terminal, Cpu, Database, FileText, CheckCircle2, AlertCircle, ArrowRight, Sparkles } from 'lucide-react';
 
 const AgentChat = ({ query }) => {
     const [events, setEvents] = useState([]);
@@ -54,60 +53,65 @@ const AgentChat = ({ query }) => {
 
     const getIcon = (type) => {
         switch (type) {
-            case 'thought': return <Cpu className="w-4 h-4 text-blue-400" />;
-            case 'action': return <Terminal className="w-4 h-4 text-orange-400" />;
-            case 'observation': return <Database className="w-4 h-4 text-green-400" />;
-            case 'answer': return <CheckCircle2 className="w-5 h-5 text-primary" />;
-            case 'error': return <AlertCircle className="w-5 h-5 text-red-500" />;
-            default: return <Bot className="w-4 h-4" />;
+            case 'thought': return <span className="material-symbols-outlined text-primary">psychology</span>;
+            case 'action': return <span className="material-symbols-outlined text-amber-500">terminal</span>;
+            case 'observation': return <span className="material-symbols-outlined text-emerald-500">database</span>;
+            case 'answer': return <span className="material-symbols-outlined text-primary">verified</span>;
+            case 'error': return <span className="material-symbols-outlined text-red-500">error</span>;
+            default: return <span className="material-symbols-outlined">smart_toy</span>;
         }
     };
 
     return (
-        <div className="w-full max-w-4xl mx-auto mt-8 px-4 pb-20">
-            <div className="flex items-center gap-3 mb-6 px-4">
-                <div className="w-10 h-10 rounded-2xl bg-primary/20 flex items-center justify-center border border-primary/30 animate-pulse">
-                    <Bot className="w-6 h-6 text-primary" />
+        <div className="w-full max-w-5xl mx-auto mt-12 px-4 pb-24">
+            <div className="flex items-center gap-6 mb-12 px-8">
+                <div className="w-16 h-16 rounded-[2rem] bg-primary/10 flex items-center justify-center relative">
+                    <span className="material-symbols-outlined text-3xl text-primary" style={{ fontVariationSettings: "'FILL' 1" }}>smart_toy</span>
+                    <div className="absolute inset-0 rounded-[2rem] border-2 border-primary/20 animate-pulse" />
                 </div>
                 <div>
-                    <h2 className="text-xl font-bold tracking-tight">Agent Reasoning</h2>
-                    <p className="text-xs font-mono text-muted-foreground uppercase tracking-widest">RAPTOR + ReAct Powered</p>
+                    <h2 className="text-3xl font-bold font-headline tracking-tight">Agent Reasoning</h2>
+                    <p className="text-[10px] font-black opacity-40 uppercase tracking-[0.2em]">Neural ReAct Engine • Step-by-Step Logic</p>
                 </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-6 px-4">
                 <AnimatePresence>
                     {events.map((event, index) => (
                         <motion.div
                             key={index}
-                            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                            initial={{ opacity: 0, y: 20, scale: 0.95 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
-                            transition={{ duration: 0.3 }}
-                            className={`rounded-2xl border backdrop-blur-sm shadow-sm overflow-hidden 
-                                ${event.type === 'answer' ? 'bg-primary/10 border-primary/30 shadow-primary/10' :
-                                    event.type === 'observation' ? 'bg-black/20 border-white/5 mx-4' :
-                                        'bg-card/40 border-border/50'}`}
+                            transition={{ duration: 0.5, cubicBezier: [0.2, 0.8, 0.2, 1] }}
+                            className={`rounded-[2.5rem] overflow-hidden 
+                                ${event.type === 'answer' ? 'bg-white dark:bg-slate-900 shadow-2xl shadow-primary/10 border-2 border-primary/10' :
+                                    event.type === 'observation' ? 'bg-[#f3f3fd] dark:bg-slate-950/40 opacity-70 mx-8' :
+                                        'bg-[#f3f3fd] dark:bg-slate-900 border-l-8 border-primary/20'}`}
                         >
                             {event.type === 'answer' ? (
-                                <div className="p-6">
-                                    <div className="flex items-center gap-2 mb-4 text-primary">
-                                        <Sparkles className="w-5 h-5" />
-                                        <span className="text-xs font-black uppercase tracking-widest">Final Conclusion</span>
+                                <div className="p-10 relative">
+                                    <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -z-10" />
+                                    
+                                    <div className="flex items-center gap-4 mb-8">
+                                        <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
+                                            <span className="material-symbols-outlined text-primary text-xl">auto_awesome</span>
+                                        </div>
+                                        <span className="text-xs font-black text-primary uppercase tracking-widest">Final Conclusion</span>
                                     </div>
-                                    <div className="prose prose-invert max-w-none text-lg leading-relaxed">
+                                    <div className="prose prose-slate dark:prose-invert max-w-none text-[#191b22] dark:text-white text-xl leading-relaxed font-medium font-body">
                                         {event.content}
                                     </div>
                                 </div>
                             ) : (
-                                <div className="p-4 flex gap-4">
-                                    <div className="mt-1 shrink-0 opacity-70">
+                                <div className="p-8 flex gap-8 items-start">
+                                    <div className="shrink-0 w-12 h-12 rounded-2xl bg-white dark:bg-slate-800 flex items-center justify-center shadow-sm">
                                         {getIcon(event.type)}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-1 opacity-50">
-                                            <span className="text-[10px] uppercase font-bold tracking-wider">{event.type}</span>
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <span className="text-[10px] uppercase font-black tracking-widest opacity-40">{event.type}</span>
                                         </div>
-                                        <div className={`text-sm ${event.type === 'observation' ? 'font-mono text-xs opacity-70' : 'font-medium'}`}>
+                                        <div className={`text-[#191b22] dark:text-white ${event.type === 'observation' ? 'font-mono text-xs opacity-60 leading-relaxed' : 'font-bold text-base leading-relaxed'}`}>
                                             {event.content}
                                         </div>
                                     </div>
@@ -121,12 +125,14 @@ const AgentChat = ({ query }) => {
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
-                        className="flex items-center gap-3 px-6 py-4 text-muted-foreground/60 animate-pulse"
+                        className="flex items-center gap-6 px-12 py-8 bg-[#f3f3fd] dark:bg-slate-950/40 rounded-[2.5rem] opacity-60"
                     >
-                        <div className="w-2 h-2 rounded-full bg-current animate-bounce" />
-                        <div className="w-2 h-2 rounded-full bg-current animate-bounce delay-100" />
-                        <div className="w-2 h-2 rounded-full bg-current animate-bounce delay-200" />
-                        <span className="text-xs font-mono uppercase tracking-widest ml-2">Thinking</span>
+                        <div className="flex gap-2">
+                            <div className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce [animation-delay:-0.3s]" />
+                            <div className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce [animation-delay:-0.15s]" />
+                            <div className="w-2.5 h-2.5 rounded-full bg-primary animate-bounce" />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-[0.4em] text-primary">Synthesizing intelligence</span>
                     </motion.div>
                 )}
 

@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { History, Trash2, Clock, Search, X } from 'lucide-react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const SearchHistory = ({ onSelectQuery, isOpen, onClose, isMobile }) => {
+const API = 'http://localhost:8000';
+
+const SearchHistory = ({ onSelectQuery, isOpen, onClose }) => {
     const [history, setHistory] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -16,7 +17,7 @@ const SearchHistory = ({ onSelectQuery, isOpen, onClose, isMobile }) => {
     const fetchHistory = async () => {
         setIsLoading(true);
         try {
-            const response = await axios.get('http://localhost:8000/api/search/history');
+            const response = await axios.get(`${API}/api/search/history`);
             setHistory(response.data || []);
         } catch (error) {
             console.error('Failed to fetch history:', error);
@@ -28,7 +29,7 @@ const SearchHistory = ({ onSelectQuery, isOpen, onClose, isMobile }) => {
     const deleteHistoryItem = async (id, e) => {
         e.stopPropagation();
         try {
-            await axios.delete(`http://localhost:8000/api/search/history/${id}`);
+            await axios.delete(`${API}/api/search/history/${id}`);
             setHistory(history.filter(item => item.id !== id));
         } catch (error) {
             console.error('Failed to delete:', error);
@@ -45,62 +46,92 @@ const SearchHistory = ({ onSelectQuery, isOpen, onClose, isMobile }) => {
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     };
 
-    if (!isOpen) return null;
-
     return (
         <AnimatePresence>
-            <motion.div
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -10 }}
-                className={`fixed left-0 top-16 bottom-0 bg-card/95 backdrop-blur-md border-r border-border z-30 shadow-2xl transition-all duration-300 ${isMobile ? 'w-full' : 'w-72'}`}
-            >
-                <div className="flex items-center justify-between px-4 py-4 border-b border-border/50 bg-secondary/20">
-                    <div className="flex items-center gap-2">
-                        <History className="w-4 h-4 text-primary" />
-                        <span className="text-sm font-bold uppercase tracking-wider">Search History</span>
-                    </div>
-                    <button onClick={onClose} className="p-1 rounded hover:bg-accent">
-                        <X className="w-4 h-4" />
-                    </button>
-                </div>
-
-                <div className="overflow-y-auto h-[calc(100%-3rem)]">
-                    {isLoading ? (
-                        <div className="flex items-center justify-center py-8">
-                            <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                        </div>
-                    ) : history.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                            <Search className="w-8 h-8 mb-2 opacity-40" />
-                            <p className="text-sm">No history</p>
-                        </div>
-                    ) : (
-                        <div className="p-2">
-                            {history.map((item) => (
-                                <div
-                                    key={item.id}
-                                    className="group flex items-center justify-between px-3 py-2 rounded-lg hover:bg-accent cursor-pointer"
-                                    onClick={() => { onSelectQuery(item.query); onClose(); }}
-                                >
-                                    <div className="flex-1 min-w-0 mr-2">
-                                        <p className="text-sm truncate">{item.query}</p>
-                                        <p className="text-xs text-muted-foreground">
-                                            {formatTime(item.timestamp)} • {item.result_count} results
-                                        </p>
-                                    </div>
-                                    <button
-                                        onClick={(e) => deleteHistoryItem(item.id, e)}
-                                        className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"
-                                    >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
+            {isOpen && (
+                <>
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={onClose}
+                        className="fixed inset-0 bg-slate-950/20 backdrop-blur-sm z-[60]"
+                    />
+                    <motion.div
+                        initial={{ x: '-100%' }}
+                        animate={{ x: 0 }}
+                        exit={{ x: '-100%' }}
+                        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                        className="fixed left-72 top-0 bottom-0 w-96 bg-white/90 dark:bg-slate-900/90 backdrop-blur-2xl z-[70] shadow-2xl border-r border-[#f3f3fd] dark:border-slate-800 flex flex-col"
+                    >
+                        <div className="p-8 border-b border-[#f3f3fd] dark:border-slate-800 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="w-10 h-10 rounded-2xl bg-primary/5 text-primary flex items-center justify-center">
+                                    <span className="material-symbols-outlined text-2xl">history</span>
                                 </div>
-                            ))}
+                                <div>
+                                    <h2 className="text-xl font-bold font-headline">History</h2>
+                                    <p className="text-[10px] font-black opacity-40 uppercase tracking-widest">Recent Neural Scans</p>
+                                </div>
+                            </div>
+                            <button onClick={onClose} className="w-10 h-10 rounded-full hover:bg-[#f3f3fd] dark:hover:bg-slate-800 flex items-center justify-center transition-all">
+                                <span className="material-symbols-outlined">close</span>
+                            </button>
                         </div>
-                    )}
-                </div>
-            </motion.div>
+
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+                            {isLoading ? (
+                                <div className="flex flex-col items-center justify-center py-20 gap-4">
+                                    <span className="material-symbols-outlined animate-spin text-primary text-4xl">progress_activity</span>
+                                    <p className="text-xs font-black uppercase tracking-widest opacity-40">Accessing Archives...</p>
+                                </div>
+                            ) : history.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-32 text-center opacity-40 space-y-4">
+                                    <span className="material-symbols-outlined text-6xl">search_off</span>
+                                    <p className="text-sm font-bold">No historical data available</p>
+                                </div>
+                            ) : (
+                                history.map((item) => (
+                                    <div
+                                        key={item.id}
+                                        onClick={() => { onSelectQuery(item.query); onClose(); }}
+                                        className="group relative p-5 rounded-3xl bg-[#f3f3fd] dark:bg-slate-800/40 hover:bg-white dark:hover:bg-slate-800 transition-all cursor-pointer border border-transparent hover:border-primary/20 hover:shadow-xl hover:shadow-primary/5"
+                                    >
+                                        <div className="flex-1 min-w-0 pr-8">
+                                            <p className="text-sm font-bold text-[#191b22] dark:text-white truncate mb-1 group-hover:text-primary transition-colors">{item.query}</p>
+                                            <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-widest opacity-40">
+                                                <span className="flex items-center gap-1">
+                                                    <span className="material-symbols-outlined text-[12px]">schedule</span>
+                                                    {formatTime(item.timestamp)}
+                                                </span>
+                                                <span>•</span>
+                                                <span>{item.result_count} Neural Hits</span>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={(e) => deleteHistoryItem(item.id, e)}
+                                            aria-label="Delete history item"
+                                            className="absolute right-4 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-white dark:bg-slate-900 shadow-sm opacity-0 group-hover:opacity-100 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all"
+                                        >
+                                            <span className="material-symbols-outlined text-lg">delete</span>
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        <div className="p-6 bg-[#f3f3fd] dark:bg-slate-950/40 border-t border-[#f3f3fd] dark:border-slate-800">
+                            <button 
+                                onClick={async () => { if(confirm('Clear history?')) { await axios.delete(`${API}/api/search/history`); fetchHistory(); } }}
+                                className="w-full py-4 rounded-2xl bg-white dark:bg-slate-900 font-bold text-[10px] uppercase tracking-widest text-red-500 hover:bg-red-500 hover:text-white transition-all shadow-sm flex items-center justify-center gap-2"
+                            >
+                                <span className="material-symbols-outlined text-sm">delete_sweep</span>
+                                Wipe History Archive
+                            </button>
+                        </div>
+                    </motion.div>
+                </>
+            )}
         </AnimatePresence>
     );
 };

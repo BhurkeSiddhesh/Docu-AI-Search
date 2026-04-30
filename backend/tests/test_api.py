@@ -79,8 +79,8 @@ class TestAPISearch(unittest.TestCase):
     @patch('backend.api.load_config')
     @patch('backend.api.search')
     @patch('backend.api.summarize')
-    @patch('backend.api.get_embeddings')
-    def test_search_endpoint(self, mock_get_embeddings, mock_summarize, mock_search, mock_load_config, 
+    @patch('backend.api.get_active_embedding_client')
+    def test_search_endpoint(self, mock_get_active_client, mock_summarize, mock_search, mock_load_config, 
                               mock_smart_summary, mock_generate_ai, mock_get_file,
                               mock_get_files_batch, mock_add_history):
         """Test the search endpoint."""
@@ -751,7 +751,7 @@ class TestAPISearchEdgeCases(unittest.TestCase):
     @patch('backend.api.load_config')
     @patch('backend.api.search')
     @patch('backend.api.summarize')
-    @patch('backend.api.get_embeddings')
+    @patch('backend.api.get_active_embedding_client')
     def test_search_with_empty_results(self, mock_embeddings, mock_summarize,
                                        mock_search, mock_config, mock_batch, mock_history):
         """Test search that returns no results."""
@@ -776,7 +776,7 @@ class TestAPISearchEdgeCases(unittest.TestCase):
     @patch('backend.api.load_config')
     @patch('backend.api.search')
     @patch('backend.api.summarize')
-    @patch('backend.api.get_embeddings')
+    @patch('backend.api.get_active_embedding_client')
     def test_search_with_very_long_query(self, mock_embeddings, mock_summarize,
                                           mock_search, mock_config, mock_batch, mock_history):
         """Test search with extremely long query."""
@@ -958,7 +958,7 @@ class TestAPISearchDimensionMismatch(unittest.TestCase):
     @patch('backend.database.add_search_history')
     @patch('backend.api.load_config')
     @patch('backend.api.search')
-    @patch('backend.api.get_embeddings')
+    @patch('backend.api.get_active_embedding_client')
     def test_search_dimension_mismatch_error(self, mock_embeddings, mock_search,
                                               mock_config, mock_history):
         """Test search when embedding dimension doesn't match index."""

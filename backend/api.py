@@ -376,7 +376,7 @@ async def health_check(request: Request):
     from fastapi.responses import JSONResponse
     try:
         conn = database.get_connection()
-        conn.connection.execute("SELECT 1")
+        conn.execute("SELECT 1")
         db_status = "connected"
     except Exception as e:
         return JSONResponse(
@@ -772,7 +772,7 @@ class SearchRequest(BaseModel):
     """
     model_config = {'protected_namespaces': ()}
 
-    query: str = Field(..., min_length=1, max_length=1000)
+    query: str = Field(..., min_length=1, max_length=5000)
     context: Optional[List[str]] = None
     system_prompt_id: Optional[int] = None
     provider_override: Optional[str] = None
@@ -951,7 +951,7 @@ async def update_config(config_data: ConfigModel, request: Request):
 
 @app.post("/api/search")
 @limiter.limit("30/minute")
-async def search_files(request: SearchRequest, req: Request, _auth=Depends(require_auth)):
+async def search_files(search_data: SearchRequest, request: Request, background_tasks: BackgroundTasks, _auth=Depends(require_auth)):
     """
     Perform a semantic search on the indexed documents.
 
@@ -962,8 +962,8 @@ async def search_files(request: SearchRequest, req: Request, _auth=Depends(requi
     4. SSE Streaming for agentic responses.
 
     Args:
-        request (SearchRequest): The search query and optional context.
-        req (Request): The incoming request object.
+        search_data (SearchRequest): The search query and optional context.
+        request (Request): The incoming request object.
 
     Returns:
         SearchResponse or StreamingResponse: The search results or an AI-generated answer.
@@ -1010,7 +1010,7 @@ async def search_files(request: SearchRequest, req: Request, _auth=Depends(requi
                 'index_summaries': index_summaries, 'cluster_summaries': cluster_summaries,
                 'cluster_map': cluster_map, 'bm25': bm25
             })
-            return StreamingResponse(agent.stream_chat(request.query), media_type="text/event-stream")
+            return StreamingResponse(agent.stream_chat(search_data.query), media_type="text/event-stream")
 
         model_path = config.get('LocalLLM', 'model_path', fallback=None)
         tensor_split_str = config.get('LocalLLM', 'tensor_split', fallback=None)
@@ -1028,8 +1028,8 @@ async def search_files(request: SearchRequest, req: Request, _auth=Depends(requi
             results, _context_snippets = await asyncio.wait_for(
                 asyncio.to_thread(
                     search,
-                    request.query, index, docs, tags,
-                    get_active_embedding_client(req.app),
+                    search_data.query, index, docs, tags,
+                    get_active_embedding_client(request.app),
                     index_summaries, cluster_summaries, cluster_map, bm25
                 ),
                 timeout=_search_timeout,
@@ -1065,15 +1065,15 @@ async def search_files(request: SearchRequest, req: Request, _auth=Depends(requi
         context_snippets = []
 
         # Build normalised filter values once
-        _file_type_filter = {ft.lower().lstrip('.') for ft in (request.file_types or [])}
+        _file_type_filter = {ft.lower().lstrip('.') for ft in (search_data.file_types or [])}
 
         for result in results:
             faiss_idx = result.get('faiss_idx')
 
             # Apply min_score filter
-            if request.min_score is not None:
+            if search_data.min_score is not None:
                 score = result.get('score', 1.0)
-                if score < request.min_score:
+                if score < search_data.min_score:
                     continue
 
             # Use file info from search result first (it comes from FAISS doc metadata)
@@ -1093,7 +1093,7 @@ async def search_files(request: SearchRequest, req: Request, _auth=Depends(requi
                     continue
             
             # OPTIMIZATION: Use fast summary for all results to avoid blocking
-            summary = cached_smart_summary(result['document'], provider, api_key, model_path, question=request.query)
+            summary = cached_smart_summary(text=result['document'], query=search_data.query, provider=provider, api_key=api_key, model_path=model_path)
             
             # Add file context to snippets for AI answer
             file_prefix = f"[From: {file_name}] " if file_name else ""
@@ -1119,12 +1119,12 @@ async def search_files(request: SearchRequest, req: Request, _auth=Depends(requi
             ))
         
         # Apply sort_by if requested (default is relevance from FAISS)
-        if request.sort_by and request.sort_by != "relevance":
-            if request.sort_by == "filename":
+        if search_data.sort_by and search_data.sort_by != "relevance":
+            if search_data.sort_by == "filename":
                 processed_results.sort(key=lambda r: (r.file_name or "").lower())
-            elif request.sort_by == "file_size":
+            elif search_data.sort_by == "file_size":
                 processed_results.sort(key=lambda r: os.path.getsize(r.file_path) if r.file_path and os.path.exists(r.file_path) else 0, reverse=True)
-            elif request.sort_by == "date":
+            elif search_data.sort_by == "date":
                 processed_results.sort(key=lambda r: os.path.getmtime(r.file_path) if r.file_path and os.path.exists(r.file_path) else 0, reverse=True)
 
         # Return results immediately - AI Answer will be streamed via separate endpoint
@@ -1134,7 +1134,7 @@ async def search_files(request: SearchRequest, req: Request, _auth=Depends(requi
         
         # Save to search history
         execution_time_ms = int((time.time() - start_time) * 1000)
-        database.add_search_history(request.query, len(processed_results), execution_time_ms)
+        background_tasks.add_task(database.add_search_history, search_data.query, len(processed_results), execution_time_ms)
             
         return SearchResponse(
             results=processed_results,
@@ -1151,7 +1151,7 @@ async def search_files(request: SearchRequest, req: Request, _auth=Depends(requi
 
 @app.post("/api/stream-answer")
 @limiter.limit("30/minute")
-async def stream_answer_endpoint(request: SearchRequest, req: Request, _auth=Depends(require_auth)):
+async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _auth=Depends(require_auth)):
     """
     Stream the AI answer for a given search query.
 
@@ -1160,8 +1160,8 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request, _auth=Dep
     streams tokens from the selected LLM provider.
 
     Args:
-        request (SearchRequest): The search query and optional context snippets.
-        req (Request): The incoming request object.
+        search_data (SearchRequest): The search query and optional context snippets.
+        request (Request): The incoming request object.
 
     Returns:
         StreamingResponse: A server-sent event stream of AI response tokens.
@@ -1172,9 +1172,9 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request, _auth=Dep
          return StreamingResponse(iter(["Error: Index not loaded."]), media_type="text/event-stream")
 
     config = load_config()
-    provider = request.provider_override or config.get('LocalLLM', 'provider', fallback='openai')
+    provider = search_data.provider_override or config.get('LocalLLM', 'provider', fallback='openai')
     
-    api_key = request.api_key_override
+    api_key = search_data.api_key_override
     if not api_key:
         api_key = config.get('APIKeys', 'openai_api_key', fallback=None)
         if provider == 'gemini':
@@ -1186,7 +1186,7 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request, _auth=Dep
         elif provider in ('ollama', 'lmstudio'):
             api_key = config.get('ExternalProviders', 'external_api_key', fallback=api_key)
 
-    model_path = request.model_override or config.get('LocalLLM', 'model_path', fallback=None)
+    model_path = search_data.model_override or config.get('LocalLLM', 'model_path', fallback=None)
     tensor_split_str = config.get('LocalLLM', 'tensor_split', fallback=None)
     tensor_split = None
     if tensor_split_str:
@@ -1198,14 +1198,13 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request, _auth=Dep
 
     final_context_snippets = []
 
-    if request.context:
-        logger.info(f"[API] Using provided context ({len(request.context)} snippets) for streaming answer")
-        final_context_snippets = request.context
+    if search_data.context:
+        logger.info(f"[API] Using provided context ({len(search_data.context)} snippets) for streaming answer")
+        final_context_snippets = search_data.context
     else:
-        # Re-run search to get context
         results, context_snippets = search(
-            request.query, index, docs, tags,
-            get_embeddings(provider, api_key, model_path),
+            search_data.query, index, docs, tags,
+            get_active_embedding_client(request.app),
             index_summaries, cluster_summaries, cluster_map, bm25
         )
 
@@ -1231,7 +1230,7 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request, _auth=Dep
         # Prepare context
         for result in results:
              # Use fast fallback summary for streaming context (no new LLM calls)
-             summary = cached_smart_summary(result['document'], provider, api_key, model_path, question=request.query)
+             summary = cached_smart_summary(text=result['document'], query=search_data.query, provider=provider, api_key=api_key, model_path=model_path)
 
              faiss_idx = result.get('faiss_idx')
              file_name = result.get('file_name')
@@ -1255,16 +1254,16 @@ async def stream_answer_endpoint(request: SearchRequest, req: Request, _auth=Dep
         return StreamingResponse(iter(["No relevant context found."]), media_type="text/event-stream")
 
     system_instruction = None
-    if getattr(request, 'system_prompt_id', None) is not None:
+    if getattr(search_data, 'system_prompt_id', None) is not None:
         from backend.system_prompts import get_system_prompt_by_id
-        prompt_data = get_system_prompt_by_id(request.system_prompt_id)
+        prompt_data = get_system_prompt_by_id(search_data.system_prompt_id)
         if prompt_data:
             system_instruction = prompt_data["content"]
 
     async def generate():
         for token in stream_ai_answer(
-            context_text, request.query, provider, api_key, model_path, 
-            tensor_split, system_instruction, base_url=request.base_url_override
+            context_text, search_data.query, provider, api_key, model_path, 
+            tensor_split, system_instruction, base_url=search_data.base_url_override
         ):
             yield token
 
@@ -1462,7 +1461,7 @@ async def receive_log(log: LogRequest, request: Request):
     return {"status": "logged"}
 
 @app.post("/api/open-file")
-async def open_file(request: dict, req: Request, _=Depends(verify_local_request)):
+async def open_file(body: dict, request: Request, _=Depends(verify_local_request)):
     """
     Open a file using the system's default application.
 
@@ -1473,8 +1472,8 @@ async def open_file(request: dict, req: Request, _=Depends(verify_local_request)
     - Whitelists file extensions (ALLOWED_EXTENSIONS).
 
     Args:
-        request (dict): Body containing the 'path' of the file to open.
-        req (Request): The incoming request.
+        body (dict): Body containing the 'path' of the file to open.
+        request (Request): The incoming request.
         _ (Depends): Security dependency for local request verification.
 
     Returns:
@@ -1483,7 +1482,7 @@ async def open_file(request: dict, req: Request, _=Depends(verify_local_request)
     Raises:
         HTTPException: 400 if path missing/invalid, 403 if access denied, 404 if file missing, 500 on system error.
     """
-    file_path = request.get('path', '')
+    file_path = body.get('path', '')
     if not file_path:
         raise HTTPException(status_code=400, detail="File path is required")
     
@@ -1665,18 +1664,18 @@ async def delete_folder_history_item(request: dict, req: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/validate-path")
-async def validate_path(request: dict, req: Request):
+async def validate_path(body: dict, request: Request):
     """
     Validate a system path and count supported file types for indexing.
 
     Args:
-        request (dict): Body containing the 'path' to validate.
-        req (Request): The incoming request.
+        body (dict): Body containing the 'path' to validate.
+        request (Request): The incoming request.
 
     Returns:
         dict: A dictionary with 'valid' status and 'file_count'.
     """
-    path = request.get('path', '')
+    path = body.get('path', '')
     if not path:
         return {"valid": False, "error": "Path is required"}
 

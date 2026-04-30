@@ -59,3 +59,6 @@ file_index.pkl
 # Agent skill files (reference only)
 .agent/skills/
 test_*.txt
+
+
+stitch_app_design_system

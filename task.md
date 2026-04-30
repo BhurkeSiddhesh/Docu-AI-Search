@@ -1,5 +1,12 @@
 # Tasks
 
+- [ ] Implement Liquid Glass & Calm Contrast Design System <!-- id: 12 -->
+    - [ ] Update CSS Foundation and Tailwind Config <!-- id: 13 -->
+    - [ ] Refactor Layout and Global Components (Header, Sidebar) <!-- id: 14 -->
+    - [ ] Refactor Search Components (SearchBar, SearchResults) <!-- id: 15 -->
+    - [ ] Refactor Modals and Panels (SettingsModal, ModelManager) <!-- id: 16 -->
+    - [ ] Final Polishing and Animation Tuning <!-- id: 17 -->
+
 - [x] Identify all relevant branches <!-- id: 0 -->
 - [ ] Review and Clean Up Stale Branches <!-- id: 1 -->
     - [x] `fix/command-injection-open-file-14511753768852143137` (STALE - redundant with `598ea28`)

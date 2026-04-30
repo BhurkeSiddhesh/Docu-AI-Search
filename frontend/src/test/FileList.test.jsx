@@ -31,13 +31,14 @@ describe('FileList Component', () => {
 
     it('renders empty state when no files provided', () => {
         render(<FileList files={[]} />)
-        expect(screen.getByText('No files indexed yet')).toBeDefined()
+        expect(screen.getByText('Empty Intelligence Base')).toBeDefined()
+        expect(screen.getByText(/Index a directory to populate your library/i)).toBeDefined()
     })
 
     it('renders list of files', () => {
         render(<FileList files={mockFiles} />)
 
-        expect(screen.getByText('Indexed Files (2)')).toBeDefined()
+        expect(screen.getByText('Neural Assets (2)')).toBeDefined()
         expect(screen.getByText('report.pdf')).toBeDefined()
         expect(screen.getByText('data.xlsx')).toBeDefined()
     })

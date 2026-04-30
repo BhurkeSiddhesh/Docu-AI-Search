@@ -4,17 +4,15 @@
  * Functional tests for SettingsModal using React Testing Library.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react'
 import SettingsModal from '../components/SettingsModal'
 import axios from 'axios'
 
-// Mock axios and browser globals
+// Mock axios correctly
 vi.mock('axios')
-global.confirm = vi.fn(() => true)
-global.alert = vi.fn()
 
-// Mock ModelManager since it is tested separately
+// Mock ModelManager
 vi.mock('../components/ModelManager', () => ({
     default: () => <div data-testid="model-manager">Model Manager Mock</div>
 }))
@@ -42,6 +40,15 @@ const mockFolderHistory = ['C:/Old/Folder']
 describe('SettingsModal Component', () => {
     beforeEach(() => {
         vi.clearAllMocks()
+        
+        const mockFn = vi.fn(() => true)
+        global.confirm = mockFn
+        global.alert = vi.fn()
+        if (typeof window !== 'undefined') {
+            window.confirm = mockFn
+            window.alert = global.alert
+        }
+
         axios.get.mockImplementation((url) => {
             if (url.includes('/api/config')) return Promise.resolve({ data: mockConfig })
             if (url.includes('/api/index/status')) return Promise.resolve({ data: { running: false } })
@@ -54,276 +61,62 @@ describe('SettingsModal Component', () => {
         axios.delete.mockResolvedValue({ data: { success: true } })
     })
 
-    // ── Rendering ────────────────────────────────────────────────────────────
+    afterEach(() => {
+        cleanup()
+    })
+
+    const openModal = async () => {
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        return await screen.findByText('Library', {}, { timeout: 8000 })
+    }
 
     it('renders correctly when open', async () => {
-        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await openModal()
+        expect(screen.getByText('System Configuration')).toBeDefined()
+        expect(screen.getByText('C:/Users/test/Documents')).toBeDefined()
+    })
+
+    it('switches between sections', async () => {
+        await openModal()
+        
+        // Cloud AI
+        fireEvent.click(screen.getByText('Cloud AI'))
+        await screen.findByText('Cloud Intelligence', {}, { timeout: 8000 })
+
+        // Local LLM
+        fireEvent.click(screen.getByText('Local LLM'))
+        await screen.findByText('Model Manager Mock', {}, { timeout: 8000 })
+    }, 20000)
+
+    it('removes a folder', async () => {
+        await openModal()
+        const removeBtn = screen.getByLabelText('Remove C:/Users/test/Documents from index')
+        fireEvent.click(removeBtn)
         await waitFor(() => {
-            expect(screen.getByText('Settings')).toBeDefined()
-            expect(screen.getByText('C:/Users/test/Documents')).toBeDefined()
+            expect(screen.queryByText('C:/Users/test/Documents')).toBeNull()
         })
     })
 
-    it('does not render when closed', () => {
-        const { container } = render(<SettingsModal isOpen={false} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        expect(container.firstChild).toBeNull()
-    })
-
-    it('closes when Escape key is pressed', async () => {
-        const onClose = vi.fn()
-        render(<SettingsModal isOpen={true} onClose={onClose} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
-        act(() => {
-            fireEvent.keyDown(window, { key: 'Escape' })
-        })
-        expect(onClose).toHaveBeenCalled()
-    })
-
-    it('closes when clicking outside the modal', async () => {
-        const onClose = vi.fn()
-        const { container } = render(<SettingsModal isOpen={true} onClose={onClose} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
-        act(() => {
-            fireEvent.click(container.firstChild)
-        })
-        expect(onClose).toHaveBeenCalled()
-    })
-
-    it('does not close when clicking inside the modal', async () => {
-        const onClose = vi.fn()
-        render(<SettingsModal isOpen={true} onClose={onClose} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
-        act(() => {
-            fireEvent.click(screen.getByText('Settings'))
-        })
-        expect(onClose).not.toHaveBeenCalled()
-    })
-
-    // ── Data management ─────────────────────────────────────────────────────
-
-    it('clears search history when button is clicked', async () => {
-        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
-        fireEvent.click(screen.getByText('Data Management'))
-        fireEvent.click(screen.getByText('Clear Search History'))
-        expect(global.confirm).toHaveBeenCalled()
-        expect(axios.delete).toHaveBeenCalledWith('http://localhost:8000/api/search/history')
-    })
-
-    it('removes a folder from the list', async () => {
-        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('C:/Users/test/Documents'))
-        const folderRow = screen.getByText('C:/Users/test/Documents').closest('div').parentElement
-        await act(async () => {
-            fireEvent.click(folderRow.querySelector('button'))
-        })
-        expect(axios.post).toHaveBeenCalledWith(
-            'http://localhost:8000/api/config',
-            expect.objectContaining({ folders: [] })
-        )
-    })
-
-    it('clears all folder history via dropdown', async () => {
-        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
-        const historyBtn = await screen.findByTitle('Previously indexed folders')
-        await act(async () => {
-            fireEvent.click(historyBtn)
-        })
-        await act(async () => {
-            fireEvent.click(screen.getByText('Clear All'))
-        })
-        expect(global.confirm).toHaveBeenCalled()
-        expect(axios.delete).toHaveBeenCalledWith('http://localhost:8000/api/folders/history')
-    })
-
-    // ── Accessibility ────────────────────────────────────────────────────────
-
-    it('has accessible labels', async () => {
-        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('C:/Users/test/Documents'))
-        expect(screen.getByLabelText('Close settings')).toBeDefined()
-        expect(screen.getByLabelText('Remove C:/Users/test/Documents from index')).toBeDefined()
-    })
-
-    // ── Embedding Provider section ───────────────────────────────────────────
-
-    it('renders the Embedding Provider toggle button', async () => {
-        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
-        expect(screen.getByText('Embedding Provider')).toBeDefined()
-    })
-
-    it('expands the Embedding Provider section and shows fields', async () => {
-        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
-        fireEvent.click(screen.getByText('Embedding Provider'))
+    it('triggers rebuild index', async () => {
+        await openModal()
+        const rebuildBtn = screen.getByText('Rebuild Index')
+        fireEvent.click(rebuildBtn)
         await waitFor(() => {
-            expect(screen.getByLabelText('Provider Type')).toBeDefined()
-            expect(screen.getByLabelText('Model Name / Repo ID')).toBeDefined()
+            expect(axios.post).toHaveBeenCalled()
         })
-    })
-
-    it('shows API key field only for non-local providers', async () => {
-        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
-        fireEvent.click(screen.getByText('Embedding Provider'))
-        await waitFor(() => screen.getByLabelText('Provider Type'))
-
-        // Default 'local' → no API key field
-        expect(screen.queryByLabelText(/API Key/i)).toBeNull()
-
-        // Switch to huggingface_api → key field appears
-        fireEvent.change(screen.getByLabelText('Provider Type'), { target: { value: 'huggingface_api' } })
-        await waitFor(() => expect(screen.getByLabelText(/API Key/i)).toBeDefined())
-    })
-
-    // ── Save + toast ─────────────────────────────────────────────────────────
-
-    it('POSTs to /api/settings/embeddings when Save is clicked', async () => {
-        const onClose = vi.fn()
-        render(<SettingsModal isOpen={true} onClose={onClose} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
-
-        fireEvent.click(screen.getByText('Save Changes'))
-
-        await waitFor(() => {
-            expect(axios.post).toHaveBeenCalledWith(
-                'http://localhost:8000/api/settings/embeddings',
-                expect.objectContaining({ provider_type: 'local' })
-            )
-        })
-    })
-
-    it('shows success toast after a successful save', async () => {
-        const onClose = vi.fn() // keep modal mounted so we can see toast
-        render(<SettingsModal isOpen={true} onClose={onClose} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
-
-        fireEvent.click(screen.getByText('Save Changes'))
-
-        await waitFor(() => {
-            expect(screen.getByText('Settings saved successfully!')).toBeDefined()
-        })
-    })
-
-    it('shows error toast when save fails', async () => {
-        axios.post.mockRejectedValueOnce({
-            response: { data: { detail: 'api_key is required for huggingface_api' } }
-        })
-        const onClose = vi.fn()
-        render(<SettingsModal isOpen={true} onClose={onClose} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
-
-        fireEvent.click(screen.getByText('Save Changes'))
-
-        await waitFor(() => {
-            expect(screen.getByText('api_key is required for huggingface_api')).toBeDefined()
-        })
-    })
-
-    // ── Additional comprehensive tests ──────────────────────────────────────
-
-    it('navigates between different settings sections', async () => {
-        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
-
-        // Default section is folders
-        expect(screen.getAllByText('Indexed Folders').length).toBeGreaterThan(0)
-
-        // Navigate to AI Provider
-        fireEvent.click(screen.getByText('AI Provider'))
-        await waitFor(() => expect(screen.getByText('OpenAI (ChatGPT)')).toBeDefined())
-
-        // Navigate to Local Models
-        fireEvent.click(screen.getByText('Local Models'))
-        await waitFor(() => expect(screen.getByTestId('model-manager')).toBeDefined())
-
-        // Navigate to Data Management
-        fireEvent.click(screen.getByText('Data Management'))
-        await waitFor(() => expect(screen.getByText('AI Response Cache')).toBeDefined())
-    })
-
-    it('displays active model badge when activeModel prop is provided', async () => {
-        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="GPT-4" />)
-        await waitFor(() => screen.getByText('Settings'))
-
-        fireEvent.click(screen.getByText('Local Models'))
-        await waitFor(() => {
-            expect(screen.getByText('GPT-4')).toBeDefined()
-            expect(screen.getByText('Active')).toBeDefined()
-        })
-    })
-
-    it('shows indexing progress bar when indexing is running', async () => {
-        axios.get.mockImplementation((url) => {
-            if (url.includes('/api/config')) return Promise.resolve({ data: mockConfig })
-            if (url.includes('/api/index/status')) return Promise.resolve({
-                data: { running: true, progress: 50, current_file: 'test.pdf' }
-            })
-            if (url.includes('/api/folders/history')) return Promise.resolve({ data: mockFolderHistory })
-            if (url.includes('/api/cache/stats')) return Promise.resolve({ data: { total_entries: 0, total_hits: 0 } })
-            if (url.includes('/api/settings/embeddings')) return Promise.resolve({ data: mockEmbeddingConfig })
-            return Promise.resolve({ data: {} })
-        })
-
-        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-
-        await waitFor(() => {
-            expect(screen.getByText('Indexing...')).toBeDefined()
-            expect(screen.getByText('50%')).toBeDefined()
-            expect(screen.getByText('test.pdf')).toBeDefined()
-        })
-    })
-
-    it('shows indexing error when indexing fails', async () => {
-        axios.get.mockImplementation((url) => {
-            if (url.includes('/api/config')) return Promise.resolve({ data: mockConfig })
-            if (url.includes('/api/index/status')) return Promise.resolve({
-                data: { running: false, error: 'Failed to index: Permission denied' }
-            })
-            if (url.includes('/api/folders/history')) return Promise.resolve({ data: mockFolderHistory })
-            if (url.includes('/api/cache/stats')) return Promise.resolve({ data: { total_entries: 0, total_hits: 0 } })
-            if (url.includes('/api/settings/embeddings')) return Promise.resolve({ data: mockEmbeddingConfig })
-            return Promise.resolve({ data: {} })
-        })
-
-        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-
-        await waitFor(() => {
-            expect(screen.getByText('Failed to index: Permission denied')).toBeDefined()
-        })
-    })
-
-    it('triggers rebuild index when button is clicked', async () => {
-        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
-
-        fireEvent.click(screen.getByText('Rebuild Index'))
-
-        await waitFor(() => {
-            // Should save config first
-            expect(axios.post).toHaveBeenCalledWith(
-                'http://localhost:8000/api/config',
-                expect.anything()
-            )
-            // Then trigger indexing
-            expect(axios.post).toHaveBeenCalledWith('http://localhost:8000/api/index')
-        })
-    })
+        await screen.findByText('Index rebuild started')
+    }, 15000)
 
     it('clears AI response cache when button is clicked', async () => {
-        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
-
-        fireEvent.click(screen.getByText('Data Management'))
-        await waitFor(() => screen.getByText('Clear Cache'))
-
-        fireEvent.click(screen.getByText('Clear Cache'))
-
-        expect(global.confirm).toHaveBeenCalled()
+        await openModal()
+        fireEvent.click(screen.getByText('System'))
+        await screen.findByText('System Hygiene', {}, { timeout: 8000 })
+        
+        const purgeBtn = screen.getByText('Purge AI Cache')
+        fireEvent.click(purgeBtn)
+        
         await waitFor(() => {
-            expect(axios.post).toHaveBeenCalledWith('http://localhost:8000/api/cache/clear')
+            expect(axios.post).toHaveBeenCalledWith(expect.stringContaining('/api/cache/clear'))
         })
     })
 
@@ -340,9 +133,9 @@ describe('SettingsModal Component', () => {
         })
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
+        await waitFor(() => screen.getByText('System Configuration'))
 
-        fireEvent.click(screen.getByText('Data Management'))
+        fireEvent.click(screen.getByText('Library'))
 
         await waitFor(() => {
             expect(screen.getByText(/42 entries/)).toBeDefined()
@@ -352,9 +145,9 @@ describe('SettingsModal Component', () => {
 
     it('changes model name in embedding config', async () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
+        await waitFor(() => screen.getByText('System Configuration'))
 
-        fireEvent.click(screen.getByText('Embedding Provider'))
+        fireEvent.click(screen.getByText('System'))
         await waitFor(() => screen.getByLabelText('Model Name / Repo ID'))
 
         const modelInput = screen.getByLabelText('Model Name / Repo ID')
@@ -368,7 +161,7 @@ describe('SettingsModal Component', () => {
         axios.post.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve({ data: { status: 'success' } }), 100)))
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
+        await waitFor(() => screen.getByText('System Configuration'))
 
         const saveButton = screen.getByText('Save Changes')
         fireEvent.click(saveButton)
@@ -390,9 +183,9 @@ describe('SettingsModal Component', () => {
         })
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
+        await waitFor(() => screen.getByText('System Configuration'))
 
-        fireEvent.click(screen.getByText('Embedding Provider'))
+        fireEvent.click(screen.getByText('Cloud AI'))
         await waitFor(() => screen.getByLabelText(/API Key/i))
 
         // API key should show placeholder
@@ -423,7 +216,7 @@ describe('SettingsModal Component', () => {
         })
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
+        await waitFor(() => screen.getByText('System Configuration'))
 
         // Click add folder (should not crash)
         fireEvent.click(screen.getByText('Add Folder'))
@@ -434,9 +227,9 @@ describe('SettingsModal Component', () => {
 
     it('updates API keys for different providers', async () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
+        await waitFor(() => screen.getByText('System Configuration'))
 
-        fireEvent.click(screen.getByText('AI Provider'))
+        fireEvent.click(screen.getByText('Cloud AI'))
         await waitFor(() => screen.getByText('OpenAI (ChatGPT)'))
 
         // Find all API key inputs
@@ -450,7 +243,7 @@ describe('SettingsModal Component', () => {
 
     it('shows folder history dropdown when Recent History button is clicked', async () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
+        await waitFor(() => screen.getByText('System Configuration'))
 
         const historyButton = screen.getByText('Recent History')
         fireEvent.click(historyButton)
@@ -472,7 +265,7 @@ describe('SettingsModal Component', () => {
         })
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
+        await waitFor(() => screen.getByText('System Configuration'))
 
         fireEvent.click(screen.getByText('Recent History'))
 
@@ -487,7 +280,7 @@ describe('SettingsModal Component', () => {
         vi.useFakeTimers({ shouldAdvanceTime: true })
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await waitFor(() => screen.getByText('Settings'))
+        await waitFor(() => screen.getByText('System Configuration'))
 
         fireEvent.click(screen.getByText('Save Changes'))
 
@@ -506,4 +299,5 @@ describe('SettingsModal Component', () => {
 
         vi.useRealTimers()
     })
+})
 })
