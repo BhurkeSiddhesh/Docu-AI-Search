@@ -2,14 +2,13 @@ import React from 'react';
 import { motion } from 'framer-motion';
 
 const AnimatedText = ({ text, className = "" }) => {
-    // Split text into words and then characters to handle spaces correctly
     const words = text.split(" ");
 
     const container = {
         hidden: { opacity: 0 },
         visible: (i = 1) => ({
             opacity: 1,
-            transition: { staggerChildren: 0.05, delayChildren: 0.04 * i },
+            transition: { staggerChildren: 0.08, delayChildren: 0.1 * i },
         }),
     };
 
@@ -17,24 +16,23 @@ const AnimatedText = ({ text, className = "" }) => {
         visible: {
             opacity: 1,
             y: 0,
-            x: 0,
-            rotate: 0,
+            filter: "blur(0px)",
             transition: {
                 type: "spring",
-                damping: 12,
+                damping: 20,
                 stiffness: 100,
             },
         },
         hidden: {
             opacity: 0,
             y: 20,
-            rotate: 10,
+            filter: "blur(10px)",
         },
     };
 
     return (
         <motion.div
-            style={{ display: "flex", flexWrap: "wrap", justifyContent: "center" }}
+            style={{ display: "flex", flexWrap: "wrap" }}
             variants={container}
             initial="hidden"
             animate="visible"

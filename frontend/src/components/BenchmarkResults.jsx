@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { BarChart3, Play, Loader2, Trophy, Zap, Brain, HardDrive } from 'lucide-react';
 
 const BenchmarkResults = () => {
     const [results, setResults] = useState(null);
@@ -29,7 +28,6 @@ const BenchmarkResults = () => {
             const response = await axios.get('http://localhost:8000/api/benchmarks/status');
             setStatus(response.data);
 
-            // Refresh results when benchmark completes
             if (!response.data.running && status.running) {
                 fetchResults();
             }
@@ -59,105 +57,119 @@ const BenchmarkResults = () => {
     };
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-10 animate-in fade-in duration-700">
             {/* Header */}
             <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <BarChart3 className="w-5 h-5 text-primary" />
-                    <h3 className="font-semibold">Model Benchmarks</h3>
+                <div>
+                    <h3 className="text-2xl font-bold font-headline flex items-center gap-3">
+                        <span className="material-symbols-outlined text-primary">analytics</span>
+                        Neural Performance
+                    </h3>
+                    <p className="text-xs opacity-60 font-medium mt-1 uppercase tracking-widest font-black">Benchmark local model efficiency</p>
                 </div>
                 <button
                     onClick={runBenchmark}
                     disabled={status.running}
-                    className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    className="flex items-center gap-3 px-8 py-3 rounded-full bg-primary text-white font-bold text-sm hover:shadow-xl hover:shadow-primary/20 transition-all active:scale-95 disabled:opacity-50"
                 >
                     {status.running ? (
                         <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Running...
+                            <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                            Running Sequence...
                         </>
                     ) : (
                         <>
-                            <Play className="w-4 h-4" />
-                            Run Benchmark
+                            <span className="material-symbols-outlined text-sm">play_arrow</span>
+                            Start Benchmark
                         </>
                     )}
                 </button>
             </div>
 
             {error && (
-                <div className="p-2 rounded-lg bg-destructive/10 text-destructive text-sm">
+                <div className="p-5 rounded-3xl bg-red-500/10 text-red-500 text-sm font-bold border border-red-500/20 flex items-center gap-3">
+                    <span className="material-symbols-outlined">error</span>
                     {error}
                 </div>
             )}
 
             {status.running && (
-                <div className="p-3 rounded-lg border border-border bg-card">
-                    <div className="flex items-center gap-2 text-sm mb-2">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Benchmarking models... This may take several minutes.</span>
+                <div className="p-8 rounded-[2.5rem] bg-primary/5 border border-primary/20 space-y-6">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <span className="material-symbols-outlined animate-spin text-primary">query_stats</span>
+                            <span className="font-bold">Analyzing Neural Weights...</span>
+                        </div>
+                        <span className="font-black text-primary">{status.progress || 5}%</span>
                     </div>
-                    <div className="w-full bg-muted rounded-full h-2">
+                    <div className="w-full bg-primary/10 rounded-full h-3 overflow-hidden">
                         <div
-                            className="bg-primary h-2 rounded-full transition-all duration-300"
+                            className="bg-primary h-full rounded-full transition-all duration-500"
                             style={{ width: `${status.progress || 5}%` }}
                         />
                     </div>
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-40">This sequence can take several minutes</p>
                 </div>
             )}
 
             {/* Results */}
             {results?.results?.length > 0 ? (
                 <>
-                    {/* Winners */}
-                    <div className="grid grid-cols-3 gap-2">
-                        <div className="p-2 rounded-lg border border-border bg-card text-center">
-                            <Zap className="w-4 h-4 mx-auto mb-1 text-yellow-500" />
-                            <p className="text-xs text-muted-foreground">Fastest</p>
-                            <p className="text-sm font-medium truncate">
+                    {/* Top Performers Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="p-8 rounded-[2.5rem] bg-white dark:bg-slate-900 border border-[#f3f3fd] dark:border-slate-800 shadow-sm text-center space-y-3 group hover:border-amber-500/30 transition-all">
+                            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 mx-auto flex items-center justify-center">
+                                <span className="material-symbols-outlined text-2xl">bolt</span>
+                            </div>
+                            <p className="text-[10px] font-black uppercase opacity-40 tracking-widest">Fastest Throughput</p>
+                            <p className="text-xl font-bold font-headline truncate">
                                 {getBestModel('tokens_per_second')?.model_name?.split(' ')[0]}
                             </p>
                         </div>
-                        <div className="p-2 rounded-lg border border-border bg-card text-center">
-                            <Brain className="w-4 h-4 mx-auto mb-1 text-purple-500" />
-                            <p className="text-xs text-muted-foreground">Most Accurate</p>
-                            <p className="text-sm font-medium truncate">
+                        <div className="p-8 rounded-[2.5rem] bg-white dark:bg-slate-900 border border-[#f3f3fd] dark:border-slate-800 shadow-sm text-center space-y-3 group hover:border-primary/30 transition-all">
+                            <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary mx-auto flex items-center justify-center">
+                                <span className="material-symbols-outlined text-2xl">psychology</span>
+                            </div>
+                            <p className="text-[10px] font-black uppercase opacity-40 tracking-widest">Maximum Accuracy</p>
+                            <p className="text-xl font-bold font-headline truncate">
                                 {getBestModel('fact_retention_score')?.model_name?.split(' ')[0]}
                             </p>
                         </div>
-                        <div className="p-2 rounded-lg border border-border bg-card text-center">
-                            <HardDrive className="w-4 h-4 mx-auto mb-1 text-green-500" />
-                            <p className="text-xs text-muted-foreground">Most Efficient</p>
-                            <p className="text-sm font-medium truncate">
+                        <div className="p-8 rounded-[2.5rem] bg-white dark:bg-slate-900 border border-[#f3f3fd] dark:border-slate-800 shadow-sm text-center space-y-3 group hover:border-emerald-500/30 transition-all">
+                            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-500 mx-auto flex items-center justify-center">
+                                <span className="material-symbols-outlined text-2xl">memory</span>
+                            </div>
+                            <p className="text-[10px] font-black uppercase opacity-40 tracking-widest">Hardware Efficient</p>
+                            <p className="text-xl font-bold font-headline truncate">
                                 {getBestModel('peak_memory_mb')?.model_name?.split(' ')[0]}
                             </p>
                         </div>
                     </div>
 
-                    {/* Table */}
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
+                    {/* Full Comparison Table */}
+                    <div className="bg-white dark:bg-slate-900 rounded-[3rem] border border-[#f3f3fd] dark:border-slate-800 overflow-hidden shadow-sm">
+                        <table className="w-full text-left">
                             <thead>
-                                <tr className="border-b border-border">
-                                    <th className="text-left py-2 px-1">Model</th>
-                                    <th className="text-right py-2 px-1">TPS</th>
-                                    <th className="text-right py-2 px-1">Accuracy</th>
-                                    <th className="text-right py-2 px-1">Memory</th>
+                                <tr className="bg-[#f3f3fd] dark:bg-slate-950/40">
+                                    <th className="py-6 px-8 text-xs font-black uppercase tracking-widest opacity-40">Neural Model</th>
+                                    <th className="py-6 px-8 text-xs font-black uppercase tracking-widest opacity-40 text-right">Throughput (TPS)</th>
+                                    <th className="py-6 px-8 text-xs font-black uppercase tracking-widest opacity-40 text-right">Precision</th>
+                                    <th className="py-6 px-8 text-xs font-black uppercase tracking-widest opacity-40 text-right">VRAM Peak</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody className="divide-y divide-[#f3f3fd] dark:divide-slate-800">
                                 {results.results.map((r, idx) => (
-                                    <tr key={idx} className="border-b border-border/50">
-                                        <td className="py-2 px-1 font-medium truncate max-w-[120px]">
-                                            {r.model_name}
+                                    <tr key={idx} className="hover:bg-primary/5 transition-colors">
+                                        <td className="py-6 px-8">
+                                            <p className="font-bold text-sm">{r.model_name}</p>
                                         </td>
-                                        <td className="text-right py-2 px-1 text-muted-foreground">
+                                        <td className="py-6 px-8 text-right font-mono text-sm font-bold text-amber-500">
                                             {r.tokens_per_second?.toFixed(1)}
                                         </td>
-                                        <td className="text-right py-2 px-1 text-muted-foreground">
+                                        <td className="py-6 px-8 text-right font-mono text-sm font-bold text-primary">
                                             {r.fact_retention_score?.toFixed(0)}%
                                         </td>
-                                        <td className="text-right py-2 px-1 text-muted-foreground">
+                                        <td className="py-6 px-8 text-right font-mono text-sm font-bold opacity-60">
                                             {r.peak_memory_mb?.toFixed(0)}MB
                                         </td>
                                     </tr>
@@ -166,15 +178,20 @@ const BenchmarkResults = () => {
                         </table>
                     </div>
 
-                    <p className="text-xs text-muted-foreground text-center">
-                        Last run: {results.timestamp || 'N/A'}
-                    </p>
+                    <div className="flex items-center justify-center gap-3 opacity-30 text-[10px] font-black uppercase tracking-widest">
+                        <span className="material-symbols-outlined text-sm">schedule</span>
+                        Last Telemetry: {results.timestamp || 'N/A'}
+                    </div>
                 </>
             ) : !loading && !status.running ? (
-                <div className="text-center py-8 text-muted-foreground">
-                    <BarChart3 className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p className="text-sm">No benchmark results yet</p>
-                    <p className="text-xs">Download models and run a benchmark to compare performance</p>
+                <div className="p-24 rounded-[3rem] bg-[#f3f3fd] dark:bg-slate-950/40 border-2 border-dashed border-[#d1d1f0] dark:border-slate-800 text-center space-y-6">
+                    <div className="w-24 h-24 rounded-[2rem] bg-white dark:bg-slate-900 shadow-xl mx-auto flex items-center justify-center text-[#d1d1f0]">
+                        <span className="material-symbols-outlined text-5xl">bar_chart_4_bars</span>
+                    </div>
+                    <div>
+                        <p className="text-xl font-bold font-headline">Telemetry Database Empty</p>
+                        <p className="text-sm opacity-60 font-medium">Download local models and execute a performance scan to generate data.</p>
+                    </div>
                 </div>
             ) : null}
         </div>

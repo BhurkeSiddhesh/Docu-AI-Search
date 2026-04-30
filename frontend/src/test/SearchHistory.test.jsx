@@ -25,7 +25,7 @@ describe('SearchHistory Component', () => {
 
     it('renders nothing when not open', () => {
         render(<SearchHistory isOpen={false} />)
-        expect(screen.queryByText('Search History')).toBeNull()
+        expect(screen.queryByText('History')).toBeNull()
     })
 
     it('fetches and renders history when opened', async () => {
@@ -65,22 +65,9 @@ describe('SearchHistory Component', () => {
 
         await waitFor(() => screen.getByText('react hooks'))
 
-        // Find delete buttons (Trash2 icon usually inside a button)
-        const deleteButtons = screen.getAllByRole('button')
-        // Filter for the specific delete button if needed, but here we can just pick the one for the item
-        // Since buttons are likely: Close (1) + Delete (2). 
-        // Let's use a more specific selector implies knowing structure. 
-        // We can look for the button containing the delete icon or just use index.
-        // Actually, the component has aria-label or accessible role? No.
-        // The delete button is the one inside the list item.
-
-        // Let's assume the last 2 buttons are delete buttons because the first one is likely Close
-        // Better trigger:
-        const items = screen.getAllByText(/results/i) // Get context of items
-        const firstItem = items[0].closest('div').parentElement
-        const deleteBtn = firstItem.querySelector('button')
-
-        fireEvent.click(deleteBtn)
+        // Use the new aria-label for robustness
+        const deleteButtons = screen.getAllByLabelText('Delete history item')
+        fireEvent.click(deleteButtons[0])
 
         expect(axios.delete).toHaveBeenCalledWith('http://localhost:8000/api/search/history/1')
 
@@ -96,7 +83,7 @@ describe('SearchHistory Component', () => {
         render(<SearchHistory isOpen={true} />)
 
         await waitFor(() => {
-            expect(screen.getByText('No history')).toBeDefined()
+            expect(screen.getByText(/No historical data available/i)).toBeDefined()
         })
     })
 })

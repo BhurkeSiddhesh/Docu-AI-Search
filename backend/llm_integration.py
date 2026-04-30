@@ -76,17 +76,6 @@ def get_embeddings(provider: str, api_key: str = None, model_path: str = None) -
     
     logger.info(f"Loading embeddings for provider: {provider}")
 
-    # DEBUG: Log environment when actually requesting embeddings
-    try:
-        import sys
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.info(f"--- get_embeddings called ---")
-        logger.info(f"Python Executable: {sys.executable}")
-        logger.info(f"Python Path: {sys.path}")
-        logger.info(f"CWD: {os.getcwd()}")
-    except:
-        pass
 
     if provider == 'openai' and api_key:
         embeddings = OpenAIEmbeddings(api_key=api_key)
@@ -108,8 +97,6 @@ def get_embeddings(provider: str, api_key: str = None, model_path: str = None) -
         # Default / Local
         logger.info("Loading local embeddings (HuggingFace)...")
         if HuggingFaceEmbeddings is None:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error("HuggingFaceEmbeddings not available")
             return None
 

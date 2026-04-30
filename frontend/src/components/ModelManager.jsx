@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Download, Trash2, Check, Loader2, HardDrive, AlertCircle, Star, Cpu, Search, Filter } from 'lucide-react';
 
-const ModelManager = ({ onSelectModel, activeModel, selectedPath }) => {
+const ModelManager = ({ onSelectModel, activeModel, activeModelPath }) => {
     const [availableModels, setAvailableModels] = useState([]);
     const [localModels, setLocalModels] = useState([]);
     const [downloadStatus, setDownloadStatus] = useState({ downloading: false });
@@ -49,7 +48,6 @@ const ModelManager = ({ onSelectModel, activeModel, selectedPath }) => {
             if (response.data.status === 'success') {
                 setDownloadStatus({ downloading: true, model_id: modelId, progress: 0 });
             }
-            // Show warning if present
             if (response.data.message?.includes('Warnings')) {
                 setError(response.data.message);
             }
@@ -61,7 +59,7 @@ const ModelManager = ({ onSelectModel, activeModel, selectedPath }) => {
     const handleDelete = async (modelPath) => {
         if (!confirm('Delete this model?')) return;
         try {
-            await axios.delete('http://localhost:8000/api/models/delete', {
+            await axios.delete('http://localhost:8000/api/models', {
                 data: { path: modelPath }
             });
             fetchModels();
@@ -81,28 +79,24 @@ const ModelManager = ({ onSelectModel, activeModel, selectedPath }) => {
     };
 
     const normalize = (name) => name?.toLowerCase().replace('.gguf', '') || '';
+    const normalizePath = (path) => path?.replace(/\\/g, '/').toLowerCase() || '';
 
-    const getCategoryColor = (category) => {
+    const getCategoryStyles = (category) => {
         switch (category) {
-            case 'small': return 'text-green-500 bg-green-500/10';
-            case 'medium': return 'text-yellow-500 bg-yellow-500/10';
-            case 'large': return 'text-red-500 bg-red-500/10';
-            default: return 'text-muted-foreground bg-muted';
+            case 'small':  return 'bg-green-500/10 text-green-600 dark:text-green-400';
+            case 'medium': return 'bg-amber-500/10 text-amber-600 dark:text-amber-400';
+            case 'large':  return 'bg-red-500/10 text-red-600 dark:text-red-400';
+            default:       return 'bg-slate-500/10 text-slate-600';
         }
     };
 
     const getCategoryLabel = (category) => {
         switch (category) {
-            case 'small': return 'Fast';
+            case 'small':  return 'Optimized';
             case 'medium': return 'Balanced';
-            case 'large': return 'Quality';
-            default: return category;
+            case 'large':  return 'Quality';
+            default:       return category;
         }
-    };
-
-    const normalizePath = (path) => {
-        if (!path) return '';
-        return path.replace(/\\/g, '/').toLowerCase();
     };
 
     const filteredModels = availableModels.filter(model => {
@@ -116,78 +110,74 @@ const ModelManager = ({ onSelectModel, activeModel, selectedPath }) => {
     const categories = ['all', 'small', 'medium', 'large'];
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-12">
             {error && (
-                <div className="flex items-center gap-2 p-2 rounded-lg bg-destructive/10 text-destructive text-sm">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
+                <div className="flex items-center gap-4 p-5 rounded-3xl bg-red-500/10 text-red-600 dark:text-red-400 text-sm font-bold border border-red-500/20">
+                    <span className="material-symbols-outlined">error</span>
                     <span className="flex-1">{error}</span>
-                    <button onClick={() => setError(null)} className="text-xs underline">Dismiss</button>
+                    <button onClick={() => setError(null)} className="material-symbols-outlined text-sm opacity-60 hover:opacity-100 transition-all">close</button>
                 </div>
             )}
 
-            {/* Downloaded Models */}
-            <div>
-                <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
-                    <HardDrive className="w-4 h-4" />
-                    Downloaded ({localModels.length})
-                </h4>
+            {/* Local Models Section */}
+            <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                    <h3 className="text-2xl font-bold font-headline">Downloaded Intelligence</h3>
+                    <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-primary/5 text-primary text-xs font-black uppercase tracking-widest">
+                        <span className="material-symbols-outlined text-sm">memory</span>
+                        {localModels.length} Models Ready
+                    </div>
+                </div>
+
                 {localModels.length > 0 ? (
-                    <div className="space-y-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {localModels.map((model, idx) => {
-                            // Use selectedPath if available, otherwise fallback to name matching for activeModel (for backward compatibility or initial load)
-                            // But for the specific "Select" button state, we prioritize the selectedPath prop.
-                            const isSelected = selectedPath ? normalizePath(model.path) === normalizePath(selectedPath) : normalize(model.name) === normalize(activeModel);
-                            // Active means it is the one possibly currently running in the backend (activeModel)
+                            const isSelected = activeModelPath ? normalizePath(model.path) === normalizePath(activeModelPath) : normalize(model.name) === normalize(activeModel);
                             const isActiveRunning = normalize(model.name) === normalize(activeModel);
 
                             return (
-                                <div
-                                    key={idx}
-                                    className={`flex items-center justify-between p-2 rounded-lg border transition-all duration-200 ${isSelected
-                                        ? 'border-primary bg-primary/5 shadow-sm ring-1 ring-primary/20'
-                                        : 'border-border bg-card'
-                                        }`}
-                                >
-                                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                                        <HardDrive className={`w-4 h-4 shrink-0 ${isSelected ? 'text-primary' : 'text-green-500'}`} />
-                                        <div className="min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <p className={`text-sm font-medium truncate ${isSelected ? 'text-primary' : ''}`}>
-                                                    {model.name}
-                                                </p>
-                                                {isActiveRunning && (
-                                                    <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase rounded bg-primary text-primary-foreground">
-                                                        Active
-                                                    </span>
-                                                )}
+                                <div key={idx} className={`p-6 rounded-[2.5rem] transition-all border-2 flex flex-col justify-between gap-6 ${isSelected ? 'bg-primary/5 border-primary shadow-xl shadow-primary/5' : 'bg-[#f3f3fd] dark:bg-slate-950/40 border-transparent hover:bg-[#ebebfa]'}`}>
+                                    <div className="space-y-4">
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${isSelected ? 'bg-primary text-white' : 'bg-white dark:bg-slate-900 text-primary'}`}>
+                                                    <span className="material-symbols-outlined text-2xl">memory</span>
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-bold font-headline text-sm truncate max-w-[150px]">{model.name}</h4>
+                                                    <p className="text-[10px] font-black uppercase opacity-40 tracking-widest">{formatSize(model.size)} • Local GGUF</p>
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                                <span>{formatSize(model.size)}</span>
-                                                {model.ram_required && (
-                                                    <span className="flex items-center gap-1">
-                                                        <Cpu className="w-3 h-3" />
-                                                        {model.ram_required}GB RAM
-                                                    </span>
-                                                )}
+                                            {isActiveRunning && (
+                                                <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-[8px] font-black uppercase tracking-widest border border-primary/20">Active</span>
+                                            )}
+                                        </div>
+                                        
+                                        <div className="flex items-center gap-4 text-[10px] font-bold opacity-60">
+                                            <div className="flex items-center gap-1">
+                                                <span className="material-symbols-outlined text-sm">developer_board</span>
+                                                {model.ram_required}GB RAM
+                                            </div>
+                                            <div className="flex items-center gap-1">
+                                                <span className="material-symbols-outlined text-sm">settings_b_roll</span>
+                                                Q4_K_M
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-1">
+
+                                    <div className="flex items-center gap-2">
                                         <button
-                                            onClick={() => onSelectModel && onSelectModel(model.path)}
-                                            className={`px-2 py-1 text-xs font-medium rounded shrink-0 transition-colors ${isSelected
-                                                ? 'bg-primary text-primary-foreground pointer-events-none opacity-50'
-                                                : 'bg-primary/10 text-primary hover:bg-primary/20'
-                                                }`}
+                                            onClick={() => onSelectModel && onSelectModel(model)}
+                                            className={`flex-1 py-3 rounded-2xl font-bold text-xs transition-all ${isSelected ? 'bg-primary text-white pointer-events-none' : 'bg-white dark:bg-slate-900 text-primary hover:bg-primary hover:text-white shadow-sm'}`}
                                         >
-                                            {isSelected ? 'Selected' : 'Select'}
+                                            {isSelected ? 'Selected Strategy' : 'Initialize Model'}
                                         </button>
                                         <button
                                             onClick={() => handleDelete(model.path)}
-                                            className="p-1.5 rounded hover:bg-destructive/10 hover:text-destructive shrink-0"
                                             title="Delete Model"
+                                            className="w-10 h-10 rounded-2xl bg-white dark:bg-slate-900 text-[#434656] dark:text-slate-400 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all shadow-sm"
                                         >
-                                            <Trash2 className="w-4 h-4" />
+                                            <span className="material-symbols-outlined text-lg">delete</span>
                                         </button>
                                     </div>
                                 </div>
@@ -195,112 +185,104 @@ const ModelManager = ({ onSelectModel, activeModel, selectedPath }) => {
                         })}
                     </div>
                 ) : (
-                    <p className="text-sm text-muted-foreground p-4 text-center">No models downloaded</p>
+                    <div className="p-12 rounded-[2.5rem] bg-[#f3f3fd] dark:bg-slate-950/40 border-2 border-dashed border-[#d1d1f0] dark:border-slate-800 flex flex-col items-center text-center">
+                        <span className="material-symbols-outlined text-5xl text-[#d1d1f0] mb-4">cloud_download</span>
+                        <p className="font-bold text-[#434656] opacity-60">No local models found. Download from the registry below.</p>
+                    </div>
                 )}
             </div>
 
-            {/* Available Models */}
-            <div>
-                <h4 className="text-sm font-medium mb-2">Available Models</h4>
-
-                {/* Filters */}
-                <div className="flex gap-2 mb-3">
-                    <div className="relative flex-1">
-                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <input
-                            type="text"
-                            placeholder="Search models..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-8 pr-2 py-1.5 text-sm rounded-lg border border-border bg-background"
-                        />
+            {/* Available Registry Section */}
+            <div className="space-y-8">
+                <div className="flex items-center justify-between">
+                    <h3 className="text-2xl font-bold font-headline">Model Registry</h3>
+                    <div className="flex gap-2">
+                        {categories.map(cat => (
+                            <button
+                                key={cat}
+                                onClick={() => setFilter(cat)}
+                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${filter === cat ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-[#f3f3fd] dark:bg-slate-950/40 text-[#434656] dark:text-slate-400 hover:bg-[#ebebfa]'}`}
+                            >
+                                {cat}
+                            </button>
+                        ))}
                     </div>
                 </div>
 
-                {/* Category Tabs */}
-                <div className="flex gap-1 mb-3">
-                    {categories.map(cat => (
-                        <button
-                            key={cat}
-                            onClick={() => setFilter(cat)}
-                            className={`px-2 py-1 text-xs rounded-md transition-colors ${filter === cat
-                                ? 'bg-primary text-primary-foreground'
-                                : 'bg-muted hover:bg-muted/80'
-                                }`}
-                        >
-                            {cat === 'all' ? 'All' : getCategoryLabel(cat)}
-                        </button>
-                    ))}
+                {/* Search in Registry */}
+                <div className="relative">
+                    <span className="material-symbols-outlined absolute left-5 top-1/2 -translate-y-1/2 text-[#434656] opacity-40">search</span>
+                    <input
+                        type="text"
+                        placeholder="Scan for specialized neural weights..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-14 pr-6 py-5 rounded-3xl bg-[#f3f3fd] dark:bg-slate-950/40 border-2 border-transparent focus:border-primary/20 outline-none transition-all font-body text-sm"
+                    />
                 </div>
 
-                <div className="space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar">
+                <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
                     {filteredModels.map((model) => (
-                        <div
-                            key={model.id}
-                            className={`p-2 rounded-lg border ${model.recommended ? 'border-primary/50 bg-primary/5' : 'border-border'
-                                }`}
-                        >
-                            <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0 flex-1">
-                                    <div className="flex items-center gap-2">
-                                        <p className="text-sm font-medium">{model.name}</p>
-                                        {model.recommended && (
-                                            <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
-                                        )}
+                        <div key={model.id} className={`p-6 rounded-[2.5rem] bg-white dark:bg-slate-900 border transition-all ${model.recommended ? 'border-primary/30 shadow-lg shadow-primary/5' : 'border-[#f3f3fd] dark:border-slate-800 shadow-sm'}`}>
+                            <div className="flex items-center justify-between gap-6">
+                                <div className="flex-1 min-w-0 flex items-center gap-5">
+                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${model.recommended ? 'bg-primary/10 text-primary' : 'bg-[#f3f3fd] dark:bg-slate-800 text-slate-400'}`}>
+                                        <span className="material-symbols-outlined text-3xl">{model.recommended ? 'auto_awesome' : 'model_training'}</span>
                                     </div>
-                                    <p className="text-xs text-muted-foreground mt-0.5">{model.description}</p>
-                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                        <span className={`px-1.5 py-0.5 text-xs rounded ${getCategoryColor(model.category)}`}>
-                                            {getCategoryLabel(model.category)}
-                                        </span>
-                                        <span className="text-xs text-muted-foreground">{model.size}</span>
-                                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                            <Cpu className="w-3 h-3" />
-                                            {model.ram_required}GB
-                                        </span>
-                                        <span className="text-xs text-muted-foreground">{model.quantization}</span>
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-3 mb-1">
+                                            <h4 className="font-bold text-lg font-headline">{model.name}</h4>
+                                            <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest ${getCategoryStyles(model.category)}`}>{getCategoryLabel(model.category)}</span>
+                                        </div>
+                                        <p className="text-xs text-[#434656] dark:text-slate-400 line-clamp-1 mb-2 font-medium">{model.description}</p>
+                                        <div className="flex items-center gap-4 text-[10px] font-black uppercase tracking-widest opacity-40">
+                                            <span>{model.size}</span>
+                                            <span>•</span>
+                                            <span className="flex items-center gap-1"><span className="material-symbols-outlined text-xs">memory</span>{model.ram_required}GB RAM</span>
+                                            <span>•</span>
+                                            <span>{model.quantization}</span>
+                                        </div>
                                     </div>
                                 </div>
+
                                 <div className="shrink-0">
                                     {isDownloaded(model.id) ? (
-                                        <div className="flex items-center gap-1 text-green-500">
-                                            <Check className="w-4 h-4" />
-                                            <span className="text-xs">Ready</span>
+                                        <div className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-green-500/10 text-green-600 font-bold text-xs uppercase tracking-widest">
+                                            <span className="material-symbols-outlined text-sm">verified</span>
+                                            Ready
                                         </div>
                                     ) : downloadStatus.downloading && downloadStatus.model_id === model.id ? (
-                                        <div className="flex flex-col items-end gap-1">
-                                            <div className="flex items-center gap-1">
-                                                <span className="text-xs">{downloadStatus.progress || 0}%</span>
-                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                        <div className="flex flex-col items-end gap-2 w-32">
+                                            <div className="flex items-center gap-2 text-[10px] font-black text-primary uppercase">
+                                                <span>{downloadStatus.progress || 0}%</span>
+                                                <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
                                             </div>
-                                            <div className="w-16 bg-muted rounded-full h-1">
-                                                <div
-                                                    className="bg-primary h-1 rounded-full transition-all"
-                                                    style={{ width: `${downloadStatus.progress || 0}%` }}
-                                                />
+                                            <div className="w-full h-1.5 bg-primary/10 rounded-full overflow-hidden">
+                                                <div className="h-full bg-primary transition-all duration-300" style={{ width: `${downloadStatus.progress || 0}%` }}></div>
                                             </div>
                                         </div>
                                     ) : (
                                         <button
                                             onClick={() => handleDownload(model.id)}
                                             disabled={downloadStatus.downloading}
-                                            className="flex items-center gap-1 px-2 py-1 text-xs rounded hover:bg-accent disabled:opacity-50"
+                                            className="px-6 py-3 rounded-2xl bg-primary text-white font-bold text-xs uppercase tracking-widest hover:shadow-lg hover:shadow-primary/20 transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2"
                                         >
-                                            <Download className="w-4 h-4" />
-                                            Download
+                                            <span className="material-symbols-outlined text-sm">download</span>
+                                            Fetch
                                         </button>
                                     )}
                                 </div>
                             </div>
                         </div>
                     ))}
+                    
+                    {filteredModels.length === 0 && (
+                        <div className="text-center py-12 space-y-4">
+                            <span className="material-symbols-outlined text-5xl opacity-10">search_off</span>
+                            <p className="text-sm font-bold opacity-30">No neural weights match the scan query</p>
+                        </div>
+                    )}
                 </div>
-
-                {filteredModels.length === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                        No models match your search
-                    </p>
-                )}
             </div>
         </div>
     );

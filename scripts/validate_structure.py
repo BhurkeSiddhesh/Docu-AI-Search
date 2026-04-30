@@ -11,7 +11,8 @@ import sys
 # Protocol Definitions
 ALLOWED_ROOT_FILES = [
     'package.json', 'package-lock.json', 'README.md', 'AGENTS.md', 
-    'config.ini', '.gitignore', 'requirements.txt', 'LICENSE', 'CHANGELOG.md'
+    'config.ini', '.gitignore', 'requirements.txt', 'LICENSE', 'CHANGELOG.md',
+    'JULES_LOG.json', 'task.md'
 ]
 ALLOWED_ROOT_EXTENSIONS = ['.md', '.json', '.ini', '.txt', '.js', '.png', '.PNG'] # limited JS allow for tailwind.config?
 DISALLOWED_ROOT_EXTENSIONS = ['.py']
@@ -110,7 +111,7 @@ def validate_structure():
         print("\nSTRUCTURE VALIDATION FAILED")
         sys.exit(1)
     else:
-        print("\nSTRUCTURE VALIDATION PASSED ✓")
+        print("\nSTRUCTURE VALIDATION PASSED [OK]")
         sys.exit(0)
 
 if __name__ == "__main__":
