@@ -20,7 +20,7 @@ const Toast = ({ message, type = 'success', onDismiss }) => {
         <div className={`fixed bottom-8 right-8 z-[200] flex items-center gap-4 px-6 py-4 rounded-3xl shadow-2xl backdrop-blur-xl text-sm font-bold animate-in slide-in-from-bottom-8 duration-500 ${colours[type]}`}>
             <span className="material-symbols-outlined">{type === 'success' ? 'check_circle' : (type === 'error' ? 'error' : 'info')}</span>
             <span>{message}</span>
-            <button type="button" onClick={onDismiss} className="ml-2 opacity-70 hover:opacity-100">
+            <button type="button" onClick={onDismiss} aria-label="Dismiss notification" className="ml-2 opacity-70 hover:opacity-100">
                 <span className="material-symbols-outlined text-sm">close</span>
             </button>
         </div>
@@ -190,7 +190,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
     ];
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()} onKeyDown={(e) => e.key === 'Escape' && onClose()} tabIndex={-1} aria-hidden="true">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()} onKeyDown={(e) => e.key === 'Escape' && onClose()} tabIndex={-1}>
             <div className="glass-overlay w-[96vw] max-w-6xl h-[88vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
                 {/* Header */}
                 <div className="px-8 py-6 border-b border-border/30 bg-background/85 backdrop-blur-md flex items-center justify-between">
@@ -242,6 +242,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                         </div>
                                         <button 
                                             onClick={() => setShowHistory(!showHistory)} 
+                                            aria-label="Recent History"
                                             className={`p-3 rounded-2xl transition-all ${showHistory ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-white dark:bg-slate-900 text-primary hover:bg-primary/5'}`}
                                         >
                                             <span className="material-symbols-outlined text-lg">history</span>
@@ -367,8 +368,9 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                         { id: 'grok', name: 'xAI (Grok)', key: 'grok_api_key' },
                                     ].map(p => (
                                         <div key={p.id} className="space-y-3">
-                                            <label className="text-xs font-black uppercase tracking-widest opacity-40 px-2">{p.name}</label>
+                                            <label htmlFor={p.key} className="text-xs font-black uppercase tracking-widest opacity-40 px-2">{p.name}</label>
                                             <input 
+                                                id={p.key}
                                                 type="password"
                                                 className="w-full bg-[#f3f3fd] dark:bg-slate-950/40 p-5 rounded-3xl border-2 border-transparent focus:border-primary/20 outline-none transition-all font-body text-sm"
                                                 placeholder="Enter API Key..."
@@ -405,8 +407,9 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                     </div>
 
                                     <div className="space-y-3 pt-4">
-                                        <label className="text-xs font-black uppercase tracking-widest opacity-40 px-2">Model Architecture</label>
+                                        <label htmlFor="emb-model-name" className="text-xs font-black uppercase tracking-widest opacity-40 px-2">Model Architecture</label>
                                         <input 
+                                            id="emb-model-name"
                                             type="text"
                                             className="w-full bg-[#f3f3fd] dark:bg-slate-950/40 p-5 rounded-3xl border-2 border-transparent focus:border-primary/20 outline-none transition-all font-mono text-xs"
                                             value={embeddingConfig.model_name}
@@ -416,8 +419,9 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                     
                                     {EMBEDDING_PROVIDER_TYPES.find(x => x.value === embeddingConfig.provider_type)?.needsKey && (
                                         <div className="space-y-3">
-                                            <label className="text-xs font-black uppercase tracking-widest opacity-40 px-2">Embedding API Key</label>
+                                            <label htmlFor="emb-api-key" className="text-xs font-black uppercase tracking-widest opacity-40 px-2">Embedding API Key</label>
                                             <input 
+                                                id="emb-api-key"
                                                 type="password"
                                                 className="w-full bg-[#f3f3fd] dark:bg-slate-950/40 p-5 rounded-3xl border-2 border-transparent focus:border-primary/20 outline-none transition-all font-body text-sm"
                                                 value={embeddingConfig.api_key}

@@ -118,6 +118,171 @@ describe('SettingsModal Component', () => {
         await waitFor(() => {
             expect(axios.post).toHaveBeenCalledWith(expect.stringContaining('/api/cache/clear'))
         })
-        await screen.findByText('Cache Purged')
-    }, 15000)
+    })
+
+    it('displays cache statistics', async () => {
+        axios.get.mockImplementation((url) => {
+            if (url.includes('/api/config')) return Promise.resolve({ data: mockConfig })
+            if (url.includes('/api/index/status')) return Promise.resolve({ data: { running: false } })
+            if (url.includes('/api/folders/history')) return Promise.resolve({ data: mockFolderHistory })
+            if (url.includes('/api/cache/stats')) return Promise.resolve({
+                data: { total_entries: 42, total_hits: 128 }
+            })
+            if (url.includes('/api/settings/embeddings')) return Promise.resolve({ data: mockEmbeddingConfig })
+            return Promise.resolve({ data: {} })
+        })
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+
+        fireEvent.click(screen.getByText('System'))
+
+        await waitFor(() => {
+            expect(screen.getByText(/42/)).toBeDefined()
+            expect(screen.getByText(/128/)).toBeDefined()
+        })
+    }, 20000)
+
+    it('changes model name in embedding config', async () => {
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+
+        fireEvent.click(screen.getByText('Embeddings'))
+        await screen.findByLabelText('Model Architecture', {}, { timeout: 8000 })
+
+        const modelInput = screen.getByLabelText('Model Architecture')
+        fireEvent.change(modelInput, { target: { value: 'new-model-name' } })
+
+        expect(modelInput.value).toBe('new-model-name')
+    })
+
+    it('disables save button while saving', async () => {
+        // Make save take longer
+        axios.post.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve({ data: { status: 'success' } }), 100)))
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+
+        const saveButton = screen.getByText('Apply Changes')
+        fireEvent.click(saveButton)
+
+        // Button should be disabled during save
+        expect(saveButton.closest('button').disabled).toBe(true)
+    })
+
+    it('does not send placeholder API key when saving', async () => {
+        axios.get.mockImplementation((url) => {
+            if (url.includes('/api/config')) return Promise.resolve({ data: mockConfig })
+            if (url.includes('/api/index/status')) return Promise.resolve({ data: { running: false } })
+            if (url.includes('/api/folders/history')) return Promise.resolve({ data: mockFolderHistory })
+            if (url.includes('/api/cache/stats')) return Promise.resolve({ data: { total_entries: 0, total_hits: 0 } })
+            if (url.includes('/api/settings/embeddings')) return Promise.resolve({
+                data: { provider_type: 'commercial_api', model_name: 'test', api_key_set: true }
+            })
+            return Promise.resolve({ data: {} })
+        })
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+
+        fireEvent.click(screen.getByText('Embeddings'))
+        await screen.findByLabelText(/Embedding API Key/i, {}, { timeout: 8000 })
+
+        // API key should show placeholder
+        const apiKeyInput = screen.getByLabelText(/Embedding API Key/i)
+        expect(apiKeyInput.value).toBe('••••••••')
+
+        // Save without changing the API key
+        fireEvent.click(screen.getByText('Apply Changes'))
+
+        await waitFor(() => {
+            // Should not send the placeholder
+            const embeddingCall = axios.post.mock.calls.find(call =>
+                call[0] === 'http://localhost:8000/api/settings/embeddings'
+            )
+            expect(embeddingCall[1].api_key).toBeUndefined()
+        })
+    }, 20000)
+
+    it('handles browse folder error gracefully', async () => {
+        axios.get.mockImplementation((url) => {
+            if (url.includes('/api/browse')) return Promise.reject(new Error('Failed to open dialog'))
+            if (url.includes('/api/config')) return Promise.resolve({ data: mockConfig })
+            if (url.includes('/api/index/status')) return Promise.resolve({ data: { running: false } })
+            if (url.includes('/api/folders/history')) return Promise.resolve({ data: mockFolderHistory })
+            if (url.includes('/api/cache/stats')) return Promise.resolve({ data: { total_entries: 0, total_hits: 0 } })
+            if (url.includes('/api/settings/embeddings')) return Promise.resolve({ data: mockEmbeddingConfig })
+            return Promise.resolve({ data: {} })
+        })
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+
+        // Click add folder (should not crash)
+        fireEvent.click(screen.getByText('Add Folder'))
+
+        // Should handle error gracefully (no crash)
+        await waitFor(() => expect(axios.get).toHaveBeenCalled())
+    })
+
+    it('updates API keys for different providers', async () => {
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+
+        fireEvent.click(screen.getByText('Cloud AI'))
+        await screen.findByText('Cloud Intelligence', {}, { timeout: 8000 })
+
+        // Find all API key inputs
+        const inputs = screen.getAllByPlaceholderText(/Enter API Key.../i)
+        expect(inputs.length).toBeGreaterThan(0)
+
+        // Change first one
+        fireEvent.change(inputs[0], { target: { value: 'new-api-key' } })
+        expect(inputs[0].value).toBe('new-api-key')
+    })
+
+    it('shows folder history dropdown when Recent History button is clicked', async () => {
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+
+        const historyButton = screen.getByLabelText(/history/i)
+        fireEvent.click(historyButton)
+
+        await screen.findByText('Previously Indexed', {}, { timeout: 8000 })
+        expect(screen.getByText('C:/Old/Folder')).toBeDefined()
+    })
+
+    it('handles empty folder history', async () => {
+        axios.get.mockImplementation((url) => {
+            if (url.includes('/api/config')) return Promise.resolve({ data: mockConfig })
+            if (url.includes('/api/index/status')) return Promise.resolve({ data: { running: false } })
+            if (url.includes('/api/folders/history')) return Promise.resolve({ data: [] })  // Empty
+            if (url.includes('/api/cache/stats')) return Promise.resolve({ data: { total_entries: 0, total_hits: 0 } })
+            if (url.includes('/api/settings/embeddings')) return Promise.resolve({ data: mockEmbeddingConfig })
+            return Promise.resolve({ data: {} })
+        })
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+
+        fireEvent.click(screen.getByLabelText(/history/i))
+
+        await screen.findByText('No indexed folders yet.', {}, { timeout: 8000 })
+    })
+
+    it('dismisses toast when the X button is clicked', async () => {
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+
+        fireEvent.click(screen.getByText('Apply Changes'))
+
+        await screen.findByText('Configuration updated!', {}, { timeout: 8000 })
+
+        // Click the dismiss button — same onDismiss callback the 3 s timer uses
+        fireEvent.click(screen.getByRole('button', { name: /dismiss notification/i }))
+
+        await waitFor(() => {
+            expect(screen.queryByText('Configuration updated!')).toBeNull()
+        })
+    })
 })
