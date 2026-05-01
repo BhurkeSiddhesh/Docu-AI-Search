@@ -17,13 +17,13 @@ function App() {
     const [darkMode, setDarkMode] = useState(true);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [searchResults, setSearchResults] = useState([]);
     const [aiAnswer, setAiAnswer] = useState("");
     const [activeModel, setActiveModel] = useState(null);
     const [availableModels, setAvailableModels] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [hasSearched, setHasSearched] = useState(false);
-    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
     const [folders, setFolders] = useState([]);
     const [indexingStatus, setIndexingStatus] = useState({ running: false, progress: 0 });
     const [isAgentMode, setIsAgentMode] = useState(false);
@@ -41,7 +41,7 @@ function App() {
 
     const fetchIndexedFiles = async () => {
         try {
-            const res = await axios.get('http://localhost:8000/api/files');
+            const res = await axios.get('/api/files');
             setIndexedFiles(res.data || []);
         } catch (error) {
             console.error("Failed to fetch indexed files", error);
@@ -57,16 +57,10 @@ function App() {
     };
 
     useEffect(() => {
-        const handleResize = () => setIsMobile(window.innerWidth < 768);
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
-
-    useEffect(() => {
         let interval;
         const fetchStatus = async () => {
             try {
-                const res = await axios.get('http://localhost:8000/api/index/status');
+                const res = await axios.get('/api/index/status');
                 setIndexingStatus(res.data);
                 if (!res.data.running) clearInterval(interval);
             } catch (e) {
@@ -92,9 +86,18 @@ function App() {
         fetchSystemPrompts();
     }, []);
 
+    // Close sidebar when resizing to desktop
+    useEffect(() => {
+        const handleResize = () => {
+            if (window.innerWidth >= 768) setIsSidebarOpen(false);
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
     const fetchSystemPrompts = async () => {
         try {
-            const res = await axios.get('http://localhost:8000/api/system-prompts');
+            const res = await axios.get('/api/system-prompts');
             setSystemPrompts(res.data || []);
         } catch (error) {
             console.error("Failed to fetch system prompts", error);
@@ -103,7 +106,7 @@ function App() {
 
     const checkConfig = async () => {
         try {
-            const res = await axios.get('http://localhost:8000/api/config');
+            const res = await axios.get('/api/config');
             setFolders(res.data.folders || []);
             setActiveModel(res.data.active_model);
         } catch (e) {
@@ -113,7 +116,7 @@ function App() {
 
     const fetchModels = async () => {
         try {
-            const res = await axios.get('http://localhost:8000/api/models/local');
+            const res = await axios.get('/api/models/local');
             setAvailableModels(res.data);
         } catch (e) {
             console.error("Failed to fetch models", e);
@@ -129,7 +132,7 @@ function App() {
         setAgentQuery(query);
 
         try {
-            const res = await axios.post('http://localhost:8000/api/search', {
+            const res = await axios.post('/api/search', {
                 query,
                 provider: 'local',
                 system_prompt_id: selectedPromptId
@@ -139,10 +142,9 @@ function App() {
             setIsLoading(false);
 
             if (res.data.results.length > 0) {
-                // If it's a direct answer, it will be in the summary
                 setAiAnswer("Generating summary...");
                 try {
-                    const response = await fetch('http://localhost:8000/api/search/stream', {
+                    const response = await fetch('/api/search/stream', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -185,29 +187,29 @@ function App() {
         switch (activeTab) {
             case 'dashboard':
                 return (
-                    <div className={`flex-1 flex flex-col items-center w-full max-w-5xl mx-auto px-6 ${hasSearched ? 'pt-8' : 'justify-center min-h-[70vh]'}`}>
+                    <div className={`flex-1 flex flex-col items-center w-full max-w-5xl mx-auto px-4 sm:px-6 ${hasSearched ? 'pt-6 md:pt-8' : 'justify-center min-h-[70vh]'}`}>
                         {!hasSearched && (
-                            <div className="text-center space-y-10 mb-16 animate-in fade-in zoom-in duration-1000">
-                                <div className="mx-auto w-32 h-32 rounded-[2.5rem] bg-white dark:bg-slate-900 shadow-2xl flex items-center justify-center mb-8 relative group transition-transform hover:scale-105">
-                                    <AppLogo className="w-20 h-20" />
-                                    <div className="absolute inset-0 rounded-[2.5rem] bg-primary/10 blur-2xl -z-10 group-hover:bg-primary/20 transition-all" />
+                            <div className="text-center space-y-8 md:space-y-10 mb-12 md:mb-16 animate-in fade-in zoom-in duration-1000 px-2">
+                                <div className="mx-auto w-20 h-20 md:w-32 md:h-32 rounded-[2rem] md:rounded-[2.5rem] bg-white dark:bg-slate-900 shadow-2xl flex items-center justify-center mb-6 md:mb-8 relative group transition-transform hover:scale-105">
+                                    <AppLogo className="w-12 h-12 md:w-20 md:h-20" />
+                                    <div className="absolute inset-0 rounded-[2rem] md:rounded-[2.5rem] bg-primary/10 blur-2xl -z-10 group-hover:bg-primary/20 transition-all" />
                                 </div>
-                                <div className="space-y-4">
-                                    <h1 className="text-6xl md:text-8xl font-black text-slate-900 dark:text-white tracking-tighter font-headline">
+                                <div className="space-y-3 md:space-y-4">
+                                    <h1 className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black text-slate-900 dark:text-white tracking-tighter font-headline">
                                         Neural<span className="text-primary italic">Search</span>
                                     </h1>
-                                    <div className="flex items-center justify-center gap-4">
-                                        <div className="h-1 w-12 bg-primary rounded-full"></div>
-                                        <p className="text-slate-500 dark:text-slate-400 text-xl md:text-2xl font-medium opacity-60">
+                                    <div className="flex items-center justify-center gap-3 md:gap-4">
+                                        <div className="h-1 w-8 md:w-12 bg-primary rounded-full" />
+                                        <p className="text-slate-500 dark:text-slate-400 text-base sm:text-lg md:text-2xl font-medium opacity-60">
                                             Access your collective intelligence
                                         </p>
-                                        <div className="h-1 w-12 bg-primary rounded-full"></div>
+                                        <div className="h-1 w-8 md:w-12 bg-primary rounded-full" />
                                     </div>
                                 </div>
                             </div>
                         )}
 
-                        <div className={`w-full transition-all duration-700 ${hasSearched ? 'mb-10' : 'max-w-3xl'}`}>
+                        <div className={`w-full transition-all duration-700 ${hasSearched ? 'mb-8 md:mb-10' : 'max-w-3xl'}`}>
                             <SearchBar
                                 onSearch={handleSearch}
                                 isLoading={isLoading}
@@ -232,18 +234,18 @@ function App() {
                 );
             case 'library':
                 return (
-                    <div className="max-w-6xl mx-auto py-10 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-                        <div className="mb-16 flex items-end justify-between">
+                    <div className="max-w-6xl mx-auto py-6 md:py-10 px-1 animate-in fade-in slide-in-from-bottom-8 duration-1000">
+                        <div className="mb-8 md:mb-16 flex flex-col sm:flex-row sm:items-end justify-between gap-6">
                             <div>
-                                <h2 className="text-5xl font-black font-headline tracking-tighter mb-4">Neural Repository</h2>
-                                <p className="text-xl opacity-60 font-medium max-w-xl">Unified index of your local knowledge assets. Encrypted and optimized for rapid retrieval.</p>
+                                <h2 className="text-3xl md:text-5xl font-black font-headline tracking-tighter mb-2 md:mb-4">Neural Repository</h2>
+                                <p className="text-base md:text-xl opacity-60 font-medium max-w-xl">Unified index of your local knowledge assets.</p>
                             </div>
-                            <button 
+                            <button
                                 onClick={() => setIsSettingsOpen(true)}
-                                className="px-8 py-4 rounded-[2rem] bg-white dark:bg-slate-900 border border-[#f3f3fd] dark:border-slate-800 font-bold text-xs uppercase tracking-widest hover:shadow-xl transition-all flex items-center gap-3 group"
+                                className="self-start sm:self-auto px-5 md:px-8 py-3 md:py-4 rounded-[2rem] bg-white dark:bg-slate-900 border border-[#f3f3fd] dark:border-slate-800 font-bold text-xs uppercase tracking-widest hover:shadow-xl transition-all flex items-center gap-3 group flex-shrink-0"
                             >
                                 <span className="material-symbols-outlined text-xl group-hover:rotate-180 transition-transform duration-700">settings</span>
-                                Indexer Configuration
+                                <span className="hidden sm:inline">Indexer Config</span>
                             </button>
                         </div>
                         <FileList files={indexedFiles} onRemove={handleRemoveFile} />
@@ -251,19 +253,17 @@ function App() {
                 );
             case 'workspace':
                 return (
-                    <div className="max-w-6xl mx-auto py-10 space-y-20 animate-in fade-in slide-in-from-bottom-8 duration-1000">
-                        <div className="space-y-4">
-                            <h2 className="text-5xl font-black font-headline tracking-tighter">System Telemetry</h2>
-                            <p className="text-xl opacity-60 font-medium max-w-xl">Performance diagnostics and model behavioral analysis.</p>
+                    <div className="max-w-6xl mx-auto py-6 md:py-10 space-y-12 md:space-y-20 px-1 animate-in fade-in slide-in-from-bottom-8 duration-1000">
+                        <div className="space-y-3 md:space-y-4">
+                            <h2 className="text-3xl md:text-5xl font-black font-headline tracking-tighter">System Telemetry</h2>
+                            <p className="text-base md:text-xl opacity-60 font-medium max-w-xl">Performance diagnostics and model behavioral analysis.</p>
                         </div>
-                        
-                        <div className="space-y-24">
+
+                        <div className="space-y-16 md:space-y-24">
                             <section>
                                 <BenchmarkResults />
                             </section>
-                            
-                            <div className="h-px w-full bg-gradient-to-r from-transparent via-[#f3f3fd] dark:via-slate-800 to-transparent"></div>
-                            
+                            <div className="h-px w-full bg-gradient-to-r from-transparent via-[#f3f3fd] dark:via-slate-800 to-transparent" />
                             <section>
                                 <ModelComparison />
                             </section>
@@ -273,8 +273,8 @@ function App() {
             default:
                 return (
                     <div className="flex flex-col items-center justify-center h-[60vh] text-slate-400 space-y-6">
-                        <span className="material-symbols-outlined text-6xl opacity-20">construction</span>
-                        <p className="text-xl font-bold font-headline uppercase tracking-widest opacity-40">Module Under Construction</p>
+                        <span className="material-symbols-outlined text-5xl md:text-6xl opacity-20">construction</span>
+                        <p className="text-base md:text-xl font-bold font-headline uppercase tracking-widest opacity-40">Module Under Construction</p>
                     </div>
                 );
         }
@@ -283,25 +283,63 @@ function App() {
     return (
         <div className="min-h-screen bg-[#faf8ff] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex font-body selection:bg-primary/20 overflow-hidden">
             <AbstractBackground />
-            
-            <SideNavBar 
-                activeTab={activeTab} 
-                setActiveTab={setActiveTab} 
+
+            <SideNavBar
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
                 onNewSearch={() => { setHasSearched(false); setSearchResults([]); setAiAnswer(""); setActiveTab('dashboard'); }}
                 setIsSettingsOpen={setIsSettingsOpen}
                 setIsHistoryOpen={setIsHistoryOpen}
+                isOpen={isSidebarOpen}
+                onClose={() => setIsSidebarOpen(false)}
             />
 
-            <div className="flex-1 ml-72 flex flex-col relative z-10 h-screen">
-                <TopHeader 
-                    title={activeTab} 
+            {/* Main content — offset for desktop sidebar, full-width on mobile */}
+            <div className="flex-1 md:ml-72 flex flex-col relative z-10 h-screen min-w-0">
+                <TopHeader
+                    title={activeTab}
                     userQuery={agentQuery}
+                    onMenuOpen={() => setIsSidebarOpen(true)}
                 />
-                
-                <main className="flex-1 overflow-y-auto p-10 custom-scrollbar scroll-smooth">
+
+                <main className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-8 lg:px-10 py-6 md:py-8 custom-scrollbar scroll-smooth">
                     {renderTabContent()}
                 </main>
             </div>
+
+            {/* Bottom nav bar — mobile only */}
+            <nav className="fixed bottom-0 left-0 right-0 md:hidden z-50 bg-[#faf8ff]/95 dark:bg-slate-950/95 backdrop-blur-2xl border-t border-[#f3f3fd] dark:border-slate-800 flex items-center justify-around px-2 py-2 safe-bottom">
+                {[
+                    { id: 'dashboard', icon: 'search_spark', label: 'Search' },
+                    { id: 'library', icon: 'database', label: 'Library' },
+                    { id: 'workspace', icon: 'analytics', label: 'Telemetry' },
+                ].map(item => (
+                    <button
+                        key={item.id}
+                        onClick={() => setActiveTab(item.id)}
+                        className={`flex flex-col items-center gap-1 px-4 py-2 rounded-2xl transition-all duration-200 ${
+                            activeTab === item.id
+                                ? 'text-primary bg-primary/5'
+                                : 'text-slate-400'
+                        }`}
+                    >
+                        <span
+                            className="material-symbols-outlined text-2xl"
+                            style={activeTab === item.id ? { fontVariationSettings: "'FILL' 1" } : {}}
+                        >
+                            {item.icon}
+                        </span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider">{item.label}</span>
+                    </button>
+                ))}
+                <button
+                    onClick={() => setIsSettingsOpen(true)}
+                    className="flex flex-col items-center gap-1 px-4 py-2 rounded-2xl text-slate-400 transition-all duration-200"
+                >
+                    <span className="material-symbols-outlined text-2xl">settings</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Settings</span>
+                </button>
+            </nav>
 
             <SettingsModal
                 isOpen={isSettingsOpen}
@@ -309,12 +347,11 @@ function App() {
                 onSave={() => { checkConfig(); fetchModels(); }}
                 activeModel={activeModel}
             />
-            
+
             <SearchHistory
                 isOpen={isHistoryOpen}
                 onClose={() => setIsHistoryOpen(false)}
                 onSelectQuery={handleSearch}
-                isMobile={isMobile}
             />
         </div>
     );
