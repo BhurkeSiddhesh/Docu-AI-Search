@@ -90,7 +90,7 @@ describe('SettingsModal Component', () => {
 
     it('removes a folder', async () => {
         await openModal()
-        const removeBtn = screen.getByLabelText('Remove C:/Users/test/Documents from index')
+        const removeBtn = await screen.findByLabelText('Remove C:/Users/test/Documents from index')
         fireEvent.click(removeBtn)
         await waitFor(() => {
             expect(screen.queryByText('C:/Users/test/Documents')).toBeNull()
