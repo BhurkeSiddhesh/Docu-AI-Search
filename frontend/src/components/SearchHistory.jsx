@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const API = '/api';
+const API = 'http://localhost:8000/api';
 
 const SearchHistory = ({ onSelectQuery, isOpen, onClose }) => {
     const [history, setHistory] = useState([]);

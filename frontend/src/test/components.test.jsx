@@ -66,7 +66,7 @@ describe('API Interactions', () => {
             json: () => Promise.resolve(mockConfig)
         })
 
-        const response = await fetch('http://localhost:8000/api/config')
+        const response = await fetch('/api/config')
         const data = await response.json()
 
         expect(data.folder).toBe('/test')
@@ -85,7 +85,7 @@ describe('API Interactions', () => {
             json: () => Promise.resolve(mockResults)
         })
 
-        const response = await fetch('http://localhost:8000/api/search', {
+        const response = await fetch('/api/search', {
             method: 'POST',
             body: JSON.stringify({ query: 'test' })
         })
@@ -102,7 +102,7 @@ describe('API Interactions', () => {
             statusText: 'Internal Server Error'
         })
 
-        const response = await fetch('http://localhost:8000/api/search')
+        const response = await fetch('/api/search')
 
         expect(response.ok).toBe(false)
         expect(response.status).toBe(500)

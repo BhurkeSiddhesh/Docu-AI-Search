@@ -21,7 +21,7 @@ const getFileIcon = (fileName) => {
 
 const handleOpenFile = async (filePath) => {
     try {
-        await axios.post('/api/open-file', { path: filePath });
+        await axios.post('http://localhost:8000/api/open-file', { path: filePath });
     } catch (error) {
         console.error('Failed to open file:', error);
     }
