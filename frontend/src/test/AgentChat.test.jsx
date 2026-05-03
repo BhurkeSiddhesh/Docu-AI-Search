@@ -6,21 +6,23 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import AgentChat from '../components/AgentChat';
 
-// EventSource mock factory
-function makeEventSource() {
-    const instance = {
-        onmessage: null,
-        onerror: null,
-        close: vi.fn(),
-    };
-    return instance;
+// EventSource must be a constructor (class), not a plain arrow function.
+class MockEventSource {
+    constructor(url) {
+        MockEventSource.lastInstance = this;
+        MockEventSource.lastUrl = url;
+        this.onmessage = null;
+        this.onerror = null;
+        this.close = vi.fn();
+    }
 }
-
-let eventSourceInstance;
+MockEventSource.lastInstance = null;
+MockEventSource.lastUrl = null;
 
 beforeEach(() => {
-    eventSourceInstance = makeEventSource();
-    vi.stubGlobal('EventSource', vi.fn(() => eventSourceInstance));
+    MockEventSource.lastInstance = null;
+    MockEventSource.lastUrl = null;
+    vi.stubGlobal('EventSource', MockEventSource);
 });
 
 afterEach(() => {
@@ -31,21 +33,21 @@ afterEach(() => {
 describe('AgentChat Component', () => {
     it('does not create an EventSource when query is empty', () => {
         render(<AgentChat query="" />);
-        expect(EventSource).not.toHaveBeenCalled();
+        expect(MockEventSource.lastInstance).toBeNull();
     });
 
     it('creates an EventSource when a query is provided', () => {
         render(<AgentChat query="What is machine learning?" />);
-        expect(EventSource).toHaveBeenCalledOnce();
-        const url = EventSource.mock.calls[0][0];
-        expect(url).toContain('What%20is%20machine%20learning%3F');
+        expect(MockEventSource.lastInstance).not.toBeNull();
+        expect(MockEventSource.lastUrl).toContain('What%20is%20machine%20learning%3F');
     });
 
     it('renders a thought event received from the stream', async () => {
         render(<AgentChat query="test" />);
+        const instance = MockEventSource.lastInstance;
 
         await act(async () => {
-            eventSourceInstance.onmessage({
+            instance.onmessage({
                 data: JSON.stringify({ type: 'thought', content: 'Thinking deeply...' }),
             });
         });
@@ -55,42 +57,46 @@ describe('AgentChat Component', () => {
 
     it('renders an answer event and closes the stream', async () => {
         render(<AgentChat query="test" />);
+        const instance = MockEventSource.lastInstance;
 
         await act(async () => {
-            eventSourceInstance.onmessage({
+            instance.onmessage({
                 data: JSON.stringify({ type: 'answer', content: 'The answer is 42.' }),
             });
         });
 
         expect(screen.getByText('The answer is 42.')).toBeDefined();
-        expect(eventSourceInstance.close).toHaveBeenCalled();
+        expect(instance.close).toHaveBeenCalled();
     });
 
     it('renders an error event and closes the stream', async () => {
         render(<AgentChat query="test" />);
+        const instance = MockEventSource.lastInstance;
 
         await act(async () => {
-            eventSourceInstance.onmessage({
+            instance.onmessage({
                 data: JSON.stringify({ type: 'error', content: 'Something went wrong.' }),
             });
         });
 
         expect(screen.getByText('Something went wrong.')).toBeDefined();
-        expect(eventSourceInstance.close).toHaveBeenCalled();
+        expect(instance.close).toHaveBeenCalled();
     });
 
     it('closes EventSource on onerror', async () => {
         render(<AgentChat query="test" />);
+        const instance = MockEventSource.lastInstance;
 
         await act(async () => {
-            eventSourceInstance.onerror(new Error('Network error'));
+            instance.onerror(new Error('Network error'));
         });
 
-        expect(eventSourceInstance.close).toHaveBeenCalled();
+        expect(instance.close).toHaveBeenCalled();
     });
 
     it('renders multiple streamed events in order', async () => {
         render(<AgentChat query="test" />);
+        const instance = MockEventSource.lastInstance;
 
         const events = [
             { type: 'thought', content: 'First thought' },
@@ -100,7 +106,7 @@ describe('AgentChat Component', () => {
 
         await act(async () => {
             for (const ev of events) {
-                eventSourceInstance.onmessage({ data: JSON.stringify(ev) });
+                instance.onmessage({ data: JSON.stringify(ev) });
             }
         });
 
@@ -111,17 +117,19 @@ describe('AgentChat Component', () => {
 
     it('silently ignores malformed JSON messages', async () => {
         render(<AgentChat query="test" />);
+        const instance = MockEventSource.lastInstance;
 
         await act(async () => {
-            eventSourceInstance.onmessage({ data: 'not-json{{' });
+            instance.onmessage({ data: 'not-json{{' });
         });
 
-        expect(eventSourceInstance.close).not.toHaveBeenCalled();
+        expect(instance.close).not.toHaveBeenCalled();
     });
 
     it('closes EventSource on unmount', () => {
         const { unmount } = render(<AgentChat query="live query" />);
+        const instance = MockEventSource.lastInstance;
         unmount();
-        expect(eventSourceInstance.close).toHaveBeenCalled();
+        expect(instance.close).toHaveBeenCalled();
     });
 });

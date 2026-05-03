@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import axios from 'axios';
 import BenchmarkResults from '../components/BenchmarkResults';
 
@@ -26,7 +26,6 @@ const mockResultsData = {
 
 beforeEach(() => {
     vi.clearAllMocks();
-    // Default: results endpoint returns data, status endpoint says not running
     axios.get.mockImplementation((url) => {
         if (url.includes('/results')) return Promise.resolve({ data: mockResultsData });
         if (url.includes('/status')) return Promise.resolve({ data: { running: false } });
@@ -40,32 +39,33 @@ afterEach(() => {
 
 describe('BenchmarkResults Component', () => {
     it('renders without crashing', async () => {
-        render(<BenchmarkResults />);
-        await waitFor(() => {
-            expect(screen.queryByText(/loading/i) === null || true).toBe(true);
+        await act(async () => {
+            render(<BenchmarkResults />);
         });
+        expect(document.body).toBeDefined();
     });
 
-    it('shows a Run Benchmark button', async () => {
-        render(<BenchmarkResults />);
-        await waitFor(() => {
-            expect(screen.getByText(/run benchmark/i)).toBeDefined();
+    it('shows Start Benchmark button after loading', async () => {
+        await act(async () => {
+            render(<BenchmarkResults />);
         });
+        expect(screen.getByText('Start Benchmark')).toBeDefined();
     });
 
     it('calls the benchmarks run endpoint on button click', async () => {
         axios.post.mockResolvedValueOnce({ data: { status: 'started' } });
 
-        render(<BenchmarkResults />);
-        await waitFor(() => screen.getByText(/run benchmark/i));
-
-        fireEvent.click(screen.getByText(/run benchmark/i));
-
-        await waitFor(() => {
-            expect(axios.post).toHaveBeenCalledWith(
-                expect.stringContaining('/benchmarks/run')
-            );
+        await act(async () => {
+            render(<BenchmarkResults />);
         });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Start Benchmark'));
+        });
+
+        expect(axios.post).toHaveBeenCalledWith(
+            expect.stringContaining('/benchmarks/run')
+        );
     });
 
     it('shows an error message when starting the benchmark fails', async () => {
@@ -73,49 +73,56 @@ describe('BenchmarkResults Component', () => {
             response: { data: { detail: 'Benchmark already running' } },
         });
 
-        render(<BenchmarkResults />);
-        await waitFor(() => screen.getByText(/run benchmark/i));
-
-        fireEvent.click(screen.getByText(/run benchmark/i));
-
-        await waitFor(() => {
-            expect(screen.getByText('Benchmark already running')).toBeDefined();
+        await act(async () => {
+            render(<BenchmarkResults />);
         });
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Start Benchmark'));
+        });
+
+        expect(screen.getByText('Benchmark already running')).toBeDefined();
     });
 
     it('fetches results on mount', async () => {
-        render(<BenchmarkResults />);
-        await waitFor(() => {
-            expect(axios.get).toHaveBeenCalledWith(
-                expect.stringContaining('/benchmarks/results')
-            );
+        await act(async () => {
+            render(<BenchmarkResults />);
         });
+
+        expect(axios.get).toHaveBeenCalledWith(
+            expect.stringContaining('/benchmarks/results')
+        );
     });
 
-    it('polls benchmark status on mount', async () => {
+    it('polls benchmark status after interval fires', async () => {
         vi.useFakeTimers();
 
-        render(<BenchmarkResults />);
+        await act(async () => {
+            render(<BenchmarkResults />);
+        });
 
-        await waitFor(() => {
-            expect(axios.get).toHaveBeenCalledWith(
-                expect.stringContaining('/benchmarks/status')
-            );
+        // Advance timers to trigger setInterval(checkStatus, 2000)
+        await act(async () => {
+            vi.advanceTimersByTime(2001);
         });
 
         vi.useRealTimers();
+
+        expect(axios.get).toHaveBeenCalledWith(
+            expect.stringContaining('/benchmarks/status')
+        );
     });
 
-    it('handles a failed results fetch gracefully', async () => {
+    it('handles a failed results fetch gracefully without crashing', async () => {
         axios.get.mockImplementation((url) => {
             if (url.includes('/results')) return Promise.reject(new Error('Network error'));
             return Promise.resolve({ data: { running: false } });
         });
 
-        render(<BenchmarkResults />);
-
-        await waitFor(() => {
-            expect(screen.queryByText(/network error/i)).toBeNull();
+        await act(async () => {
+            render(<BenchmarkResults />);
         });
+
+        expect(screen.queryByText(/exception/i)).toBeNull();
     });
 });

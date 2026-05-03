@@ -12,7 +12,6 @@ import configparser
 import unittest
 from unittest.mock import patch, MagicMock
 
-import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 

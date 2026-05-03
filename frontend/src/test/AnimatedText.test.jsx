@@ -43,10 +43,12 @@ describe('AnimatedText Component', () => {
         expect(rendered).toBe('DocuAI');
     });
 
-    it('creates one word-group per word', () => {
+    it('renders one word-group div per word', () => {
         const { container } = render(<AnimatedText text="one two three" />);
-        // Each word is wrapped in a plain div inside the motion container
-        const wordDivs = container.querySelectorAll('div > div');
+        // Each word is wrapped in a plain div that holds character spans.
+        // The motion container itself is the root div; its direct children are word-divs.
+        const rootDiv = container.firstChild;
+        const wordDivs = Array.from(rootDiv.children);
         expect(wordDivs.length).toBe(3);
     });
 });

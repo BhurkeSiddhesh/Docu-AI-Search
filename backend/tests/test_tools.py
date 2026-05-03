@@ -59,7 +59,7 @@ class TestToolReadFile(unittest.TestCase):
         self.assertIn("Error", result)
 
     @patch("backend.tools.database.get_file_by_path", return_value=None)
-    @patch("backend.tools.database.get_file_by_name", return_value=None)
+    @patch("backend.database.get_file_by_name", return_value=None, create=True)
     def test_file_not_in_db_returns_access_denied(self, mock_name, mock_path):
         """Returns access denied error when file is not in the knowledge base."""
         result = tools.tool_read_file("/some/random/path.pdf")
@@ -73,7 +73,7 @@ class TestToolReadFile(unittest.TestCase):
         self.assertIn("Error", result)
 
     @patch("backend.tools.database.get_file_by_path")
-    @patch("backend.tools.extract_text")
+    @patch("backend.file_processing.extract_text")
     def test_reads_file_content(self, mock_extract, mock_db):
         """Returns extracted file content up to 5000 characters."""
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
@@ -88,7 +88,7 @@ class TestToolReadFile(unittest.TestCase):
             os.unlink(tmp_path)
 
     @patch("backend.tools.database.get_file_by_path")
-    @patch("backend.tools.extract_text")
+    @patch("backend.file_processing.extract_text")
     def test_content_capped_at_5000_chars(self, mock_extract, mock_db):
         """Content is truncated to 5000 characters max."""
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
@@ -103,7 +103,7 @@ class TestToolReadFile(unittest.TestCase):
             os.unlink(tmp_path)
 
     @patch("backend.tools.database.get_file_by_path")
-    @patch("backend.tools.extract_text")
+    @patch("backend.file_processing.extract_text")
     def test_empty_extracted_text_returns_message(self, mock_extract, mock_db):
         """Returns descriptive message when extracted text is empty."""
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
@@ -118,8 +118,8 @@ class TestToolReadFile(unittest.TestCase):
             os.unlink(tmp_path)
 
     @patch("backend.tools.database.get_file_by_path", return_value=None)
-    @patch("backend.tools.database.get_file_by_name")
-    @patch("backend.tools.extract_text")
+    @patch("backend.database.get_file_by_name", create=True)
+    @patch("backend.file_processing.extract_text")
     def test_fallback_to_lookup_by_name(self, mock_extract, mock_name, mock_path):
         """Falls back to get_file_by_name when get_file_by_path returns None."""
         with tempfile.NamedTemporaryFile(suffix=".txt", delete=False) as f:
