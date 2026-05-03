@@ -553,14 +553,20 @@ class TestAPIHealthEndpoints(unittest.TestCase):
         self.assertIn('status', data)
         self.assertEqual(data['status'], 'online')
 
-    def test_health_check_endpoint(self):
+    @patch('backend.database.get_connection')
+    def test_health_check_endpoint(self, mock_get_connection):
         """Test dedicated health check endpoint."""
+        mock_conn = MagicMock()
+        mock_conn.execute.return_value = None
+        mock_get_connection.return_value = mock_conn
+
         response = self.client.get("/api/health")
 
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertIn('status', data)
         self.assertEqual(data['status'], 'ok')
+        mock_conn.execute.assert_called_once_with("SELECT 1")
 
 
 class TestAPISecurityFeatures(unittest.TestCase):
@@ -780,7 +786,7 @@ class TestAPISearchEdgeCases(unittest.TestCase):
         mock_summarize.return_value = "Summary"
         mock_batch.return_value = {0: {'filename': 'test.pdf', 'path': '/test.pdf'}}
 
-        long_query = "word " * 1000  # Very long query
+        long_query = "word " * 199  # Long query within the 1000-char max_length limit
 
         with patch('backend.api.index', MagicMock()), \
              patch('backend.api.docs', []), \

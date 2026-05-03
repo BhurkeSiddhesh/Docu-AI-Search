@@ -299,7 +299,13 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 async def global_exception_handler(request: Request, exc: Exception):
     """Return structured JSON for unhandled exceptions and log the traceback."""
     import traceback
+    from fastapi.exceptions import RequestValidationError
+    from fastapi.exception_handlers import http_exception_handler, request_validation_exception_handler
     from fastapi.responses import JSONResponse
+    if isinstance(exc, HTTPException):
+        return await http_exception_handler(request, exc)
+    if isinstance(exc, RequestValidationError):
+        return await request_validation_exception_handler(request, exc)
     logger.error(
         "Unhandled exception on %s %s: %s\n%s",
         request.method,
@@ -322,12 +328,12 @@ from backend.settings import router as embedding_router
 app.include_router(embedding_router)
 
 # Enable CORS for frontend
-_default_origins = "http://localhost:5173,http://localhost:3000,http://localhost:5175,http://localhost:5174"
+_default_origins = "http://localhost:5173,http://localhost:3000,http://localhost:5175,http://localhost:5174,http://localhost:5000"
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

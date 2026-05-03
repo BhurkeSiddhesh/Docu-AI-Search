@@ -180,3 +180,24 @@
   background: #c4c5d9;
   background-clip: content-box;
 }
+
+/* Hide scrollbar but keep scroll functionality (for mobile tab strips) */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Safe bottom area for devices with home bars */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0.5rem);
+}
+
+/* Main content bottom padding on mobile (above bottom nav) */
+@media (max-width: 767px) {
+  main {
+    padding-bottom: 5rem;
+  }
+}

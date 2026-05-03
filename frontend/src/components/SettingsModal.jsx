@@ -20,7 +20,7 @@ const Toast = ({ message, type = 'success', onDismiss }) => {
         <div className={`fixed bottom-8 right-8 z-[200] flex items-center gap-4 px-6 py-4 rounded-3xl shadow-2xl backdrop-blur-xl text-sm font-bold animate-in slide-in-from-bottom-8 duration-500 ${colours[type]}`}>
             <span className="material-symbols-outlined">{type === 'success' ? 'check_circle' : (type === 'error' ? 'error' : 'info')}</span>
             <span>{message}</span>
-            <button type="button" onClick={onDismiss} className="ml-2 opacity-70 hover:opacity-100">
+            <button type="button" onClick={onDismiss} aria-label="Dismiss notification" className="ml-2 opacity-70 hover:opacity-100">
                 <span className="material-symbols-outlined text-sm">close</span>
             </button>
         </div>
@@ -190,41 +190,57 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
     ];
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()} onKeyDown={(e) => e.key === 'Escape' && onClose()} tabIndex={-1} aria-hidden="true">
-            <div className="glass-overlay w-[96vw] max-w-6xl h-[88vh] rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()} onKeyDown={(e) => e.key === 'Escape' && onClose()} tabIndex={-1}>
+            <div className="glass-overlay w-full sm:w-[96vw] max-w-6xl h-[95vh] sm:h-[88vh] rounded-t-[2rem] sm:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
                 {/* Header */}
-                <div className="px-8 py-6 border-b border-border/30 bg-background/85 backdrop-blur-md flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                            <span className="material-symbols-outlined text-2xl">settings</span>
+                <div className="px-4 md:px-8 py-4 md:py-6 border-b border-border/30 bg-background/85 backdrop-blur-md flex items-center justify-between flex-shrink-0">
+                    <div className="flex items-center gap-3 md:gap-4">
+                        <div className="w-9 h-9 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                            <span className="material-symbols-outlined text-xl md:text-2xl">settings</span>
                         </div>
                         <div>
-                            <h2 id="settings-modal-title" className="text-xl font-bold font-headline text-[#191b22] dark:text-white uppercase tracking-tight">System Configuration</h2>
-                            <p className="text-[10px] font-black opacity-40 uppercase tracking-widest">Adjust your AI workspace parameters</p>
+                            <h2 id="settings-modal-title" className="text-base md:text-xl font-bold font-headline text-[#191b22] dark:text-white uppercase tracking-tight">System Configuration</h2>
+                            <p className="text-[9px] md:text-[10px] font-black opacity-40 uppercase tracking-widest hidden sm:block">Adjust your AI workspace parameters</p>
                         </div>
                     </div>
-                    <button onClick={onClose} aria-label="Close settings" className="w-12 h-12 rounded-full hover:bg-secondary/50 flex items-center justify-center transition-all">
+                    <button onClick={onClose} aria-label="Close settings" className="w-10 h-10 md:w-12 md:h-12 rounded-full hover:bg-secondary/50 flex items-center justify-center transition-all">
                         <span className="material-symbols-outlined">close</span>
                     </button>
                 </div>
 
-                <div className="flex-1 flex overflow-hidden">
-                    {/* Sidebar */}
-                    <aside className="w-72 bg-[#f3f3fd] dark:bg-slate-950/40 p-6 space-y-2 border-r border-[#f3f3fd] dark:border-slate-800">
-                        {sections.map(s => (
-                            <button
-                                key={s.id}
-                                onClick={() => setActiveSection(s.id)}
-                                className={`w-full flex items-center gap-3 px-5 py-4 rounded-2xl transition-all font-headline ${activeSection === s.id ? 'bg-white dark:bg-slate-900 text-primary shadow-sm font-bold scale-105' : 'text-[#434656] dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-900/50'}`}
-                            >
-                                <span className={`material-symbols-outlined ${activeSection === s.id ? 'fill-current' : ''}`}>{s.icon}</span>
-                                <span className="text-sm">{s.label}</span>
-                            </button>
-                        ))}
+                <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
+                    {/* Mobile: horizontal scrolling tabs. Desktop: vertical sidebar */}
+                    <aside className="md:w-56 lg:w-64 bg-[#f3f3fd] dark:bg-slate-950/40 md:border-r border-b md:border-b-0 border-[#f3f3fd] dark:border-slate-800 flex-shrink-0">
+                        {/* Mobile tab strip */}
+                        <div className="md:hidden flex overflow-x-auto gap-1 p-2 no-scrollbar">
+                            {sections.map(s => (
+                                <button
+                                    key={s.id}
+                                    onClick={() => setActiveSection(s.id)}
+                                    className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all font-headline text-xs font-bold whitespace-nowrap ${activeSection === s.id ? 'bg-white dark:bg-slate-900 text-primary shadow-sm' : 'text-[#434656] dark:text-slate-400'}`}
+                                >
+                                    <span className={`material-symbols-outlined text-base ${activeSection === s.id ? 'fill-current' : ''}`} style={activeSection === s.id ? { fontVariationSettings: "'FILL' 1" } : {}}>{s.icon}</span>
+                                    {s.label}
+                                </button>
+                            ))}
+                        </div>
+                        {/* Desktop sidebar list */}
+                        <div className="hidden md:flex flex-col p-4 space-y-1">
+                            {sections.map(s => (
+                                <button
+                                    key={s.id}
+                                    onClick={() => setActiveSection(s.id)}
+                                    className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all font-headline ${activeSection === s.id ? 'bg-white dark:bg-slate-900 text-primary shadow-sm font-bold' : 'text-[#434656] dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-900/50'}`}
+                                >
+                                    <span className={`material-symbols-outlined text-xl`} style={activeSection === s.id ? { fontVariationSettings: "'FILL' 1" } : {}}>{s.icon}</span>
+                                    <span className="text-sm">{s.label}</span>
+                                </button>
+                            ))}
+                        </div>
                     </aside>
 
                     {/* Content */}
-                    <main className="flex-1 overflow-y-auto p-10 custom-scrollbar space-y-12">
+                    <main className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-10 custom-scrollbar space-y-8 md:space-y-12 min-h-0">
                         {!config ? (
                             <div className="flex items-center justify-center h-full">
                                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -242,6 +258,7 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                         </div>
                                         <button 
                                             onClick={() => setShowHistory(!showHistory)} 
+                                            aria-label="Recent History"
                                             className={`p-3 rounded-2xl transition-all ${showHistory ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-white dark:bg-slate-900 text-primary hover:bg-primary/5'}`}
                                         >
                                             <span className="material-symbols-outlined text-lg">history</span>
@@ -367,8 +384,9 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                         { id: 'grok', name: 'xAI (Grok)', key: 'grok_api_key' },
                                     ].map(p => (
                                         <div key={p.id} className="space-y-3">
-                                            <label className="text-xs font-black uppercase tracking-widest opacity-40 px-2">{p.name}</label>
+                                            <label htmlFor={p.key} className="text-xs font-black uppercase tracking-widest opacity-40 px-2">{p.name}</label>
                                             <input 
+                                                id={p.key}
                                                 type="password"
                                                 className="w-full bg-[#f3f3fd] dark:bg-slate-950/40 p-5 rounded-3xl border-2 border-transparent focus:border-primary/20 outline-none transition-all font-body text-sm"
                                                 placeholder="Enter API Key..."
@@ -405,8 +423,9 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                     </div>
 
                                     <div className="space-y-3 pt-4">
-                                        <label className="text-xs font-black uppercase tracking-widest opacity-40 px-2">Model Architecture</label>
+                                        <label htmlFor="emb-model-name" className="text-xs font-black uppercase tracking-widest opacity-40 px-2">Model Architecture</label>
                                         <input 
+                                            id="emb-model-name"
                                             type="text"
                                             className="w-full bg-[#f3f3fd] dark:bg-slate-950/40 p-5 rounded-3xl border-2 border-transparent focus:border-primary/20 outline-none transition-all font-mono text-xs"
                                             value={embeddingConfig.model_name}
@@ -416,8 +435,9 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                                     
                                     {EMBEDDING_PROVIDER_TYPES.find(x => x.value === embeddingConfig.provider_type)?.needsKey && (
                                         <div className="space-y-3">
-                                            <label className="text-xs font-black uppercase tracking-widest opacity-40 px-2">Embedding API Key</label>
+                                            <label htmlFor="emb-api-key" className="text-xs font-black uppercase tracking-widest opacity-40 px-2">Embedding API Key</label>
                                             <input 
+                                                id="emb-api-key"
                                                 type="password"
                                                 className="w-full bg-[#f3f3fd] dark:bg-slate-950/40 p-5 rounded-3xl border-2 border-transparent focus:border-primary/20 outline-none transition-all font-body text-sm"
                                                 value={embeddingConfig.api_key}
@@ -472,11 +492,11 @@ const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
                 </div>
 
                 {/* Footer */}
-                <div className="px-8 py-6 bg-[#f3f3fd] dark:bg-slate-950/60 border-t border-[#f3f3fd] dark:border-slate-800 flex items-center justify-between">
-                    <p className="text-xs font-bold opacity-40">v2.4.0 • Neural Search Engine</p>
-                    <div className="flex items-center gap-4">
-                        <button onClick={onClose} className="px-8 py-3 rounded-2xl font-bold text-sm hover:bg-[#ebebfa] dark:hover:bg-slate-800 transition-all">Cancel</button>
-                        <button onClick={handleSave} disabled={isLoading} className="px-10 py-3 rounded-2xl bg-primary text-white font-bold text-sm hover:shadow-xl hover:shadow-primary/20 transition-all active:scale-95 disabled:opacity-50">
+                <div className="px-4 md:px-8 py-3 md:py-6 bg-[#f3f3fd] dark:bg-slate-950/60 border-t border-[#f3f3fd] dark:border-slate-800 flex items-center justify-between flex-shrink-0">
+                    <p className="text-xs font-bold opacity-40 hidden sm:block">v2.4.0 • Neural Search Engine</p>
+                    <div className="flex items-center gap-3 md:gap-4 w-full sm:w-auto">
+                        <button onClick={onClose} className="flex-1 sm:flex-none px-5 md:px-8 py-3 rounded-2xl font-bold text-sm hover:bg-[#ebebfa] dark:hover:bg-slate-800 transition-all text-center">Cancel</button>
+                        <button onClick={handleSave} disabled={isLoading} className="flex-1 sm:flex-none px-6 md:px-10 py-3 rounded-2xl bg-primary text-white font-bold text-sm hover:shadow-xl hover:shadow-primary/20 transition-all active:scale-95 disabled:opacity-50 text-center">
                             {isLoading ? 'Saving...' : 'Apply Changes'}
                         </button>
                     </div>
