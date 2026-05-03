@@ -3,7 +3,7 @@
 An intelligent, semantic search engine for your local documents powered by AI embeddings and large language models. Search across PDFs, Word documents, Excel spreadsheets, PowerPoint presentations, and text files using natural language queries.
 
 ![Project Status](https://img.shields.io/badge/status-active-success.svg)
-![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
+![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
 ![React](https://img.shields.io/badge/react-18+-61DAFB.svg)
 
 ## 🌟 Features
@@ -70,7 +70,7 @@ AI Agent Synthesis → Cite Filenames + Generate Answer
 
 ## 📋 Prerequisites
 
-- **Python 3.8+**
+- **Python 3.10+**
 - **Node.js 16+**
 - **8GB+ RAM** (for local models)
 - **OpenAI API Key** (optional, for cloud mode)

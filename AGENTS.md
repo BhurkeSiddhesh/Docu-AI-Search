@@ -11,7 +11,7 @@ npm run start          # Start backend (8000) + frontend (5173)
 
 ## Tech Stack
 
-**Backend (Python 3.8+):**
+**Backend (Python 3.10+):**
 - FastAPI - REST API with async support
 - FAISS - Vector similarity search
 - LangChain - LLM integration framework
@@ -304,6 +304,7 @@ python scripts/verify_golden_set.py
 ## Change Log
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
+
 ### 2026-04-30 (Backend CI Stabilization & API Fixes)
 - **Resolved critical backend regressions for 100% test pass rate**
   - **fix**: Added `BackgroundTasks` to `/api/search` for offloading search history logging, resolving `test_background_history.py` failure.
@@ -315,14 +316,20 @@ python scripts/verify_golden_set.py
   - **clean**: Removed transient debug logs from `backend/llm_integration.py`.
   - **Files**: `backend/api.py`, `backend/llm_integration.py`, `backend/tests/test_api.py`, `frontend/src/test/SettingsModal.test.jsx`, `AGENTS.md`
 
-### 2026-04-29 (Frontend CI Restoration & UI Stability)
-- **Achieved 100% Frontend Test Pass Rate**
-  - **fix**: Resolved critical null-pointer crash in `SettingsModal.jsx` by adding configuration presence checks and a loading state to the main content area.
-  - **fix**: Completely refactored `SettingsModal.test.jsx` to align with the "Liquid Glass" design system labels ("Library", "Cloud AI", "Local LLM", "System") and internal headers ("Knowledge Library", "System Engine", etc.).
-  - **fix**: Corrected `ModelManager.test.jsx` selectors (updated to "Initialize Model") and fixed `axios` mock return types to prevent runtime errors in tests.
   - **perf**: Implemented robust async test patterns (high timeouts, explicit `findByText` retries, and manual `window.confirm` mocks) to eliminate flakiness in the CI environment.
   - **verification**: All 10 frontend test suites (53 tests) and all backend tests are passing 100%. Verified project structure compliance via `npm run validate`.
   - **Files**: `frontend/src/components/SettingsModal.jsx`, `frontend/src/test/SettingsModal.test.jsx`, `frontend/src/test/ModelManager.test.jsx`, `AGENTS.md`
+
+### 2026-04-29 (Dependency Baseline Compatibility Follow-up)
+- **Aligned documented Python baseline with updated dependency constraints**
+  - **docs**: Updated Python version badge and runtime requirement in `README.md` from `3.8+` to `3.10+` to reflect current dependency support windows after recent dependency upgrades.
+  - **docs**: Updated backend tech stack version note in `AGENTS.md` from `Python 3.8+` to `Python 3.10+`.
+  - **Files**: `README.md`, `AGENTS.md`
+
+### 2026-04-29 (CI Dependency Resolver Fix)
+- **Resolved pip dependency conflict introduced by grouped dependency bump**
+  - **fix**: Updated `langchain-core` pin in `requirements.txt` from `1.2.28` to `1.2.31` to satisfy `langchain-text-splitters==1.1.2` minimum constraint (`langchain-core>=1.2.31`) and unblock CI dependency installation.
+  - **Files**: `requirements.txt`, `AGENTS.md`
 
 ### 2026-04-24 (Test Suite Stabilization & Security Fixes)
 - **Resolved Backend Test Regressions and Security Log Leaks**
