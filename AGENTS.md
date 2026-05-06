@@ -305,6 +305,12 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-05-06 (CLAUDE.md & Frontend Test Fixes)
+- **Added CLAUDE.md with codebase guidance for Claude Code sessions**
+  - **docs**: Added `CLAUDE.md` with setup commands, architecture overview, testing commands, and project conventions.
+  - **fix**: Corrected hardcoded `http://localhost:8000` URLs in `SearchResults.test.jsx` (4 tests) and `SearchHistory.test.jsx` (2 tests) to use relative `/api` paths matching actual component behavior via Vite proxy.
+  - **Files**: `CLAUDE.md`, `frontend/src/test/SearchResults.test.jsx`, `frontend/src/test/SearchHistory.test.jsx`, `AGENTS.md`
+
 ### 2026-04-30 (Backend CI Stabilization & API Fixes)
 - **Resolved critical backend regressions for 100% test pass rate**
   - **fix**: Added `BackgroundTasks` to `/api/search` for offloading search history logging, resolving `test_background_history.py` failure.
