@@ -305,6 +305,12 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-05-06 (Fix SettingsModal test selectors for dual mobile/desktop nav)
+- **Fixed 9 failing Vitest tests in SettingsModal caused by dual navigation rendering**
+  - **fix**: `openModal()` helper was using `findByText('Library')` which matched both mobile and desktop nav buttons simultaneously, causing 8 s retries and Vitest 5 s default timeout kills. Changed to `findByText('System Configuration')` (unique modal title).
+  - **fix**: All nav-tab `getByText(label)` calls changed to `getAllByText(label)[0]` to handle both mobile (`md:hidden`) and desktop (`hidden md:flex`) nav bars being present in happy-dom (CSS media queries not applied in tests).
+  - **Files**: `frontend/src/test/SettingsModal.test.jsx`, `AGENTS.md`
+
 ### 2026-05-06 (CLAUDE.md & Frontend Test Fixes)
 - **Added CLAUDE.md with codebase guidance for Claude Code sessions**
   - **docs**: Added `CLAUDE.md` with setup commands, architecture overview, testing commands, and project conventions.
