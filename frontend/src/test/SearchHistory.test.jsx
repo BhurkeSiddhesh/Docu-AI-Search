@@ -33,7 +33,7 @@ describe('SearchHistory Component', () => {
 
         render(<SearchHistory isOpen={true} onClose={vi.fn()} onSelectQuery={vi.fn()} />)
 
-        expect(axios.get).toHaveBeenCalledWith('http://localhost:8000/api/search/history')
+        expect(axios.get).toHaveBeenCalledWith('/api/search/history')
 
         // Wait for loading to finish and items to appear
         await waitFor(() => {
@@ -69,7 +69,7 @@ describe('SearchHistory Component', () => {
         const deleteButtons = screen.getAllByLabelText('Delete history item')
         fireEvent.click(deleteButtons[0])
 
-        expect(axios.delete).toHaveBeenCalledWith('http://localhost:8000/api/search/history/1')
+        expect(axios.delete).toHaveBeenCalledWith('/api/search/history/1')
 
         // Verify item is removed from view (optimistic update or after re-render)
         await waitFor(() => {
