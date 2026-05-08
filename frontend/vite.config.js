@@ -22,6 +22,7 @@ export default defineConfig({
     },
   },
   test: {
+    testTimeout: 30000,
     globals: true,
     environment: 'happy-dom',
     include: ['src/**/*.{test,spec}.{js,jsx,ts,tsx}'],

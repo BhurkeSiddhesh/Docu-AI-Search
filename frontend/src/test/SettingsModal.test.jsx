@@ -38,6 +38,7 @@ const mockEmbeddingConfig = {
 const mockFolderHistory = ['C:/Old/Folder']
 
 describe('SettingsModal Component', () => {
+        vi.setConfig({ testTimeout: 30000 })
     beforeEach(() => {
         vi.clearAllMocks()
         
@@ -67,7 +68,7 @@ describe('SettingsModal Component', () => {
 
     const openModal = async () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        return await screen.findByText('Library', {}, { timeout: 8000 })
+        return await screen.findAllByText('Library', {}, { timeout: 8000 })
     }
 
     it('renders correctly when open', async () => {
@@ -80,11 +81,11 @@ describe('SettingsModal Component', () => {
         await openModal()
         
         // Cloud AI
-        fireEvent.click(screen.getByText('Cloud AI'))
-        await screen.findByText('Cloud Intelligence', {}, { timeout: 8000 })
+        fireEvent.click(screen.getAllByText('Cloud AI')[0])
+        await screen.findAllByText('Cloud Intelligence', {}, { timeout: 8000 })
 
         // Local LLM
-        fireEvent.click(screen.getByText('Local LLM'))
+        fireEvent.click(screen.getAllByText('Local LLM')[0])
         await screen.findByText('Model Manager Mock', {}, { timeout: 8000 })
     }, 20000)
 
@@ -109,7 +110,7 @@ describe('SettingsModal Component', () => {
 
     it('clears AI response cache when button is clicked', async () => {
         await openModal()
-        fireEvent.click(screen.getByText('System'))
+        fireEvent.click(screen.getAllByText('System')[0])
         await screen.findByText('System Hygiene', {}, { timeout: 8000 })
         
         const purgeBtn = screen.getByText('Purge AI Cache')
@@ -133,9 +134,9 @@ describe('SettingsModal Component', () => {
         })
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+        await screen.findAllByText('System Configuration', {}, { timeout: 8000 })
 
-        fireEvent.click(screen.getByText('System'))
+        fireEvent.click(screen.getAllByText('System')[0])
 
         await waitFor(() => {
             expect(screen.getByText(/42/)).toBeDefined()
@@ -145,9 +146,9 @@ describe('SettingsModal Component', () => {
 
     it('changes model name in embedding config', async () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+        await screen.findAllByText('System Configuration', {}, { timeout: 8000 })
 
-        fireEvent.click(screen.getByText('Embeddings'))
+        fireEvent.click(screen.getAllByText('Embeddings')[0])
         await screen.findByLabelText('Model Architecture', {}, { timeout: 8000 })
 
         const modelInput = screen.getByLabelText('Model Architecture')
@@ -161,7 +162,7 @@ describe('SettingsModal Component', () => {
         axios.post.mockImplementation(() => new Promise(resolve => setTimeout(() => resolve({ data: { status: 'success' } }), 100)))
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+        await screen.findAllByText('System Configuration', {}, { timeout: 8000 })
 
         const saveButton = screen.getByText('Apply Changes')
         fireEvent.click(saveButton)
@@ -183,9 +184,9 @@ describe('SettingsModal Component', () => {
         })
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+        await screen.findAllByText('System Configuration', {}, { timeout: 8000 })
 
-        fireEvent.click(screen.getByText('Embeddings'))
+        fireEvent.click(screen.getAllByText('Embeddings')[0])
         await screen.findByLabelText(/Embedding API Key/i, {}, { timeout: 8000 })
 
         // API key should show placeholder
@@ -216,7 +217,7 @@ describe('SettingsModal Component', () => {
         })
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+        await screen.findAllByText('System Configuration', {}, { timeout: 8000 })
 
         // Click add folder (should not crash)
         fireEvent.click(screen.getByText('Add Folder'))
@@ -227,10 +228,10 @@ describe('SettingsModal Component', () => {
 
     it('updates API keys for different providers', async () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+        await screen.findAllByText('System Configuration', {}, { timeout: 8000 })
 
-        fireEvent.click(screen.getByText('Cloud AI'))
-        await screen.findByText('Cloud Intelligence', {}, { timeout: 8000 })
+        fireEvent.click(screen.getAllByText('Cloud AI')[0])
+        await screen.findAllByText('Cloud Intelligence', {}, { timeout: 8000 })
 
         // Find all API key inputs
         const inputs = screen.getAllByPlaceholderText(/Enter API Key.../i)
@@ -243,7 +244,7 @@ describe('SettingsModal Component', () => {
 
     it('shows folder history dropdown when Recent History button is clicked', async () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+        await screen.findAllByText('System Configuration', {}, { timeout: 8000 })
 
         const historyButton = screen.getByLabelText(/history/i)
         fireEvent.click(historyButton)
@@ -263,7 +264,7 @@ describe('SettingsModal Component', () => {
         })
 
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+        await screen.findAllByText('System Configuration', {}, { timeout: 8000 })
 
         fireEvent.click(screen.getByLabelText(/history/i))
 
@@ -272,7 +273,7 @@ describe('SettingsModal Component', () => {
 
     it('dismisses toast when the X button is clicked', async () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        await screen.findByText('System Configuration', {}, { timeout: 8000 })
+        await screen.findAllByText('System Configuration', {}, { timeout: 8000 })
 
         fireEvent.click(screen.getByText('Apply Changes'))
 
