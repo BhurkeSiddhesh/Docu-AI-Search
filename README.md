@@ -501,3 +501,4 @@ Contributions welcome! Please:
 **Built with ❤️ using FastAPI, React, FAISS, and LlamaCpp**
 
 **Ready to search smarter, not harder!** 🚀
+ok
