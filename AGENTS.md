@@ -305,6 +305,14 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-05-12 (Automated Audit)
+- **Daily automated code audit — filed 3 logic enhancement issues**
+  - **audit**: Identified `/api/agent/chat` reads 7 shared index globals without `_index_lock`, creating a torn-read race condition during concurrent reindex (issue #148).
+  - **audit**: Identified `/api/benchmarks/run` check-then-set race condition — `running=True` is set inside the background task, not before it, allowing two concurrent requests to both start the benchmark (issue #149).
+  - **audit**: Identified `search.py` reads `config.ini` via relative path, silently disabling query rewriting and cross-encoder reranking when cwd differs from project root (issue #150).
+  - **docs**: Created `internal_audit_log.md` at repo root to track daily audit runs, findings, and issue counts.
+  - **Files**: `internal_audit_log.md` (new), `AGENTS.md`
+
 ### 2026-04-30 (Backend CI Stabilization & API Fixes)
 - **Resolved critical backend regressions for 100% test pass rate**
   - **fix**: Added `BackgroundTasks` to `/api/search` for offloading search history logging, resolving `test_background_history.py` failure.
