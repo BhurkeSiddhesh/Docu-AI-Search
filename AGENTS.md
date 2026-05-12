@@ -497,7 +497,7 @@ python scripts/verify_golden_set.py
   - **test**: Added `backend/tests/test_security.py` with regression tests.
   - **Files**: `backend/model_manager.py`, `backend/tests/test_security.py`, `scripts/run_tests.py`
 
-### 2026-01-30
+### 2026-01-30 (Backend Performance & Frontend Tests)
 
 - **Optimized Startup Health Checks & Backend Performance**
   - **feat**: Modified `scripts/start_all.js` with increased health check intervals (3s), longer timeouts (120s), and "localhost" binding for better Windows reliability.
@@ -719,7 +719,7 @@ python scripts/verify_golden_set.py
   - **Result**: Achieved ~6.5x speedup for metadata retrieval in search results (benchmarked with 10 lookups).
   - **Files**: `backend/database.py`, `backend/api.py`, `backend/tests/test_database.py`, `backend/tests/benchmark_n1_query.py`
 
-### 2026-01-30
+### 2026-01-30 (Startup & Resilience)
 
 - **Optimized Startup** - Reduced polling interval to 500ms and enabled early browser launch
   - Files: `scripts/start_all.js`
