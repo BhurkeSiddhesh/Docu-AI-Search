@@ -1,6 +1,7 @@
 import React from 'react';
+import { AlertTriangle } from 'lucide-react';
 
-class ErrorBoundary extends React.Component {
+export default class ErrorBoundary extends React.Component {
     constructor(props) {
         super(props);
         this.state = { hasError: false, error: null };
@@ -11,32 +12,32 @@ class ErrorBoundary extends React.Component {
     }
 
     componentDidCatch(error, info) {
-        console.error('ErrorBoundary caught:', error, info);
+        console.error('UI error:', error, info);
     }
 
     render() {
         if (this.state.hasError) {
             return (
-                <div
-                    role="alert"
-                    className="flex flex-col items-center justify-center gap-4 p-8 rounded-2xl bg-destructive/10 border border-destructive/30 text-center"
-                >
-                    <p className="text-lg font-semibold text-destructive">Something went wrong</p>
-                    <p className="text-sm text-muted-foreground">
-                        {this.state.error?.message || 'An unexpected error occurred.'}
-                    </p>
-                    <button
-                        type="button"
-                        className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 transition-opacity"
-                        onClick={() => this.setState({ hasError: false, error: null })}
-                    >
-                        Try again
-                    </button>
+                <div className="min-h-screen flex items-center justify-center p-6 bg-slate-50 dark:bg-slate-950">
+                    <div className="card p-8 max-w-md text-center">
+                        <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
+                        <h2 className="font-semibold text-lg text-slate-900 dark:text-slate-50 mb-2">Something went wrong</h2>
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+                            The UI hit an unexpected error. Try reloading the page.
+                        </p>
+                        <pre className="text-[11px] text-left bg-slate-100 dark:bg-slate-800 p-3 rounded-md overflow-auto max-h-32 mb-4">
+                            {String(this.state.error)}
+                        </pre>
+                        <button
+                            onClick={() => window.location.reload()}
+                            className="btn-primary w-full"
+                        >
+                            Reload
+                        </button>
+                    </div>
                 </div>
             );
         }
         return this.props.children;
     }
 }
-
-export default ErrorBoundary;

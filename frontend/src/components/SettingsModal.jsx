@@ -1,510 +1,615 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import React, { useEffect, useState } from 'react';
+import { X, FolderOpen, Cloud, Cpu, Database, Server, Trash2, Plus, Settings as SettingsIcon, RefreshCw, History, Layers } from 'lucide-react';
+import api from '../lib/api';
+import { useToast } from './Toast';
 import ModelManager from './ModelManager';
 
-const API = 'http://localhost:8000';
-
-const Toast = ({ message, type = 'success', onDismiss }) => {
-    useEffect(() => {
-        const t = setTimeout(onDismiss, 3000);
-        return () => clearTimeout(t);
-    }, [onDismiss]);
-
-    const colours = {
-        success: 'bg-green-500 text-white shadow-green-500/20',
-        error:   'bg-red-500 text-white shadow-red-500/20',
-        info:    'bg-primary text-white shadow-primary/20',
-    };
-
-    return (
-        <div className={`fixed bottom-8 right-8 z-[200] flex items-center gap-4 px-6 py-4 rounded-3xl shadow-2xl backdrop-blur-xl text-sm font-bold animate-in slide-in-from-bottom-8 duration-500 ${colours[type]}`}>
-            <span className="material-symbols-outlined">{type === 'success' ? 'check_circle' : (type === 'error' ? 'error' : 'info')}</span>
-            <span>{message}</span>
-            <button type="button" onClick={onDismiss} aria-label="Dismiss notification" className="ml-2 opacity-70 hover:opacity-100">
-                <span className="material-symbols-outlined text-sm">close</span>
-            </button>
-        </div>
-    );
-};
-
-const EMBEDDING_PROVIDER_TYPES = [
-    { value: 'local',           label: 'Local (On-device)',       needsKey: false },
-    { value: 'huggingface_api', label: 'HuggingFace API',           needsKey: true  },
-    { value: 'commercial_api',  label: 'Cloud (OpenAI/Gemini)',    needsKey: true  },
+const SECTIONS = [
+    { id: 'folders',     label: 'Folders',    icon: FolderOpen },
+    { id: 'embeddings',  label: 'Embeddings', icon: Layers },
+    { id: 'providers',   label: 'Cloud LLM',  icon: Cloud },
+    { id: 'external',    label: 'External',   icon: Server },
+    { id: 'local',       label: 'Local LLM',  icon: Cpu },
+    { id: 'system',      label: 'System',     icon: Database },
 ];
 
-const DEFAULT_EMBEDDING_CONFIG = {
+const EMBEDDING_TYPES = [
+    { value: 'local',           label: 'Local (on-device)',     needsKey: false },
+    { value: 'huggingface_api', label: 'HuggingFace API',         needsKey: true  },
+    { value: 'commercial_api',  label: 'Cloud (OpenAI / Gemini)', needsKey: true  },
+];
+
+const DEFAULT_EMBEDDING = {
     provider_type: 'local',
-    model_name:    'Alibaba-NLP/gte-Qwen2-1.5B-instruct',
-    api_key:       '',
+    model_name: 'Alibaba-NLP/gte-Qwen2-1.5B-instruct',
+    api_key: '',
 };
 
-const SettingsModal = ({ isOpen, onClose, onSave, activeModel }) => {
-    const [config, setConfig] = useState({
-        folders: [],
-        auto_index: false,
-        provider: 'local',
-        openai_api_key: '',
-        gemini_api_key: '',
-        anthropic_api_key: '',
-        grok_api_key: '',
-        local_model_path: '',
-        local_model_type: 'llamacpp'
-    });
-    const [embeddingConfig, setEmbeddingConfig] = useState(DEFAULT_EMBEDDING_CONFIG);
-    const [toast, setToast] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [indexingStatus, setIndexingStatus] = useState({ running: false, progress: 0 });
-    const [activeSection, setActiveSection] = useState('folders');
+export default function SettingsModal({ isOpen, onClose, onSaved }) {
+    const [section, setSection] = useState('folders');
+    const [config, setConfig] = useState(null);
+    const [embedding, setEmbedding] = useState(DEFAULT_EMBEDDING);
     const [folderHistory, setFolderHistory] = useState([]);
-    const [showHistory, setShowHistory] = useState(false);
     const [cacheStats, setCacheStats] = useState({ total_entries: 0, total_hits: 0 });
-    const [extProviderType, setExtProviderType] = useState('lmstudio');
-    const [extHealth, setExtHealth] = useState(null);
-    const [extModels, setExtModels] = useState([]);
-    const [extLoadingHealth, setExtLoadingHealth] = useState(false);
-    const [extLoadingModels, setExtLoadingModels] = useState(false);
-
-    const showToast = useCallback((message, type = 'success') => {
-        setToast({ message, type });
-    }, []);
-    const dismissToast = useCallback(() => setToast(null), []);
+    const [saving, setSaving] = useState(false);
+    const [pathInput, setPathInput] = useState('');
+    const [pathValidating, setPathValidating] = useState(false);
+    const [pathInfo, setPathInfo] = useState(null);
+    const toast = useToast();
 
     useEffect(() => {
-        if (isOpen) {
-            fetchConfig();
-            fetchEmbeddingConfig();
-            fetchFolderHistory();
-            fetchCacheStats();
-        }
+        if (!isOpen) return;
+        loadAll();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
 
-    useEffect(() => {
-        let interval;
-        if (isOpen) {
-            fetchIndexingStatus();
-            interval = setInterval(fetchIndexingStatus, 1500);
-        }
-        return () => clearInterval(interval);
-    }, [isOpen]);
-
-    const fetchConfig = async () => {
+    const loadAll = async () => {
         try {
-            const response = await axios.get(`${API}/api/config`);
-            const data = response.data;
-            const normalized = { ...data };
-            ['openai', 'gemini', 'anthropic', 'grok'].forEach(p => {
-                normalized[`${p}_api_key`] = '';
+            const [c, e, h, cs] = await Promise.all([
+                api.getConfig(),
+                api.getEmbeddingConfig().catch(() => ({ data: DEFAULT_EMBEDDING })),
+                api.getFolderHistory().catch(() => ({ data: [] })),
+                api.getCacheStats().catch(() => ({ data: { total_entries: 0, total_hits: 0 } })),
+            ]);
+            const cfg = c.data || {};
+            setConfig({
+                folders:           cfg.folders || [],
+                auto_index:        cfg.auto_index || false,
+                provider:          cfg.provider || 'openai',
+                local_model_path:  cfg.local_model_path || '',
+                tensor_split:      cfg.tensor_split || '',
+                openai_api_key:    '',
+                gemini_api_key:    '',
+                anthropic_api_key: '',
+                grok_api_key:      '',
+                openai_api_key_set:    cfg.openai_api_key_set,
+                gemini_api_key_set:    cfg.gemini_api_key_set,
+                anthropic_api_key_set: cfg.anthropic_api_key_set,
+                grok_api_key_set:      cfg.grok_api_key_set,
+                query_rewriting:          cfg.query_rewriting || false,
+                cross_encoder_reranking:  cfg.cross_encoder_reranking || false,
+                reranker_model:           cfg.reranker_model || 'cross-encoder/ms-marco-MiniLM-L-6-v2',
+                ollama_base_url:    cfg.ollama_base_url || 'http://localhost:11434',
+                lmstudio_base_url:  cfg.lmstudio_base_url || 'http://localhost:1234/v1',
+                external_model_name: cfg.external_model_name || '',
+                external_api_key:   cfg.external_api_key || '',
             });
-            setConfig(prev => ({ ...prev, ...normalized }));
-        } catch (error) {
-            console.error('Failed to fetch config:', error);
-        }
-    };
-
-    const fetchEmbeddingConfig = async () => {
-        try {
-            const response = await axios.get(`${API}/api/settings/embeddings`);
-            setEmbeddingConfig({
-                provider_type: response.data.provider_type,
-                model_name:    response.data.model_name,
-                api_key: response.data.api_key_set ? '••••••••' : '',
+            setEmbedding({
+                provider_type: e.data.provider_type || 'local',
+                model_name:    e.data.model_name || DEFAULT_EMBEDDING.model_name,
+                api_key:       e.data.api_key_set ? '••••••••' : '',
             });
-        } catch (error) {
-            console.error('Failed to fetch embedding config:', error);
+            setFolderHistory(h.data || []);
+            setCacheStats(cs.data || { total_entries: 0, total_hits: 0 });
+        } catch (err) {
+            toast.error('Failed to load settings');
         }
     };
 
-    const fetchIndexingStatus = async () => {
+    const save = async () => {
+        if (!config) return;
+        setSaving(true);
         try {
-            const response = await axios.get(`${API}/api/index/status`);
-            setIndexingStatus(response.data);
-        } catch (error) {
-            console.error('Failed to fetch status:', error);
-        }
-    };
-
-    const fetchFolderHistory = async () => {
-        try {
-            const response = await axios.get(`${API}/api/folders/history`);
-            setFolderHistory(response.data || []);
-        } catch (error) {
-            console.error('Failed to fetch folder history:', error);
-        }
-    };
-
-    const fetchCacheStats = async () => {
-        try {
-            const response = await axios.get(`${API}/api/cache/stats`);
-            setCacheStats(response.data);
-        } catch (error) {
-            console.error('Failed to fetch cache stats:', error);
-        }
-    };
-
-    const handleSave = async () => {
-        setIsLoading(true);
-        try {
-            await axios.post(`${API}/api/config`, config);
+            await api.saveConfig({
+                folders:           config.folders,
+                auto_index:        config.auto_index,
+                provider:          config.provider,
+                local_model_path:  config.local_model_path,
+                tensor_split:      config.tensor_split || null,
+                openai_api_key:    config.openai_api_key,
+                gemini_api_key:    config.gemini_api_key,
+                anthropic_api_key: config.anthropic_api_key,
+                grok_api_key:      config.grok_api_key,
+                query_rewriting:         config.query_rewriting,
+                cross_encoder_reranking: config.cross_encoder_reranking,
+                reranker_model:          config.reranker_model,
+                ollama_base_url:     config.ollama_base_url,
+                lmstudio_base_url:   config.lmstudio_base_url,
+                external_model_name: config.external_model_name,
+                external_api_key:    config.external_api_key,
+            });
             const embPayload = {
-                provider_type: embeddingConfig.provider_type,
-                model_name:    embeddingConfig.model_name,
+                provider_type: embedding.provider_type,
+                model_name:    embedding.model_name,
             };
-            if (embeddingConfig.api_key !== '••••••••' && embeddingConfig.api_key) {
-                embPayload.api_key = embeddingConfig.api_key;
+            if (embedding.api_key && embedding.api_key !== '••••••••') {
+                embPayload.api_key = embedding.api_key;
             }
-            await axios.post(`${API}/api/settings/embeddings`, embPayload);
-            showToast('Configuration updated!');
-            onSave();
+            try {
+                await api.saveEmbeddingConfig(embPayload);
+            } catch {
+                // embedding endpoint may not exist on all builds — non-fatal
+            }
+            toast.success('Settings saved');
+            onSaved?.();
             onClose();
-        } catch (error) {
-            showToast(error.response?.data?.detail || 'Update failed', 'error');
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'Save failed');
         } finally {
-            setIsLoading(false);
+            setSaving(false);
         }
     };
 
-    const handleAddFolder = async () => {
+    const persistFolders = async (nextFolders) => {
         try {
-            const response = await axios.get(`${API}/api/browse`);
-            if (response.data.folder && !config.folders.includes(response.data.folder)) {
-                const newFolders = [...config.folders, response.data.folder];
-                setConfig(prev => ({ ...prev, folders: newFolders }));
-                await axios.post(`${API}/api/config`, { ...config, folders: newFolders });
-                fetchFolderHistory();
-            }
-        } catch (error) {
-            console.error('Failed to browse:', error);
+            await api.saveConfig({
+                folders:           nextFolders,
+                auto_index:        config.auto_index,
+                provider:          config.provider,
+                local_model_path:  config.local_model_path,
+                tensor_split:      config.tensor_split || null,
+                openai_api_key:    '',
+                gemini_api_key:    '',
+                anthropic_api_key: '',
+                grok_api_key:      '',
+                query_rewriting:         config.query_rewriting,
+                cross_encoder_reranking: config.cross_encoder_reranking,
+                reranker_model:          config.reranker_model,
+                ollama_base_url:     config.ollama_base_url,
+                lmstudio_base_url:   config.lmstudio_base_url,
+                external_model_name: config.external_model_name,
+                external_api_key:    config.external_api_key,
+            });
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'Could not save folder');
+        }
+    };
+
+    const addFolder = async (path) => {
+        const p = (path || '').trim();
+        if (!p) return;
+        if (config.folders.includes(p)) {
+            toast.info('Folder already added');
+            return;
+        }
+        const next = [...config.folders, p];
+        setConfig((c) => ({ ...c, folders: next }));
+        setPathInput('');
+        setPathInfo(null);
+        await persistFolders(next);
+    };
+
+    const removeFolder = async (p) => {
+        const next = config.folders.filter((x) => x !== p);
+        setConfig((c) => ({ ...c, folders: next }));
+        await persistFolders(next);
+    };
+
+    const browseFolder = async () => {
+        try {
+            const r = await api.browse();
+            if (r.data.folder) addFolder(r.data.folder);
+        } catch (e) {
+            toast.error('Folder browser unavailable. Paste the path manually.');
+        }
+    };
+
+    const validatePath = async () => {
+        if (!pathInput.trim()) return;
+        setPathValidating(true);
+        try {
+            const r = await api.validatePath(pathInput.trim());
+            setPathInfo(r.data);
+        } catch (e) {
+            setPathInfo({ valid: false, error: 'Validation failed' });
+        } finally {
+            setPathValidating(false);
+        }
+    };
+
+    const startIndexing = async () => {
+        try {
+            await api.startIndexing();
+            toast.success('Indexing started');
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'Could not start indexing');
+        }
+    };
+
+    const clearCache = async () => {
+        try {
+            await api.clearCache();
+            const r = await api.getCacheStats();
+            setCacheStats(r.data);
+            toast.success('Cache cleared');
+        } catch {
+            toast.error('Could not clear cache');
         }
     };
 
     if (!isOpen) return null;
 
-    const sections = [
-        { id: 'folders', label: 'Library', icon: 'folder_open' },
-        { id: 'providers', label: 'Cloud AI', icon: 'cloud' },
-        { id: 'external', label: 'External', icon: 'dns' },
-        { id: 'embeddings', label: 'Embeddings', icon: 'database' },
-        { id: 'local', label: 'Local LLM', icon: 'memory' },
-        { id: 'data', label: 'System', icon: 'settings' },
-    ];
-
     return (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm" onClick={(e) => e.target === e.currentTarget && onClose()} onKeyDown={(e) => e.key === 'Escape' && onClose()} tabIndex={-1}>
-            <div className="glass-overlay w-full sm:w-[96vw] max-w-6xl h-[95vh] sm:h-[88vh] rounded-t-[2rem] sm:rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
+        <div
+            className="fixed inset-0 z-[80] bg-slate-900/50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in"
+            onClick={(e) => e.target === e.currentTarget && onClose()}
+        >
+            <div className="bg-white dark:bg-slate-900 w-full sm:max-w-5xl h-[92vh] sm:h-[88vh] sm:rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden">
                 {/* Header */}
-                <div className="px-4 md:px-8 py-4 md:py-6 border-b border-border/30 bg-background/85 backdrop-blur-md flex items-center justify-between flex-shrink-0">
-                    <div className="flex items-center gap-3 md:gap-4">
-                        <div className="w-9 h-9 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                            <span className="material-symbols-outlined text-xl md:text-2xl">settings</span>
+                <header className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                            <SettingsIcon className="w-4 h-4" />
                         </div>
-                        <div>
-                            <h2 id="settings-modal-title" className="text-base md:text-xl font-bold font-headline text-[#191b22] dark:text-white uppercase tracking-tight">System Configuration</h2>
-                            <p className="text-[9px] md:text-[10px] font-black opacity-40 uppercase tracking-widest hidden sm:block">Adjust your AI workspace parameters</p>
-                        </div>
+                        <h2 className="font-semibold text-slate-900 dark:text-slate-50">Settings</h2>
                     </div>
-                    <button onClick={onClose} aria-label="Close settings" className="w-10 h-10 md:w-12 md:h-12 rounded-full hover:bg-secondary/50 flex items-center justify-center transition-all">
-                        <span className="material-symbols-outlined">close</span>
+                    <button onClick={onClose} className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close">
+                        <X className="w-5 h-5" />
                     </button>
-                </div>
+                </header>
 
-                <div className="flex-1 flex flex-col md:flex-row overflow-hidden min-h-0">
-                    {/* Mobile: horizontal scrolling tabs. Desktop: vertical sidebar */}
-                    <aside className="md:w-56 lg:w-64 bg-[#f3f3fd] dark:bg-slate-950/40 md:border-r border-b md:border-b-0 border-[#f3f3fd] dark:border-slate-800 flex-shrink-0">
-                        {/* Mobile tab strip */}
-                        <div className="md:hidden flex overflow-x-auto gap-1 p-2 no-scrollbar">
-                            {sections.map(s => (
+                <div className="flex-1 flex flex-col sm:flex-row overflow-hidden min-h-0">
+                    {/* Tab nav */}
+                    <nav className="sm:w-52 border-b sm:border-b-0 sm:border-r border-slate-200 dark:border-slate-800 p-2 flex sm:flex-col gap-1 overflow-x-auto sm:overflow-y-auto no-scrollbar flex-shrink-0">
+                        {SECTIONS.map((s) => {
+                            const Icon = s.icon;
+                            const active = section === s.id;
+                            return (
                                 <button
                                     key={s.id}
-                                    onClick={() => setActiveSection(s.id)}
-                                    className={`flex-shrink-0 flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all font-headline text-xs font-bold whitespace-nowrap ${activeSection === s.id ? 'bg-white dark:bg-slate-900 text-primary shadow-sm' : 'text-[#434656] dark:text-slate-400'}`}
+                                    onClick={() => setSection(s.id)}
+                                    className={`flex-shrink-0 sm:flex-shrink flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition whitespace-nowrap ${
+                                        active
+                                            ? 'bg-primary/10 text-primary'
+                                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                    }`}
                                 >
-                                    <span className={`material-symbols-outlined text-base ${activeSection === s.id ? 'fill-current' : ''}`} style={activeSection === s.id ? { fontVariationSettings: "'FILL' 1" } : {}}>{s.icon}</span>
+                                    <Icon className="w-4 h-4" />
                                     {s.label}
                                 </button>
-                            ))}
-                        </div>
-                        {/* Desktop sidebar list */}
-                        <div className="hidden md:flex flex-col p-4 space-y-1">
-                            {sections.map(s => (
-                                <button
-                                    key={s.id}
-                                    onClick={() => setActiveSection(s.id)}
-                                    className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl transition-all font-headline ${activeSection === s.id ? 'bg-white dark:bg-slate-900 text-primary shadow-sm font-bold' : 'text-[#434656] dark:text-slate-400 hover:bg-white/50 dark:hover:bg-slate-900/50'}`}
-                                >
-                                    <span className={`material-symbols-outlined text-xl`} style={activeSection === s.id ? { fontVariationSettings: "'FILL' 1" } : {}}>{s.icon}</span>
-                                    <span className="text-sm">{s.label}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </aside>
+                            );
+                        })}
+                    </nav>
 
-                    {/* Content */}
-                    <main className="flex-1 overflow-y-auto p-4 md:p-8 lg:p-10 custom-scrollbar space-y-8 md:space-y-12 min-h-0">
+                    {/* Body */}
+                    <main className="flex-1 overflow-y-auto p-5 sm:p-6 min-h-0">
                         {!config ? (
-                            <div className="flex items-center justify-center h-full">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                            <div className="flex items-center justify-center h-full text-slate-500 dark:text-slate-400 text-sm">
+                                Loading…
                             </div>
                         ) : (
                             <>
-                                {activeSection === 'folders' && (
-                            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
-                                <div className="space-y-6">
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-3 px-2">
-                                            <h3 className="text-2xl font-bold font-headline">Knowledge Library</h3>
-                                            <div className="h-1.5 w-1.5 rounded-full bg-primary"></div>
-                                            <span className="text-[10px] font-black uppercase tracking-tighter opacity-40">{config.folders.length} Connected</span>
+                                {section === 'folders' && (
+                                    <div className="space-y-5 max-w-2xl">
+                                        <div>
+                                            <h3 className="font-semibold text-slate-900 dark:text-slate-50 mb-1">Indexed folders</h3>
+                                            <p className="text-sm text-slate-500 dark:text-slate-400">Add the folders you want the search engine to read from.</p>
                                         </div>
-                                        <button 
-                                            onClick={() => setShowHistory(!showHistory)} 
-                                            aria-label="Recent History"
-                                            className={`p-3 rounded-2xl transition-all ${showHistory ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-white dark:bg-slate-900 text-primary hover:bg-primary/5'}`}
-                                        >
-                                            <span className="material-symbols-outlined text-lg">history</span>
-                                        </button>
-                                    </div>
 
-                                    <div className="flex gap-4">
-                                        <button 
-                                            onClick={async () => {
-                                                try {
-                                                    await axios.post(`${API}/api/index`);
-                                                    showToast('Index rebuild started', 'info');
-                                                } catch (e) {
-                                                    showToast('Failed to start indexing', 'error');
-                                                }
-                                            }}
-                                            className="flex-1 bg-white dark:bg-slate-900 border border-[#d1d1f0] dark:border-slate-800 p-4 rounded-3xl font-bold text-xs flex items-center justify-center gap-3 hover:border-primary/40 hover:bg-primary/5 transition-all group"
-                                        >
-                                            <span className="material-symbols-outlined text-primary group-hover:rotate-180 transition-transform duration-500">sync</span>
-                                            Rebuild Index
-                                        </button>
-                                        <button onClick={handleAddFolder} className="bg-primary text-white px-6 py-3 rounded-2xl font-bold flex items-center gap-2 hover:shadow-lg hover:shadow-primary/20 transition-all active:scale-95">
-                                            <span className="material-symbols-outlined text-sm">add</span>
-                                            Add Folder
-                                        </button>
-                                    </div>
-
-                                    {showHistory && (
-                                        <div className="bg-[#f3f3fd] dark:bg-slate-950/40 rounded-3xl p-6 border border-[#d1d1f0] dark:border-slate-800 space-y-4 animate-in slide-in-from-top-4 duration-300">
-                                            <div className="flex items-center justify-between px-2">
-                                                <h4 className="text-xs font-black uppercase tracking-widest opacity-40">Previously Indexed</h4>
-                                                <button 
-                                                    onClick={async () => {
-                                                        if (confirm('Clear folder history?')) {
-                                                            await axios.delete(`${API}/api/folders/history`);
-                                                            fetchFolderHistory();
-                                                        }
-                                                    }}
-                                                    className="text-[10px] font-black uppercase tracking-widest text-red-500 hover:underline"
-                                                >
-                                                    Clear All
-                                                </button>
-                                            </div>
-                                            <div className="space-y-2">
-                                                {folderHistory.length === 0 ? (
-                                                    <p className="text-xs opacity-40 px-2">No indexed folders yet.</p>
-                                                ) : (
-                                                    folderHistory.map(h => (
-                                                        <div key={h} className="flex items-center justify-between p-3 rounded-2xl hover:bg-white dark:hover:bg-slate-900 transition-all group">
-                                                            <span className="text-xs font-medium truncate flex-1">{h}</span>
-                                                            <button 
-                                                                onClick={async () => {
-                                                                    if (!config.folders.includes(h)) {
-                                                                        const next = [...config.folders, h];
-                                                                        setConfig(prev => ({ ...prev, folders: next }));
-                                                                        await axios.post(`${API}/api/config`, { ...config, folders: next });
-                                                                    }
-                                                                    setShowHistory(false);
-                                                                }}
-                                                                className="px-3 py-1.5 rounded-xl bg-primary/10 text-primary text-[10px] font-black uppercase opacity-0 group-hover:opacity-100 transition-all"
-                                                            >
-                                                                Restore
-                                                            </button>
-                                                        </div>
-                                                    ))
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                                
-                                <div className="space-y-4">
-                                    {config.folders.length === 0 ? (
-                                        <div className="p-12 rounded-[2.5rem] bg-[#f3f3fd] dark:bg-slate-950/40 border-2 border-dashed border-[#d1d1f0] dark:border-slate-800 flex flex-col items-center text-center">
-                                            <span className="material-symbols-outlined text-5xl text-[#d1d1f0] mb-4">folder_off</span>
-                                            <p className="font-bold text-[#434656] opacity-60">No folders connected to AI Index</p>
-                                        </div>
-                                    ) : (
-                                        config.folders.map(f => (
-                                            <div key={f} className="bg-[#f3f3fd] dark:bg-slate-800/40 p-5 rounded-3xl flex items-center justify-between group">
-                                                <div className="flex items-center gap-4 min-w-0">
-                                                    <span className="material-symbols-outlined text-primary">folder</span>
-                                                    <span className="font-bold truncate text-sm">{f}</span>
+                                        <div className="card p-4">
+                                            <div className="label">Add folder</div>
+                                            <div className="flex flex-col sm:flex-row gap-2">
+                                                <input
+                                                    value={pathInput}
+                                                    onChange={(e) => { setPathInput(e.target.value); setPathInfo(null); }}
+                                                    placeholder="C:\Users\you\Documents"
+                                                    className="input font-mono text-xs"
+                                                />
+                                                <div className="flex gap-2">
+                                                    <button onClick={validatePath} disabled={pathValidating || !pathInput.trim()} className="btn-secondary text-xs">
+                                                        {pathValidating ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : 'Validate'}
+                                                    </button>
+                                                    <button onClick={browseFolder} className="btn-secondary text-xs">
+                                                        <FolderOpen className="w-3.5 h-3.5" />
+                                                        Browse
+                                                    </button>
                                                 </div>
-                                                <button 
-                                                    onClick={() => setConfig(prev => ({ ...prev, folders: prev.folders.filter(x => x !== f) }))}
-                                                    aria-label={`Remove ${f} from index`}
-                                                    className="w-10 h-10 rounded-full hover:bg-red-500/10 text-red-500 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
-                                                >
-                                                    <span className="material-symbols-outlined text-lg">delete</span>
+                                            </div>
+                                            {pathInfo && (
+                                                <div className={`mt-2 text-xs px-3 py-2 rounded-md ${
+                                                    pathInfo.valid
+                                                        ? 'bg-green-50 dark:bg-green-950/40 text-green-700 dark:text-green-300'
+                                                        : 'bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300'
+                                                }`}>
+                                                    {pathInfo.valid
+                                                        ? `Found ${pathInfo.file_count} supported file${pathInfo.file_count === 1 ? '' : 's'}.`
+                                                        : pathInfo.error}
+                                                </div>
+                                            )}
+                                            {pathInfo?.valid && (
+                                                <button onClick={() => addFolder(pathInput)} className="btn-primary mt-2 text-xs">
+                                                    <Plus className="w-3.5 h-3.5" />
+                                                    Add to library
                                                 </button>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
+                                            )}
+                                        </div>
 
-                                {indexingStatus.running && (
-                                    <div className="bg-primary/5 border border-primary/10 p-8 rounded-[2.5rem] space-y-4">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <span className="material-symbols-outlined animate-spin text-primary">progress_activity</span>
-                                                <span className="font-bold">Neural Indexing in Progress</span>
+                                        <div className="space-y-2">
+                                            {config.folders.length === 0 ? (
+                                                <div className="card p-6 text-center text-sm text-slate-500 dark:text-slate-400">
+                                                    No folders added yet.
+                                                </div>
+                                            ) : (
+                                                config.folders.map((f) => (
+                                                    <div key={f} className="card p-3 flex items-center gap-3">
+                                                        <FolderOpen className="w-4 h-4 text-primary flex-shrink-0" />
+                                                        <span className="font-mono text-xs flex-1 truncate" title={f}>{f}</span>
+                                                        <button
+                                                            onClick={() => removeFolder(f)}
+                                                            className="p-1.5 rounded-md text-slate-500 hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-500 transition"
+                                                            aria-label="Remove folder"
+                                                        >
+                                                            <Trash2 className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+
+                                        <button onClick={startIndexing} className="btn-primary">
+                                            <RefreshCw className="w-4 h-4" />
+                                            Start indexing
+                                        </button>
+
+                                        {folderHistory.length > 0 && (
+                                            <div>
+                                                <div className="label flex items-center gap-1.5 mt-4">
+                                                    <History className="w-3.5 h-3.5" />
+                                                    Previously indexed
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    {folderHistory.map((p) => (
+                                                        <div key={p} className="flex items-center gap-2 group">
+                                                            <span className="text-xs font-mono text-slate-500 dark:text-slate-400 truncate flex-1" title={p}>{p}</span>
+                                                            {!config.folders.includes(p) && (
+                                                                <button
+                                                                    onClick={() => addFolder(p)}
+                                                                    className="text-xs font-medium text-primary hover:underline opacity-0 group-hover:opacity-100"
+                                                                >
+                                                                    Restore
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
-                                            <span className="font-black text-primary">{indexingStatus.progress}%</span>
-                                        </div>
-                                        <div className="h-3 w-full bg-primary/10 rounded-full overflow-hidden">
-                                            <div className="h-full bg-primary transition-all duration-500" style={{ width: `${indexingStatus.progress}%` }}></div>
-                                        </div>
-                                        <p className="text-[10px] font-black uppercase tracking-widest opacity-40 truncate">{indexingStatus.current_file}</p>
+                                        )}
                                     </div>
                                 )}
-                            </div>
-                        )}
 
-                        {activeSection === 'providers' && (
-                            <div className="space-y-10 animate-in fade-in slide-in-from-right-4 duration-500">
-                                <h3 className="text-2xl font-bold font-headline">Cloud Intelligence</h3>
-                                <div className="grid grid-cols-1 gap-6">
-                                    {[
-                                        { id: 'openai', name: 'OpenAI (GPT-4)', key: 'openai_api_key' },
-                                        { id: 'gemini', name: 'Google (Gemini Pro)', key: 'gemini_api_key' },
-                                        { id: 'anthropic', name: 'Anthropic (Claude)', key: 'anthropic_api_key' },
-                                        { id: 'grok', name: 'xAI (Grok)', key: 'grok_api_key' },
-                                    ].map(p => (
-                                        <div key={p.id} className="space-y-3">
-                                            <label htmlFor={p.key} className="text-xs font-black uppercase tracking-widest opacity-40 px-2">{p.name}</label>
-                                            <input 
-                                                id={p.key}
-                                                type="password"
-                                                className="w-full bg-[#f3f3fd] dark:bg-slate-950/40 p-5 rounded-3xl border-2 border-transparent focus:border-primary/20 outline-none transition-all font-body text-sm"
-                                                placeholder="Enter API Key..."
-                                                value={config[p.key] || ''}
-                                                onChange={(e) => setConfig({ ...config, [p.key]: e.target.value })}
+                                {section === 'embeddings' && (
+                                    <div className="space-y-5 max-w-2xl">
+                                        <div>
+                                            <h3 className="font-semibold text-slate-900 dark:text-slate-50 mb-1">Embeddings</h3>
+                                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                                                Embeddings turn text into vectors for semantic search. Changing the model requires re-indexing.
+                                            </p>
+                                        </div>
+
+                                        <div className="grid sm:grid-cols-3 gap-2">
+                                            {EMBEDDING_TYPES.map((t) => (
+                                                <button
+                                                    key={t.value}
+                                                    onClick={() => setEmbedding((s) => ({ ...s, provider_type: t.value }))}
+                                                    className={`p-3 rounded-lg border text-left transition ${
+                                                        embedding.provider_type === t.value
+                                                            ? 'border-primary bg-primary/5 text-primary'
+                                                            : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                                                    }`}
+                                                >
+                                                    <Layers className="w-4 h-4 mb-2" />
+                                                    <div className="text-sm font-medium">{t.label}</div>
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        <div>
+                                            <div className="label">Model name</div>
+                                            <input
+                                                className="input font-mono text-xs"
+                                                value={embedding.model_name}
+                                                onChange={(e) => setEmbedding((s) => ({ ...s, model_name: e.target.value }))}
                                             />
                                         </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
 
-                        {activeSection === 'local' && (
-                            <div className="animate-in fade-in slide-in-from-right-4 duration-500">
-                                <ModelManager onModelSelect={(m) => setConfig(prev => ({ ...prev, local_model_path: m.path }))} activeModelPath={config.local_model_path} />
-                            </div>
-                        )}
-
-                        {activeSection === 'embeddings' && (
-                            <div className="space-y-10 animate-in fade-in slide-in-from-right-4 duration-500">
-                                <h3 className="text-2xl font-bold font-headline">Neural Embeddings</h3>
-                                <div className="space-y-6">
-                                    <div className="grid grid-cols-3 gap-4">
-                                        {EMBEDDING_PROVIDER_TYPES.map(t => (
-                                            <button
-                                                key={t.value}
-                                                onClick={() => setEmbeddingConfig(prev => ({ ...prev, provider_type: t.value }))}
-                                                className={`p-6 rounded-[2rem] text-left transition-all border-2 ${embeddingConfig.provider_type === t.value ? 'bg-primary/5 border-primary text-primary shadow-lg shadow-primary/5' : 'bg-[#f3f3fd] dark:bg-slate-950/40 border-transparent hover:bg-[#ebebfa]'}`}
-                                            >
-                                                <span className="material-symbols-outlined mb-3 block">hub</span>
-                                                <span className="font-bold text-sm leading-tight block">{t.label}</span>
-                                            </button>
-                                        ))}
+                                        {EMBEDDING_TYPES.find((t) => t.value === embedding.provider_type)?.needsKey && (
+                                            <div>
+                                                <div className="label">API key</div>
+                                                <input
+                                                    type="password"
+                                                    className="input"
+                                                    value={embedding.api_key}
+                                                    onChange={(e) => setEmbedding((s) => ({ ...s, api_key: e.target.value }))}
+                                                    placeholder="Enter API key"
+                                                />
+                                            </div>
+                                        )}
                                     </div>
+                                )}
 
-                                    <div className="space-y-3 pt-4">
-                                        <label htmlFor="emb-model-name" className="text-xs font-black uppercase tracking-widest opacity-40 px-2">Model Architecture</label>
-                                        <input 
-                                            id="emb-model-name"
-                                            type="text"
-                                            className="w-full bg-[#f3f3fd] dark:bg-slate-950/40 p-5 rounded-3xl border-2 border-transparent focus:border-primary/20 outline-none transition-all font-mono text-xs"
-                                            value={embeddingConfig.model_name}
-                                            onChange={(e) => setEmbeddingConfig(prev => ({ ...prev, model_name: e.target.value }))}
+                                {section === 'providers' && (
+                                    <div className="space-y-5 max-w-2xl">
+                                        <div>
+                                            <h3 className="font-semibold text-slate-900 dark:text-slate-50 mb-1">Cloud providers</h3>
+                                            <p className="text-sm text-slate-500 dark:text-slate-400">API keys are stored locally in config.ini. Leave a field blank to keep the existing key.</p>
+                                        </div>
+
+                                        <div>
+                                            <div className="label">Active provider</div>
+                                            <select
+                                                className="input"
+                                                value={config.provider}
+                                                onChange={(e) => setConfig((c) => ({ ...c, provider: e.target.value }))}
+                                            >
+                                                <option value="local">Local (GGUF)</option>
+                                                <option value="openai">OpenAI</option>
+                                                <option value="gemini">Google Gemini</option>
+                                                <option value="anthropic">Anthropic Claude</option>
+                                                <option value="grok">xAI Grok</option>
+                                                <option value="ollama">Ollama</option>
+                                                <option value="lmstudio">LM Studio</option>
+                                            </select>
+                                        </div>
+
+                                        {[
+                                            { id: 'openai_api_key',    label: 'OpenAI API key',    setKey: 'openai_api_key_set' },
+                                            { id: 'gemini_api_key',    label: 'Gemini API key',    setKey: 'gemini_api_key_set' },
+                                            { id: 'anthropic_api_key', label: 'Anthropic API key', setKey: 'anthropic_api_key_set' },
+                                            { id: 'grok_api_key',      label: 'Grok API key',      setKey: 'grok_api_key_set' },
+                                        ].map((p) => (
+                                            <div key={p.id}>
+                                                <div className="label flex items-center justify-between">
+                                                    <span>{p.label}</span>
+                                                    {config[p.setKey] && (
+                                                        <span className="text-[10px] font-medium normal-case tracking-normal text-green-600 dark:text-green-400">
+                                                            Key configured
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <input
+                                                    id={p.id}
+                                                    type="password"
+                                                    className="input"
+                                                    value={config[p.id] || ''}
+                                                    onChange={(e) => setConfig((c) => ({ ...c, [p.id]: e.target.value }))}
+                                                    placeholder={config[p.setKey] ? 'Leave blank to keep existing key' : 'Paste API key'}
+                                                />
+                                            </div>
+                                        ))}
+
+                                        <div className="card p-4 space-y-3">
+                                            <div className="text-sm font-medium">Advanced RAG</div>
+                                            <label className="flex items-center gap-3 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={config.query_rewriting}
+                                                    onChange={(e) => setConfig((c) => ({ ...c, query_rewriting: e.target.checked }))}
+                                                />
+                                                <span className="text-sm">Enable LLM query rewriting</span>
+                                            </label>
+                                            <label className="flex items-center gap-3 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={config.cross_encoder_reranking}
+                                                    onChange={(e) => setConfig((c) => ({ ...c, cross_encoder_reranking: e.target.checked }))}
+                                                />
+                                                <span className="text-sm">Enable cross-encoder reranking</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {section === 'external' && (
+                                    <div className="space-y-5 max-w-2xl">
+                                        <div>
+                                            <h3 className="font-semibold text-slate-900 dark:text-slate-50 mb-1">External servers</h3>
+                                            <p className="text-sm text-slate-500 dark:text-slate-400">Connect to Ollama or LM Studio running on your machine or network.</p>
+                                        </div>
+
+                                        <div>
+                                            <div className="label">Ollama base URL</div>
+                                            <input
+                                                className="input font-mono text-xs"
+                                                value={config.ollama_base_url}
+                                                onChange={(e) => setConfig((c) => ({ ...c, ollama_base_url: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div>
+                                            <div className="label">LM Studio base URL</div>
+                                            <input
+                                                className="input font-mono text-xs"
+                                                value={config.lmstudio_base_url}
+                                                onChange={(e) => setConfig((c) => ({ ...c, lmstudio_base_url: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div>
+                                            <div className="label">External model name</div>
+                                            <input
+                                                className="input"
+                                                value={config.external_model_name}
+                                                onChange={(e) => setConfig((c) => ({ ...c, external_model_name: e.target.value }))}
+                                                placeholder="e.g. llama3.1:8b"
+                                            />
+                                        </div>
+                                        <div>
+                                            <div className="label">External API key (optional)</div>
+                                            <input
+                                                type="password"
+                                                className="input"
+                                                value={config.external_api_key}
+                                                onChange={(e) => setConfig((c) => ({ ...c, external_api_key: e.target.value }))}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {section === 'local' && (
+                                    <div className="max-w-3xl">
+                                        <div className="mb-4">
+                                            <h3 className="font-semibold text-slate-900 dark:text-slate-50 mb-1">Local LLM models</h3>
+                                            <p className="text-sm text-slate-500 dark:text-slate-400">Download GGUF models for fully offline inference.</p>
+                                        </div>
+                                        <ModelManager
+                                            activeModelPath={config.local_model_path}
+                                            onSelectModel={(m) => setConfig((c) => ({ ...c, local_model_path: m.path }))}
                                         />
                                     </div>
-                                    
-                                    {EMBEDDING_PROVIDER_TYPES.find(x => x.value === embeddingConfig.provider_type)?.needsKey && (
-                                        <div className="space-y-3">
-                                            <label htmlFor="emb-api-key" className="text-xs font-black uppercase tracking-widest opacity-40 px-2">Embedding API Key</label>
-                                            <input 
-                                                id="emb-api-key"
-                                                type="password"
-                                                className="w-full bg-[#f3f3fd] dark:bg-slate-950/40 p-5 rounded-3xl border-2 border-transparent focus:border-primary/20 outline-none transition-all font-body text-sm"
-                                                value={embeddingConfig.api_key}
-                                                onChange={(e) => setEmbeddingConfig(prev => ({ ...prev, api_key: e.target.value }))}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                        
-                        {activeSection === 'data' && (
-                            <div className="space-y-10 animate-in fade-in slide-in-from-right-4 duration-500">
-                                <h3 className="text-2xl font-bold font-headline">System Hygiene</h3>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="bg-[#f3f3fd] dark:bg-slate-950/40 p-8 rounded-[2.5rem] space-y-6">
-                                        <div>
-                                            <h4 className="font-bold text-lg mb-1 text-primary">Response Cache</h4>
-                                            <p className="text-xs font-medium opacity-60 leading-relaxed">Stored patterns for instant retrieval of complex answers.</p>
-                                        </div>
-                                        <div className="flex items-center gap-8">
-                                            <div>
-                                                <p className="text-2xl font-black">{cacheStats.total_entries}</p>
-                                                <p className="text-[10px] font-black uppercase opacity-40">Entries</p>
-                                            </div>
-                                            <div className="h-8 w-px bg-[#d1d1f0] dark:bg-slate-800"></div>
-                                            <div>
-                                                <p className="text-2xl font-black text-primary">{cacheStats.total_hits}</p>
-                                                <p className="text-[10px] font-black uppercase opacity-40">Total Hits</p>
-                                            </div>
-                                        </div>
-                                        <button onClick={async () => { await axios.post(`${API}/api/cache/clear`); fetchCacheStats(); showToast('Cache Purged'); }} className="w-full py-4 rounded-2xl bg-white dark:bg-slate-900 font-bold text-xs hover:bg-red-500 hover:text-white transition-all shadow-sm">
-                                            Purge AI Cache
-                                        </button>
-                                    </div>
+                                )}
 
-                                    <div className="bg-red-500/5 p-8 rounded-[2.5rem] space-y-6 border border-red-500/10">
+                                {section === 'system' && (
+                                    <div className="space-y-5 max-w-2xl">
                                         <div>
-                                            <h4 className="font-bold text-lg mb-1 text-red-500 text-on-red">Privacy Reset</h4>
-                                            <p className="text-xs font-medium opacity-60 leading-relaxed text-on-red">Wipe all search queries and local indexing history.</p>
+                                            <h3 className="font-semibold text-slate-900 dark:text-slate-50 mb-1">System</h3>
+                                            <p className="text-sm text-slate-500 dark:text-slate-400">Manage caches and history.</p>
                                         </div>
-                                        <button onClick={async () => { if(confirm('Wipe history?')) { await axios.delete(`${API}/api/search/history`); showToast('History Cleared'); } }} className="w-full py-4 rounded-2xl bg-red-500 text-white font-bold text-xs hover:bg-red-600 transition-all shadow-lg shadow-red-500/20">
-                                            Clear All History
-                                        </button>
+
+                                        <div className="card p-5">
+                                            <div className="flex items-center justify-between mb-3">
+                                                <div>
+                                                    <div className="font-semibold text-sm text-slate-900 dark:text-slate-50">AI response cache</div>
+                                                    <div className="text-xs text-slate-500 dark:text-slate-400">Cached AI answers for repeated queries.</div>
+                                                </div>
+                                                <button onClick={clearCache} className="btn-secondary text-xs">Clear cache</button>
+                                            </div>
+                                            <div className="flex gap-6">
+                                                <div>
+                                                    <div className="text-2xl font-bold text-slate-900 dark:text-slate-50">{cacheStats.total_entries}</div>
+                                                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Entries</div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-2xl font-bold text-primary">{cacheStats.total_hits}</div>
+                                                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Total hits</div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="card p-5">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <div className="font-semibold text-sm text-slate-900 dark:text-slate-50">Search history</div>
+                                                    <div className="text-xs text-slate-500 dark:text-slate-400">Wipe every recorded search.</div>
+                                                </div>
+                                                <button
+                                                    onClick={async () => {
+                                                        if (!confirm('Clear all search history?')) return;
+                                                        try {
+                                                            await api.clearSearchHistory();
+                                                            toast.success('History cleared');
+                                                        } catch {
+                                                            toast.error('Could not clear history');
+                                                        }
+                                                    }}
+                                                    className="btn-danger text-xs"
+                                                >
+                                                    Clear history
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            </div>
+                                )}
+                            </>
                         )}
-                    </>
-                )}
                     </main>
                 </div>
 
                 {/* Footer */}
-                <div className="px-4 md:px-8 py-3 md:py-6 bg-[#f3f3fd] dark:bg-slate-950/60 border-t border-[#f3f3fd] dark:border-slate-800 flex items-center justify-between flex-shrink-0">
-                    <p className="text-xs font-bold opacity-40 hidden sm:block">v2.4.0 • Neural Search Engine</p>
-                    <div className="flex items-center gap-3 md:gap-4 w-full sm:w-auto">
-                        <button onClick={onClose} className="flex-1 sm:flex-none px-5 md:px-8 py-3 rounded-2xl font-bold text-sm hover:bg-[#ebebfa] dark:hover:bg-slate-800 transition-all text-center">Cancel</button>
-                        <button onClick={handleSave} disabled={isLoading} className="flex-1 sm:flex-none px-6 md:px-10 py-3 rounded-2xl bg-primary text-white font-bold text-sm hover:shadow-xl hover:shadow-primary/20 transition-all active:scale-95 disabled:opacity-50 text-center">
-                            {isLoading ? 'Saving...' : 'Apply Changes'}
-                        </button>
-                    </div>
-                </div>
+                <footer className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-200 dark:border-slate-800">
+                    <button onClick={onClose} className="btn-ghost">Cancel</button>
+                    <button onClick={save} disabled={saving || !config} className="btn-primary">
+                        {saving ? 'Saving…' : 'Save changes'}
+                    </button>
+                </footer>
             </div>
-            {toast && <Toast message={toast.message} type={toast.type} onDismiss={dismissToast} />}
         </div>
     );
-};
-
-export default SettingsModal;
+}

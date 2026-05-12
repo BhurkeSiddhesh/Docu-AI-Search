@@ -1,291 +1,220 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useEffect, useState } from 'react';
+import { Download, Cpu, Trash2, Check, Loader2, Star } from 'lucide-react';
+import api from '../lib/api';
+import { useToast } from './Toast';
+import { formatBytes } from '../lib/format';
 
-const ModelManager = ({ onSelectModel, activeModel, activeModelPath }) => {
-    const [availableModels, setAvailableModels] = useState([]);
-    const [localModels, setLocalModels] = useState([]);
+export default function ModelManager({ activeModelPath, onSelectModel }) {
+    const [available, setAvailable] = useState([]);
+    const [local, setLocal] = useState([]);
     const [downloadStatus, setDownloadStatus] = useState({ downloading: false });
-    const [error, setError] = useState(null);
     const [filter, setFilter] = useState('all');
-    const [searchQuery, setSearchQuery] = useState('');
+    const [query, setQuery] = useState('');
+    const toast = useToast();
 
     useEffect(() => {
-        fetchModels();
-        const interval = setInterval(checkDownloadStatus, 2000);
-        return () => clearInterval(interval);
+        load();
+        const t = setInterval(pollStatus, 2000);
+        return () => clearInterval(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    const fetchModels = async () => {
+    const load = async () => {
         try {
-            const [available, local] = await Promise.all([
-                axios.get('http://localhost:8000/api/models/available'),
-                axios.get('http://localhost:8000/api/models/local')
-            ]);
-            setAvailableModels(available.data || []);
-            setLocalModels(local.data || []);
-        } catch (err) {
-            console.error('Failed to fetch models:', err);
+            const [a, l] = await Promise.all([api.listAvailableModels(), api.listLocalModels()]);
+            setAvailable(a.data || []);
+            setLocal(l.data || []);
+        } catch {
+            // silent
         }
     };
 
-    const checkDownloadStatus = async () => {
+    const pollStatus = async () => {
         try {
-            const response = await axios.get('http://localhost:8000/api/models/status');
-            setDownloadStatus(response.data);
-
-            if (!response.data.downloading && downloadStatus.downloading) {
-                fetchModels();
-            }
-        } catch (err) {
-            // Ignore
+            const r = await api.modelDownloadStatus();
+            const wasDownloading = downloadStatus.downloading;
+            setDownloadStatus(r.data);
+            if (wasDownloading && !r.data.downloading) load();
+        } catch {
+            // silent
         }
     };
 
-    const handleDownload = async (modelId) => {
-        setError(null);
+    const download = async (id) => {
         try {
-            const response = await axios.post(`http://localhost:8000/api/models/download/${modelId}`);
-            if (response.data.status === 'success') {
-                setDownloadStatus({ downloading: true, model_id: modelId, progress: 0 });
-            }
-            if (response.data.message?.includes('Warnings')) {
-                setError(response.data.message);
-            }
-        } catch (err) {
-            setError(err.response?.data?.detail || 'Download failed');
+            await api.downloadModel(id);
+            setDownloadStatus({ downloading: true, model_id: id, progress: 0 });
+            toast.info('Download started');
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'Download failed');
         }
     };
 
-    const handleDelete = async (modelPath) => {
-        if (!confirm('Delete this model?')) return;
+    const remove = async (path) => {
+        if (!confirm('Delete this model file?')) return;
         try {
-            await axios.delete('http://localhost:8000/api/models', {
-                data: { path: modelPath }
-            });
-            fetchModels();
-        } catch (err) {
-            setError('Failed to delete');
+            await api.deleteModel(path);
+            toast.success('Model deleted');
+            load();
+        } catch (e) {
+            toast.error(e.response?.data?.detail || 'Could not delete model');
         }
     };
 
-    const isDownloaded = (modelId) => {
-        return localModels.some(m => m.id === modelId || m.filename?.includes(modelId));
-    };
+    const isDownloaded = (id) => local.some((m) => m.id === id || (m.filename || '').includes(id));
 
-    const formatSize = (bytes) => {
-        if (!bytes) return '';
-        const gb = bytes / (1024 * 1024 * 1024);
-        return gb >= 1 ? `${gb.toFixed(1)} GB` : `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
-    };
-
-    const normalize = (name) => name?.toLowerCase().replace('.gguf', '') || '';
-    const normalizePath = (path) => path?.replace(/\\/g, '/').toLowerCase() || '';
-
-    const getCategoryStyles = (category) => {
-        switch (category) {
-            case 'small':  return 'bg-green-500/10 text-green-600 dark:text-green-400';
-            case 'medium': return 'bg-amber-500/10 text-amber-600 dark:text-amber-400';
-            case 'large':  return 'bg-red-500/10 text-red-600 dark:text-red-400';
-            default:       return 'bg-slate-500/10 text-slate-600';
-        }
-    };
-
-    const getCategoryLabel = (category) => {
-        switch (category) {
-            case 'small':  return 'Optimized';
-            case 'medium': return 'Balanced';
-            case 'large':  return 'Quality';
-            default:       return category;
-        }
-    };
-
-    const filteredModels = availableModels.filter(model => {
-        const matchesFilter = filter === 'all' || model.category === filter;
-        const matchesSearch = !searchQuery ||
-            model.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            model.description.toLowerCase().includes(searchQuery.toLowerCase());
-        return matchesFilter && matchesSearch;
+    const norm = (s) => (s || '').replace(/\\/g, '/').toLowerCase();
+    const filtered = available.filter((m) => {
+        if (filter !== 'all' && m.category !== filter) return false;
+        if (query && !`${m.name} ${m.description}`.toLowerCase().includes(query.toLowerCase())) return false;
+        return true;
     });
 
-    const categories = ['all', 'small', 'medium', 'large'];
-
     return (
-        <div className="space-y-12">
-            {error && (
-                <div className="flex items-center gap-4 p-5 rounded-3xl bg-red-500/10 text-red-600 dark:text-red-400 text-sm font-bold border border-red-500/20">
-                    <span className="material-symbols-outlined">error</span>
-                    <span className="flex-1">{error}</span>
-                    <button onClick={() => setError(null)} className="material-symbols-outlined text-sm opacity-60 hover:opacity-100 transition-all">close</button>
+        <div className="space-y-6">
+            {/* Local */}
+            <section>
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-slate-900 dark:text-slate-50">Downloaded models</h3>
+                    <span className="chip text-xs">{local.length} installed</span>
                 </div>
-            )}
 
-            {/* Local Models Section */}
-            <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                    <h3 className="text-2xl font-bold font-headline">Downloaded Intelligence</h3>
-                    <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-primary/5 text-primary text-xs font-black uppercase tracking-widest">
-                        <span className="material-symbols-outlined text-sm">memory</span>
-                        {localModels.length} Models Ready
+                {local.length === 0 ? (
+                    <div className="card p-6 text-center text-sm text-slate-500 dark:text-slate-400">
+                        No local models. Download one from the registry below.
                     </div>
-                </div>
-
-                {localModels.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {localModels.map((model, idx) => {
-                            const isSelected = activeModelPath ? normalizePath(model.path) === normalizePath(activeModelPath) : normalize(model.name) === normalize(activeModel);
-                            const isActiveRunning = normalize(model.name) === normalize(activeModel);
-
+                ) : (
+                    <div className="grid sm:grid-cols-2 gap-3">
+                        {local.map((m, i) => {
+                            const isActive = activeModelPath && norm(m.path) === norm(activeModelPath);
                             return (
-                                <div key={idx} className={`p-6 rounded-[2.5rem] transition-all border-2 flex flex-col justify-between gap-6 ${isSelected ? 'bg-primary/5 border-primary shadow-xl shadow-primary/5' : 'bg-[#f3f3fd] dark:bg-slate-950/40 border-transparent hover:bg-[#ebebfa]'}`}>
-                                    <div className="space-y-4">
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${isSelected ? 'bg-primary text-white' : 'bg-white dark:bg-slate-900 text-primary'}`}>
-                                                    <span className="material-symbols-outlined text-2xl">memory</span>
-                                                </div>
-                                                <div>
-                                                    <h4 className="font-bold font-headline text-sm truncate max-w-[150px]">{model.name}</h4>
-                                                    <p className="text-[10px] font-black uppercase opacity-40 tracking-widest">{formatSize(model.size)} • Local GGUF</p>
-                                                </div>
-                                            </div>
-                                            {isActiveRunning && (
-                                                <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-[8px] font-black uppercase tracking-widest border border-primary/20">Active</span>
-                                            )}
+                                <div
+                                    key={i}
+                                    className={`card p-4 transition ${isActive ? 'border-primary ring-2 ring-primary/20' : ''}`}
+                                >
+                                    <div className="flex items-start gap-3 mb-3">
+                                        <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${isActive ? 'bg-primary text-white' : 'bg-primary/10 text-primary'}`}>
+                                            <Cpu className="w-4 h-4" />
                                         </div>
-                                        
-                                        <div className="flex items-center gap-4 text-[10px] font-bold opacity-60">
-                                            <div className="flex items-center gap-1">
-                                                <span className="material-symbols-outlined text-sm">developer_board</span>
-                                                {model.ram_required}GB RAM
-                                            </div>
-                                            <div className="flex items-center gap-1">
-                                                <span className="material-symbols-outlined text-sm">settings_b_roll</span>
-                                                Q4_K_M
+                                        <div className="flex-1 min-w-0">
+                                            <div className="font-semibold text-sm text-slate-900 dark:text-slate-50 truncate" title={m.name}>{m.name}</div>
+                                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                                                {m.size ? formatBytes(m.size) : '—'}
+                                                {m.ram_required && ` · ${m.ram_required} GB RAM`}
                                             </div>
                                         </div>
+                                        {isActive && (
+                                            <span className="chip text-[10px] bg-primary/10 text-primary">Active</span>
+                                        )}
                                     </div>
-
                                     <div className="flex items-center gap-2">
                                         <button
-                                            onClick={() => onSelectModel && onSelectModel(model)}
-                                            className={`flex-1 py-3 rounded-2xl font-bold text-xs transition-all ${isSelected ? 'bg-primary text-white pointer-events-none' : 'bg-white dark:bg-slate-900 text-primary hover:bg-primary hover:text-white shadow-sm'}`}
+                                            onClick={() => onSelectModel?.(m)}
+                                            disabled={isActive}
+                                            className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-xs font-medium transition ${
+                                                isActive
+                                                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 cursor-not-allowed'
+                                                    : 'bg-primary text-white hover:bg-primary/90'
+                                            }`}
                                         >
-                                            {isSelected ? 'Selected Strategy' : 'Initialize Model'}
+                                            {isActive ? <><Check className="w-3.5 h-3.5" /> Selected</> : 'Select'}
                                         </button>
                                         <button
-                                            onClick={() => handleDelete(model.path)}
-                                            title="Delete Model"
-                                            className="w-10 h-10 rounded-2xl bg-white dark:bg-slate-900 text-[#434656] dark:text-slate-400 hover:bg-red-500 hover:text-white flex items-center justify-center transition-all shadow-sm"
+                                            onClick={() => remove(m.path)}
+                                            title="Delete model"
+                                            className="p-2 rounded-md text-slate-500 hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-500 transition"
                                         >
-                                            <span className="material-symbols-outlined text-lg">delete</span>
+                                            <Trash2 className="w-3.5 h-3.5" />
                                         </button>
                                     </div>
                                 </div>
                             );
                         })}
                     </div>
-                ) : (
-                    <div className="p-12 rounded-[2.5rem] bg-[#f3f3fd] dark:bg-slate-950/40 border-2 border-dashed border-[#d1d1f0] dark:border-slate-800 flex flex-col items-center text-center">
-                        <span className="material-symbols-outlined text-5xl text-[#d1d1f0] mb-4">cloud_download</span>
-                        <p className="font-bold text-[#434656] opacity-60">No local models found. Download from the registry below.</p>
-                    </div>
                 )}
-            </div>
+            </section>
 
-            {/* Available Registry Section */}
-            <div className="space-y-8">
-                <div className="flex items-center justify-between">
-                    <h3 className="text-2xl font-bold font-headline">Model Registry</h3>
-                    <div className="flex gap-2">
-                        {categories.map(cat => (
-                            <button
-                                key={cat}
-                                onClick={() => setFilter(cat)}
-                                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${filter === cat ? 'bg-primary text-white shadow-lg shadow-primary/20' : 'bg-[#f3f3fd] dark:bg-slate-950/40 text-[#434656] dark:text-slate-400 hover:bg-[#ebebfa]'}`}
-                            >
-                                {cat}
-                            </button>
-                        ))}
-                    </div>
+            {/* Registry */}
+            <section>
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-slate-900 dark:text-slate-50">Available models</h3>
                 </div>
 
-                {/* Search in Registry */}
-                <div className="relative">
-                    <span className="material-symbols-outlined absolute left-5 top-1/2 -translate-y-1/2 text-[#434656] opacity-40">search</span>
+                <div className="flex flex-wrap gap-2 mb-3">
+                    {['all', 'small', 'medium', 'large'].map((c) => (
+                        <button
+                            key={c}
+                            onClick={() => setFilter(c)}
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium capitalize transition ${
+                                filter === c
+                                    ? 'bg-primary text-white'
+                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                            }`}
+                        >
+                            {c === 'all' ? 'All' : c}
+                        </button>
+                    ))}
                     <input
-                        type="text"
-                        placeholder="Scan for specialized neural weights..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-14 pr-6 py-5 rounded-3xl bg-[#f3f3fd] dark:bg-slate-950/40 border-2 border-transparent focus:border-primary/20 outline-none transition-all font-body text-sm"
+                        value={query}
+                        onChange={(e) => setQuery(e.target.value)}
+                        placeholder="Search models…"
+                        className="input flex-1 min-w-[180px] py-1.5 text-xs"
                     />
                 </div>
 
-                <div className="space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
-                    {filteredModels.map((model) => (
-                        <div key={model.id} className={`p-6 rounded-[2.5rem] bg-white dark:bg-slate-900 border transition-all ${model.recommended ? 'border-primary/30 shadow-lg shadow-primary/5' : 'border-[#f3f3fd] dark:border-slate-800 shadow-sm'}`}>
-                            <div className="flex items-center justify-between gap-6">
-                                <div className="flex-1 min-w-0 flex items-center gap-5">
-                                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 ${model.recommended ? 'bg-primary/10 text-primary' : 'bg-[#f3f3fd] dark:bg-slate-800 text-slate-400'}`}>
-                                        <span className="material-symbols-outlined text-3xl">{model.recommended ? 'auto_awesome' : 'model_training'}</span>
+                <div className="space-y-2">
+                    {filtered.map((m) => {
+                        const ready = isDownloaded(m.id);
+                        const isDownloading = downloadStatus.downloading && downloadStatus.model_id === m.id;
+                        return (
+                            <div key={m.id} className="card p-4 flex items-center gap-4">
+                                <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${m.recommended ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
+                                    {m.recommended ? <Star className="w-4 h-4" /> : <Cpu className="w-4 h-4" />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 mb-0.5">
+                                        <div className="font-semibold text-sm text-slate-900 dark:text-slate-50 truncate">{m.name}</div>
+                                        {m.recommended && <span className="chip text-[10px] bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400">Recommended</span>}
                                     </div>
-                                    <div className="min-w-0">
-                                        <div className="flex items-center gap-3 mb-1">
-                                            <h4 className="font-bold text-lg font-headline">{model.name}</h4>
-                                            <span className={`px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-widest ${getCategoryStyles(model.category)}`}>{getCategoryLabel(model.category)}</span>
-                                        </div>
-                                        <p className="text-xs text-[#434656] dark:text-slate-400 line-clamp-1 mb-2 font-medium">{model.description}</p>
-                                        <div className="flex items-center gap-4 text-[10px] font-black uppercase tracking-widest opacity-40">
-                                            <span>{model.size}</span>
-                                            <span>•</span>
-                                            <span className="flex items-center gap-1"><span className="material-symbols-outlined text-xs">memory</span>{model.ram_required}GB RAM</span>
-                                            <span>•</span>
-                                            <span>{model.quantization}</span>
-                                        </div>
+                                    <div className="text-xs text-slate-500 dark:text-slate-400 truncate mb-1">{m.description}</div>
+                                    <div className="text-[11px] text-slate-400 dark:text-slate-500 font-mono">
+                                        {m.size} · {m.ram_required}GB RAM · {m.quantization}
                                     </div>
                                 </div>
-
-                                <div className="shrink-0">
-                                    {isDownloaded(model.id) ? (
-                                        <div className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-green-500/10 text-green-600 font-bold text-xs uppercase tracking-widest">
-                                            <span className="material-symbols-outlined text-sm">verified</span>
-                                            Ready
-                                        </div>
-                                    ) : downloadStatus.downloading && downloadStatus.model_id === model.id ? (
-                                        <div className="flex flex-col items-end gap-2 w-32">
-                                            <div className="flex items-center gap-2 text-[10px] font-black text-primary uppercase">
-                                                <span>{downloadStatus.progress || 0}%</span>
-                                                <span className="material-symbols-outlined animate-spin text-sm">progress_activity</span>
+                                <div className="flex-shrink-0">
+                                    {ready ? (
+                                        <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400">
+                                            <Check className="w-3.5 h-3.5" />
+                                            Installed
+                                        </span>
+                                    ) : isDownloading ? (
+                                        <div className="flex flex-col items-end gap-1 w-28">
+                                            <div className="text-xs font-mono text-slate-600 dark:text-slate-400">
+                                                {downloadStatus.progress || 0}%
                                             </div>
-                                            <div className="w-full h-1.5 bg-primary/10 rounded-full overflow-hidden">
-                                                <div className="h-full bg-primary transition-all duration-300" style={{ width: `${downloadStatus.progress || 0}%` }}></div>
+                                            <div className="h-1 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                                <div className="h-full bg-primary transition-all" style={{ width: `${downloadStatus.progress || 0}%` }} />
                                             </div>
                                         </div>
                                     ) : (
                                         <button
-                                            onClick={() => handleDownload(model.id)}
+                                            onClick={() => download(m.id)}
                                             disabled={downloadStatus.downloading}
-                                            className="px-6 py-3 rounded-2xl bg-primary text-white font-bold text-xs uppercase tracking-widest hover:shadow-lg hover:shadow-primary/20 transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2"
+                                            className="btn-secondary text-xs py-1.5 px-3"
                                         >
-                                            <span className="material-symbols-outlined text-sm">download</span>
-                                            Fetch
+                                            <Download className="w-3.5 h-3.5" />
+                                            Download
                                         </button>
                                     )}
                                 </div>
                             </div>
-                        </div>
-                    ))}
-                    
-                    {filteredModels.length === 0 && (
-                        <div className="text-center py-12 space-y-4">
-                            <span className="material-symbols-outlined text-5xl opacity-10">search_off</span>
-                            <p className="text-sm font-bold opacity-30">No neural weights match the scan query</p>
-                        </div>
+                        );
+                    })}
+                    {filtered.length === 0 && (
+                        <div className="text-center py-8 text-sm text-slate-500 dark:text-slate-400">No models match your filter.</div>
                     )}
                 </div>
-            </div>
+            </section>
         </div>
     );
-};
-
-export default ModelManager;
+}
