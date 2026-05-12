@@ -306,6 +306,7 @@ python scripts/verify_golden_set.py
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
 ### 2026-05-12 (Automated Audit)
+
 - **Daily automated code audit — filed 3 logic enhancement issues**
   - **audit**: Identified `/api/agent/chat` reads 7 shared index globals without `_index_lock`, creating a torn-read race condition during concurrent reindex (issue #148).
   - **audit**: Identified `/api/benchmarks/run` check-then-set race condition — `running=True` is set inside the background task, not before it, allowing two concurrent requests to both start the benchmark (issue #149).
@@ -314,6 +315,7 @@ python scripts/verify_golden_set.py
   - **Files**: `internal_audit_log.md` (new), `AGENTS.md`
 
 ### 2026-04-30 (Backend CI Stabilization & API Fixes)
+
 - **Resolved critical backend regressions for 100% test pass rate**
   - **fix**: Added `BackgroundTasks` to `/api/search` for offloading search history logging, resolving `test_background_history.py` failure.
   - **fix**: Corrected `health_check` endpoint to use `database.execute()` on pooled connections, fixing 503 errors under load.
@@ -329,17 +331,20 @@ python scripts/verify_golden_set.py
   - **Files**: `frontend/src/components/SettingsModal.jsx`, `frontend/src/test/SettingsModal.test.jsx`, `frontend/src/test/ModelManager.test.jsx`, `AGENTS.md`
 
 ### 2026-04-29 (Dependency Baseline Compatibility Follow-up)
+
 - **Aligned documented Python baseline with updated dependency constraints**
   - **docs**: Updated Python version badge and runtime requirement in `README.md` from `3.8+` to `3.10+` to reflect current dependency support windows after recent dependency upgrades.
   - **docs**: Updated backend tech stack version note in `AGENTS.md` from `Python 3.8+` to `Python 3.10+`.
   - **Files**: `README.md`, `AGENTS.md`
 
 ### 2026-04-29 (CI Dependency Resolver Fix)
+
 - **Resolved pip dependency conflict introduced by grouped dependency bump**
   - **fix**: Updated `langchain-core` pin in `requirements.txt` from `1.2.28` to `1.2.31` to satisfy `langchain-text-splitters==1.1.2` minimum constraint (`langchain-core>=1.2.31`) and unblock CI dependency installation.
   - **Files**: `requirements.txt`, `AGENTS.md`
 
 ### 2026-04-24 (Test Suite Stabilization & Security Fixes)
+
 - **Resolved Backend Test Regressions and Security Log Leaks**
   - **fix**: Redacted raw user queries from logs in `backend/llm_integration.py` (cache hits and smart summaries) to prevent sensitive data leakage.
   - **fix**: Refactored `backend/tests/test_config_cache.py` to align with actual file-based loading behavior, removing invalid object identity assertions.
@@ -350,6 +355,7 @@ python scripts/verify_golden_set.py
   - **Files**: `backend/llm_integration.py`, `backend/api.py`, `backend/settings.py`, `backend/tests/test_config_cache.py`, `backend/tests/test_cors_config.py`, `backend/tests/test_security_fix.py`, `backend/tests/test_security_logging.py`, `AGENTS.md`
 
 ### 2026-03-12 (CI Stability & Structure Fixes)
+
 - **Resolved React `act()` Warnings & CI Test Failures**
   - **fix**: Wrapped asynchronous state-updating events in `act()` throughout `ModelManager.test.jsx`, `SettingsModal.test.jsx`, and `SearchBarShortcuts.test.jsx`.
   - **fix**: Added `waitFor` and `async/await` patterns to ensure UI state stability during multi-step test interactions.
@@ -361,6 +367,7 @@ python scripts/verify_golden_set.py
   - **Files**: `frontend/src/test/*.test.jsx`, `scripts/*.py`, `backend/database.py`, `AGENTS.md`
 
 ### 2026-03-12 (Branch Merges)
+
 - **Merged 4 feature/fix branches into main**
   - **security**: `fix/command-injection-open-file` — command injection protection via `verify_local_request` middleware + file extension whitelist (`ALLOWED_EXTENSIONS`) in `/api/open-file`.
   - **security**: `security-fix-rate-limiting` — integrated `slowapi==0.1.9` for API rate limiting; resolved conflicts across `api.py`, `database.py`, `test_indexing.py`, `test_benchmarks.py`, `test_security.py`, `test_database.py`, `requirements.txt`.
@@ -369,8 +376,8 @@ python scripts/verify_golden_set.py
   - **fix**: Added `"testclient"` to `verify_local_request` allowlist so FastAPI TestClient tests pass without overrides.
   - **Files**: `backend/api.py`, `backend/database.py`, `backend/tests/test_*.py`, `requirements.txt`, `LICENSE`
 
-
 ### 2026-03-25 (External LLM Provider Integration)
+
 - **Implemented Full External LLM Provider System (Ollama + LM Studio)**
   - **feat**: Created `backend/providers.py` — `LLMProvider` ABC with `OllamaProvider` and `OpenAICompatibleProvider` (auto-detects LM Studio native `/api/v1/chat` vs OpenAI `/v1/chat/completions`).
   - **feat**: Created `backend/system_prompts.py` — SQLite-backed CRUD for system prompts with auto-seeded defaults (Document Analysis, Creative Writing, Code Review, Concise Answers).
@@ -383,6 +390,7 @@ python scripts/verify_golden_set.py
   - **Files**: `backend/providers.py` (new), `backend/system_prompts.py` (new), `backend/tests/test_providers.py` (new), `backend/tests/test_system_prompts.py` (new), `backend/api.py`, `backend/llm_integration.py`, `backend/database.py`, `config.ini`, `frontend/src/components/SettingsModal.jsx`
 
 ### 2026-03-12 (Settings UX Redesign)
+
 - **Redesigned Settings Modal to a Sidebar + Detail Pane Layout**
   - **feat**: Reworked `frontend/src/components/SettingsModal.jsx` from stacked collapsible sections to a two-column settings experience inspired by desktop settings UX.
   - **feat**: Added left navigation sections (`Indexed Folders`, `AI Provider`, `Embedding Provider`, `Local Models`, `Data Management`) with active state styling.
@@ -391,6 +399,7 @@ python scripts/verify_golden_set.py
   - **Files**: `frontend/src/components/SettingsModal.jsx`
 
 ### 2026-03-12 (FAISS Dimension Safety & Test Fixes)
+
 - **Implemented Embedding Dimension Mismatch Guard for FAISS**
   - **feat**: Added `EmbeddingDimensionMismatchError` to `backend/search.py` to prevent runtime crashes when the query vector dimension differs from the `.faiss` index dimension.
   - **feat**: Catch mismatch in `/api/search` (`backend/api.py`) and return a `409 Conflict` prompting the user to re-index.
@@ -402,6 +411,7 @@ python scripts/verify_golden_set.py
   - **Files**: `backend/search.py`, `backend/indexing.py`, `backend/api.py`, `backend/tests/test_search.py`, `backend/tests/test_indexing.py`, `frontend/src/components/SettingsModal.jsx`
 
 ### 2026-03-12 (Embedding Factory)
+
 - **Added `get_embedding_client` Factory (Factory Pattern)**
   - **feat**: Implemented `get_embedding_client(provider_type, model_name, api_key)` in `backend/llm_integration.py`.
   - Supports three `provider_type` values: `'local'` (HuggingFaceEmbeddings, default model `Alibaba-NLP/gte-Qwen2-1.5B-instruct`), `'huggingface_api'` (HuggingFaceEndpointEmbeddings via Inference API), and `'commercial_api'` (OpenAI or Gemini, dispatched by `model_name` keyword matching).
@@ -409,6 +419,7 @@ python scripts/verify_golden_set.py
   - **Files**: `backend/llm_integration.py`
 
 ### 2026-03-12 (Embedding Settings Router)
+
 - **Created Embedding Settings Router with app.state Caching**
   - **feat**: Created `backend/settings.py` — a dedicated `APIRouter` with `GET /api/settings/embeddings` and `POST /api/settings/embeddings`.
   - **feat**: `GET` returns `provider_type`, `model_name`, and `api_key_set` (boolean mask — raw key never sent over the wire).
@@ -419,9 +430,8 @@ python scripts/verify_golden_set.py
   - **test**: Added `backend/tests/test_settings.py` — 13 unit tests covering GET, POST success, POST validation failures, and the client helper. All LLM calls mocked.
   - **Files**: `backend/settings.py` (new), `backend/api.py`, `config.ini`, `backend/tests/test_settings.py` (new)
 
-
-
 ### 2026-02-25 (PR #46 Recovery & Security)
+
 - **Resolved Regressions and Security Logic from PR #46**
   - **fix**: Fixed `database.py` schema (added `is_indexed` to `folder_history`, `add_files_batch`, `clear_files`).
   - **fix**: Corrected `indexing.py` dictionary mapping (mapped `extension` -> `file_type`, `size_bytes` -> `size` etc to match DB).
@@ -433,6 +443,7 @@ python scripts/verify_golden_set.py
   - **Files**: `backend/database.py`, `backend/indexing.py`, `backend/api.py`, `backend/tests/test_indexing.py`, `backend/tests/test_api.py`, `requirements.txt`
 
 ### 2026-02-25 (AI Cache)
+
 - **Restored AI Response Cache Functionality**
   - **feat**: Exposed `/api/cache/stats` and `/api/cache/clear` endpoints in `backend/api.py`.
   - **test**: Added unit tests for new cache endpoints in `backend/tests/test_api.py`.
@@ -440,6 +451,7 @@ python scripts/verify_golden_set.py
   - **Files**: `backend/api.py`, `backend/tests/test_api.py`
 
 ### 2026-02-25 (Advanced RAG)
+
 - **Implemented Advanced RAG Pipeline (State-of-the-Art)**
   - **feat**: Added `[AdvancedRAG]` configuration options (`query_rewriting`, `cross_encoder_reranking`) to `config.ini` and `api.py`.
   - **feat**: Created `backend/rag_optimizers.py` with `rewrite_query` (LLM-based keyword extraction) and `rerank_results` (`sentence-transformers/ms-marco` deep semantic scoring).
@@ -448,6 +460,7 @@ python scripts/verify_golden_set.py
   - **Files**: `backend/api.py`, `backend/search.py`, `backend/rag_optimizers.py`, `backend/tests/test_rag_optimizers.py`, `config.ini`
 
 ### 2026-02-25 (Agent Quality)
+
 - **Improved ReAct Agent Response Quality for Local Models**
   - **fix**: Added provider-aware system prompts — short, clear prompt for local models; full ReAct prompt for cloud.
   - **fix**: Increased `max_tokens` from 256 → 512 to prevent mid-thought truncation.
@@ -459,6 +472,7 @@ python scripts/verify_golden_set.py
   - **Files**: `backend/agent.py`, `backend/tests/test_agent_refactor.py`
 
 ### 2026-02-25 (Critical Hallucination Fix)
+
 - **Prevented Agent from Answering Without Searching Index**
   - **fix**: Added `has_searched` boolean guard — agent cannot produce a final answer until `search_knowledge_base` has been called at least once.
   - **fix**: Added `_force_search_action` — if model tries to skip tools on step 0, agent automatically injects a search using the user's query terms.
@@ -467,6 +481,7 @@ python scripts/verify_golden_set.py
   - **Files**: `backend/agent.py`
 
 ### 2026-02-25 (Context Window Fix)
+
 - **Fixed 4096 Token Context Overflow on Local Models**
   - **fix**: Reduced observation window from 800 → 350 chars for local models to halve context usage per step.
   - **fix**: Reduced `max_steps` from 7 → 4 for local models to prevent multi-search spiraling.
@@ -476,12 +491,14 @@ python scripts/verify_golden_set.py
   - **Files**: `backend/agent.py`
 
 ### 2026-01-30 (Security)
+
 - **Fixed Arbitrary File Deletion Vulnerability**
   - **fix**: Implemented `is_safe_model_path` validation in `model_manager.py` to prevent path traversal in model deletion.
   - **test**: Added `backend/tests/test_security.py` with regression tests.
   - **Files**: `backend/model_manager.py`, `backend/tests/test_security.py`, `scripts/run_tests.py`
 
 ### 2026-01-30
+
 - **Optimized Startup Health Checks & Backend Performance**
   - **feat**: Modified `scripts/start_all.js` with increased health check intervals (3s), longer timeouts (120s), and "localhost" binding for better Windows reliability.
   - **feat**: Suppressed noisy health check error logs during initial startup phase.
@@ -489,16 +506,12 @@ python scripts/verify_golden_set.py
   - **perf**: Implemented lazy loading for heavy backend modules (`langchain`, `llama-cpp`, `tkinter`) to reduce initial Python process cold-start time.
   - **feat**: Added dedicated lightweight `/api/health` endpoint for reliable service readiness verification.
   - **Files**: `scripts/start_all.js`, `backend/api.py`
-
-### 2026-01-30 (Part 2)
 - **Expanded Frontend Test Coverage**
   - **feat**: Implemented comprehensive functional UI tests for `SearchHistory` and `FileList` components.
   - **fix**: Upgraded `SettingsModal`, `ModelManager`, `SearchBar`, and `SearchResults` tests to use `@testing-library/react` interactions instead of basic logic checks.
   - **verification**: Validated all "Delete", "Clear All", and "Open File" workflows with 100% pass rate (47 tests).
   - **accessibility**: Added `title` attributes to `SearchResults` and `ModelManager` buttons for better testability and accessibility.
   - **Files**: `frontend/src/test/*.test.jsx`, `frontend/src/components/SearchResults.jsx`
-
-### 2026-01-30
 - **Fixed Duplicate Search Results & Context Window Overflow**
   - **fix**: Improved search deduplication to strict "one result per file" + content hashing to eliminate near-duplicates
   - **fix**: Reduced context truncation from 10000 to 3000 chars to prevent exceeding 4096 token context window on local LLMs
@@ -519,6 +532,7 @@ python scripts/verify_golden_set.py
   - **Files**: `backend/api.py`, `backend/llm_integration.py`
 
 ### 2026-01-27 (Maintenance)
+
 - **Fixed Dependency & Added Logging** - Resolved explicit dependency error and added full-stack logging
   - **Backend**: Added `sentence-transformers==3.0.1` to `requirements.txt`
   - **Backend**: Implemented centralized logging to `data/app.log` in `api.py`
@@ -598,16 +612,13 @@ python scripts/verify_golden_set.py
   - **test**: Created `tests/test_api.py` to verify the `/api/open-file` endpoint functionality and error handling.
   - **clean**: Renamed temporary `test_api_extra.py` to standard `tests/test_api.py` to adhere to project structure rules.
   - **Files**: `backend/search.py`, `tests/test_api.py`
-
 - **Advanced Model Stress Testing & Ranking**
   - **feat**: Created `backend/tests/test_model_stress.py` for rigorous performance evaluation.
   - **feat**: Implemented weighted scoring system (TPS, Accuracy, Load Time, Memory) in `scripts/benchmark_models.py`.
   - **test**: Successfully ranked 5 local models; identified TinyLlama and Gemma as top performers.
   - **Files**: `backend/tests/test_model_stress.py`, `scripts/benchmark_models.py`, `AGENTS.md`
   - **Verification**: Ran full stress suite (9-minute run); all tests passed with valid performance data.
-
 - **Refined Folder History**
-
   - "Recent History" now STRICTLY filters for "100% indexed" folders.
   - Added `is_indexed` column to `folder_history` table.
   - Files: `backend/database.py`, `backend/api.py`
@@ -624,6 +635,7 @@ python scripts/verify_golden_set.py
   - Files: `frontend/vite.config.js`
 
 ### 2026-01-21 (UI Redesign)
+
 - **Implemented Cosmic Glassmorphism UI** - Complete visual overhaul
   - `frontend/src/index.css`: New cosmic color palette, glass utilities, animations
   - `frontend/tailwind.config.js`: Cosmic colors, glow keyframes
@@ -635,6 +647,7 @@ python scripts/verify_golden_set.py
   - `frontend/src/components/SettingsModal.jsx`: Glass overlay, cosmic buttons
 
 ### 2026-01-21 (Startup Fixes)
+
 - **Fixed virtual environment issues** - Created `venv_new` to bypass file lock issues
   - Updated `package.json` and `scripts/start_all.js` to use `venv_new`
   - Added `venv_new/` to `.gitignore`
@@ -642,6 +655,7 @@ python scripts/verify_golden_set.py
   - Files: `requirements.txt`, `.gitignore`, `package.json`, `scripts/start_all.js`
 
 ### 2026-01-21
+
 - **Implemented Persistent AI Response Cache** - SQLite-backed caching for instant repeated queries
   - **Database**: Added `response_cache` table to `metadata.db` with query/context hashing
   - **Logic**: Implemented `compute_cache_key`, `cached_smart_summary`, `cached_generate_ai_answer`
@@ -688,6 +702,7 @@ python scripts/verify_golden_set.py
 - **Fixed File Locks** - Database initialization moved to startup event to prevent lock issues during tests
 
 ### 2026-01-21 (Part 2)
+
 - **Restored 100% Test Coverage** - Added tests for new RAPTOR DB functions
   - `backend/tests/test_raptor_clusters.py`: Covered `add_cluster`, `get_clusters_by_level`, `clear_clusters`
 - **Created "Golden Dataset" for robust testing** - Mixed Stategy (Synthetic + Real)
@@ -697,6 +712,7 @@ python scripts/verify_golden_set.py
   - Added documentation to `AGENTS.md`.
 
 ### 2026-02-13 (Performance)
+
 - **Optimized Search Performance (N+1 Query Fix)**
   - **perf**: Implemented `get_files_by_faiss_indices` in `database.py` for batch lookup of file metadata.
   - **perf**: Updated `search_files` and `stream_answer_endpoint` in `api.py` to use batch lookups, eliminating N+1 database queries.
@@ -704,6 +720,7 @@ python scripts/verify_golden_set.py
   - **Files**: `backend/database.py`, `backend/api.py`, `backend/tests/test_database.py`, `backend/tests/benchmark_n1_query.py`
 
 ### 2026-01-30
+
 - **Optimized Startup** - Reduced polling interval to 500ms and enabled early browser launch
   - Files: `scripts/start_all.js`
   - Verification: Manual user verification required (restart app)
@@ -715,6 +732,7 @@ python scripts/verify_golden_set.py
   - Verification: Manual verification (Ctrl+C and restart should work immediately)
 
 ### 2026-01-09
+
 - **Enhanced LLM output quality** - AI now references filenames and quotes specific content
   - `llm_integration.py`: Added `file_name` param to `smart_summary()`, improved prompts to request specific details
   - `api.py`: Pass file context to LLM functions, prepend `[From: filename]` to context snippets
@@ -727,6 +745,7 @@ python scripts/verify_golden_set.py
 - **Created AGENTS.md** - Workspace instructions
 
 ### 2026-02-02
+
 - **Integrated Sentinel Security Fixes (Branch 3)**
   - **feat**: Merged `sentinel-model-manager-fix` which generalizes path validation logic (`is_safe_path`).
   - **fix**: Resolved conflict in `backend/model_manager.py` adopting the more robust security check.
@@ -734,6 +753,7 @@ python scripts/verify_golden_set.py
   - **Verification**: Tests passed on branch before merge.
 
 ### 2026-02-01
+
 - **Security Fix: Arbitrary File Deletion in Model Manager**
   - **fix**: Patched `delete_model` in `backend/model_manager.py` to use `is_safe_path` validation, preventing path traversal attacks.
   - **test**: Added comprehensive security tests in `backend/tests/test_security_fix.py`.
@@ -747,15 +767,17 @@ python scripts/verify_golden_set.py
 ```
 
 > **Always read [AGENTS.md](cci:7://file:///c:/Users/siddh/OneDrive/Desktop/Projects/File-Search-Engine-1/AGENTS.md:0:0-0:0) in project root for the latest Change Log before and after making changes.**
+
 ### 2026-02-06 (Security Fix)
+
 - **Redacted Sensitive Search Queries** - Prevent PII leak in logs
   - **fix**: Redacted `request.query` in `backend/api.py`.
   - **fix**: Redacted sensitive info in `backend/llm_integration.py` and `backend/search.py`.
   - **test**: Added `backend/tests/test_security_logging.py`.
-
   - **Files**: `backend/api.py`, `backend/llm_integration.py`, `backend/search.py`, `backend/tests/test_security_logging.py`
 
 ### 2026-02-23 (Performance)
+
 - **Optimized Search Result Streaming** - Instant response by reusing search context
   - **perf**: Modified `stream_answer_endpoint` in `backend/api.py` to accept and use provided context, skipping redundant search.
   - **perf**: Updated `frontend/src/App.jsx` to pass search results as context to the streaming endpoint.
@@ -763,6 +785,7 @@ python scripts/verify_golden_set.py
   - **Tests**: `backend/tests/test_stream_optimization.py`
 
 ### 2026-02-24 (Security Fix)
+
 - **Fixed Command Injection Vulnerability** - Prevent argument injection in open-file endpoint
   - **fix**: Added validation to reject filenames starting with `-` in `backend/api.py`.
   - **test**: Added `backend/tests/test_security_command_injection.py` to verify the fix.
