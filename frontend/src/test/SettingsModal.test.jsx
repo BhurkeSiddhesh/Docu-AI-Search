@@ -67,7 +67,7 @@ describe('SettingsModal Component', () => {
 
     const openModal = async () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
-        return await screen.findByText('Library', {}, { timeout: 8000 })
+        return await screen.findAllByText('Library', {}, { timeout: 8000 })
     }
 
     it('renders correctly when open', async () => {
@@ -80,11 +80,11 @@ describe('SettingsModal Component', () => {
         await openModal()
         
         // Cloud AI
-        fireEvent.click(screen.getByText('Cloud AI'))
+        fireEvent.click(screen.getAllByText('Cloud AI')[0])
         await screen.findByText('Cloud Intelligence', {}, { timeout: 8000 })
 
         // Local LLM
-        fireEvent.click(screen.getByText('Local LLM'))
+        fireEvent.click(screen.getAllByText('Local LLM')[0])
         await screen.findByText('Model Manager Mock', {}, { timeout: 8000 })
     }, 20000)
 
@@ -99,7 +99,7 @@ describe('SettingsModal Component', () => {
 
     it('triggers rebuild index', async () => {
         await openModal()
-        const rebuildBtn = screen.getByText('Rebuild Index')
+        const rebuildBtn = screen.getAllByText('Rebuild Index')[0]
         fireEvent.click(rebuildBtn)
         await waitFor(() => {
             expect(axios.post).toHaveBeenCalled()
@@ -109,10 +109,10 @@ describe('SettingsModal Component', () => {
 
     it('clears AI response cache when button is clicked', async () => {
         await openModal()
-        fireEvent.click(screen.getByText('System'))
+        fireEvent.click(screen.getAllByText('System')[0])
         await screen.findByText('System Hygiene', {}, { timeout: 8000 })
         
-        const purgeBtn = screen.getByText('Purge AI Cache')
+        const purgeBtn = screen.getAllByText('Purge AI Cache')[0]
         fireEvent.click(purgeBtn)
         
         await waitFor(() => {
@@ -135,11 +135,11 @@ describe('SettingsModal Component', () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
         await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
-        fireEvent.click(screen.getByText('System'))
+        fireEvent.click(screen.getAllByText('System')[0])
 
         await waitFor(() => {
-            expect(screen.getByText(/42/)).toBeDefined()
-            expect(screen.getByText(/128/)).toBeDefined()
+            expect(screen.getAllByText(/42/)[0]).toBeDefined()
+            expect(screen.getAllByText(/128/)[0]).toBeDefined()
         })
     }, 20000)
 
@@ -147,7 +147,7 @@ describe('SettingsModal Component', () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
         await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
-        fireEvent.click(screen.getByText('Embeddings'))
+        fireEvent.click(screen.getAllByText('Embeddings')[0])
         await screen.findByLabelText('Model Architecture', {}, { timeout: 8000 })
 
         const modelInput = screen.getByLabelText('Model Architecture')
@@ -163,7 +163,7 @@ describe('SettingsModal Component', () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
         await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
-        const saveButton = screen.getByText('Apply Changes')
+        const saveButton = screen.getAllByText('Apply Changes')[0]
         fireEvent.click(saveButton)
 
         // Button should be disabled during save
@@ -185,7 +185,7 @@ describe('SettingsModal Component', () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
         await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
-        fireEvent.click(screen.getByText('Embeddings'))
+        fireEvent.click(screen.getAllByText('Embeddings')[0])
         await screen.findByLabelText(/Embedding API Key/i, {}, { timeout: 8000 })
 
         // API key should show placeholder
@@ -193,7 +193,7 @@ describe('SettingsModal Component', () => {
         expect(apiKeyInput.value).toBe('••••••••')
 
         // Save without changing the API key
-        fireEvent.click(screen.getByText('Apply Changes'))
+        fireEvent.click(screen.getAllByText('Apply Changes')[0])
 
         await waitFor(() => {
             // Should not send the placeholder
@@ -219,7 +219,7 @@ describe('SettingsModal Component', () => {
         await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
         // Click add folder (should not crash)
-        fireEvent.click(screen.getByText('Add Folder'))
+        fireEvent.click(screen.getAllByText('Add Folder')[0])
 
         // Should handle error gracefully (no crash)
         await waitFor(() => expect(axios.get).toHaveBeenCalled())
@@ -229,7 +229,7 @@ describe('SettingsModal Component', () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
         await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
-        fireEvent.click(screen.getByText('Cloud AI'))
+        fireEvent.click(screen.getAllByText('Cloud AI')[0])
         await screen.findByText('Cloud Intelligence', {}, { timeout: 8000 })
 
         // Find all API key inputs
@@ -249,7 +249,7 @@ describe('SettingsModal Component', () => {
         fireEvent.click(historyButton)
 
         await screen.findByText('Previously Indexed', {}, { timeout: 8000 })
-        expect(screen.getByText('C:/Old/Folder')).toBeDefined()
+        expect(screen.getAllByText('C:/Old/Folder')[0]).toBeDefined()
     })
 
     it('handles empty folder history', async () => {
@@ -274,7 +274,7 @@ describe('SettingsModal Component', () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
         await screen.findByText('System Configuration', {}, { timeout: 8000 })
 
-        fireEvent.click(screen.getByText('Apply Changes'))
+        fireEvent.click(screen.getAllByText('Apply Changes')[0])
 
         await screen.findByText('Configuration updated!', {}, { timeout: 8000 })
 
