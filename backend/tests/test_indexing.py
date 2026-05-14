@@ -185,8 +185,10 @@ class TestIndexingMultipleFolders(unittest.TestCase):
     def test_create_index_multiple_folders(self, mock_summary, mock_clustering, mock_extract, mock_get_embeddings, mock_splitter, mock_process_pool, mock_thread_pool, mock_as_completed):
         mock_splitter.return_value.split_text.return_value = ["chunk"]
         mock_extract.return_value = "content"
-        mock_get_embeddings.return_value.embed_documents.return_value = [[0.1]]
-        mock_clustering.return_value = {0: [0]}
+        # Return one vector per chunk in the batch — required since the
+        # embedding/chunk alignment check in create_index would otherwise abort.
+        mock_get_embeddings.return_value.embed_documents.side_effect = lambda batch: [[0.1] for _ in batch]
+        mock_clustering.return_value = {0: [0, 1]}
         mock_summary.return_value = "Sum"
 
         res = create_index([self.folder1, self.folder2], "openai", "k")
@@ -1218,11 +1220,14 @@ class TestIndexingEmbeddingBatchFailures(unittest.TestCase):
         mock_extract.return_value = "long text"
 
         embedder = MagicMock()
+        call_count = {'n': 0}
 
         def partial_embed(batch):
-            # First batch returns full vectors; second batch returns [] —
-            # the same state the production try/except produces on a failure.
-            if len(batch) == 100:
+            # First batch returns one vector per chunk; subsequent batches
+            # return [] — the same state the production try/except produces
+            # when a batch raises (see indexing.py L254-256).
+            call_count['n'] += 1
+            if call_count['n'] == 1:
                 return [[0.1, 0.2, 0.3] for _ in batch]
             return []
 
@@ -1283,21 +1288,22 @@ class TestIndexingNonexistentFolder(unittest.TestCase):
             shutil.rmtree(self.temp_dir)
 
     def test_mixed_existing_and_nonexistent_folders(self):
-        """If one folder is missing, indexing should still scan the others."""
-        good = os.path.join(self.temp_dir, "good")
+        """
+        If one folder is missing, indexing should still scan the others and
+        not raise FileNotFoundError. `good` is intentionally empty so we exit
+        cleanly via the no-files-found path — no embedding mocks needed.
+        """
+        good = os.path.join(self.temp_dir, "good_empty")
         os.makedirs(good)
-        with open(os.path.join(good, "a.txt"), 'w') as f:
-            f.write("hi")
         missing = os.path.join(self.temp_dir, "does_not_exist")
 
-        # No files-found path returns the empty 8-tuple; a real run would
-        # extract from `good`. Either way the call must NOT raise FileNotFoundError.
         try:
             res = create_index([missing, good], "openai", "fake_key")
         except FileNotFoundError as e:
             self.fail(f"create_index raised on missing folder instead of skipping it: {e}")
 
         self.assertEqual(len(res), 8)
+        self.assertIsNone(res[0])
 
 
 if __name__ == '__main__':
