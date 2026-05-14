@@ -531,14 +531,16 @@ class TestIndexingBoundaryCases(unittest.TestCase):
              patch('backend.indexing.extract_text', return_value="content"), \
              patch('backend.indexing.CharacterTextSplitter') as mock_splitter_cls, \
              patch('backend.indexing.get_tags', return_value="test"), \
-             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
+             patch('backend.indexing.perform_global_clustering', return_value={0: [0, 1]}), \
              patch('backend.indexing.smart_summary', return_value="Summary"):
 
             mock_splitter_instance = mock_splitter_cls.return_value
             mock_splitter_instance.split_text.return_value = ["chunk1"]
 
             mock_embeddings_model = MagicMock()
-            mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3]]
+            # os.walk lists both real.txt and the symlink, so chunk_strings has
+            # 2 entries; return one vector per chunk to satisfy the alignment guard.
+            mock_embeddings_model.embed_documents.side_effect = lambda batch: [[0.1, 0.2, 0.3] for _ in batch]
             mock_embed.return_value = mock_embeddings_model
 
             res = create_index(self.temp_dir, "openai", "fake_key")
