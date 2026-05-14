@@ -494,14 +494,17 @@ class TestIndexingBoundaryCases(unittest.TestCase):
         with open(os.path.join(self.temp_dir, "image.jpg"), 'wb') as f:
             f.write(b'\xFF\xD8\xFF')  # JPEG header
 
+        # extract_text is mocked, so both files become valid_docs and yield a
+        # chunk each. We need one embedding per chunk to satisfy the alignment
+        # guard in create_index.
         mock_extract_text.return_value = "valid content"
 
         mock_embeddings_model = MagicMock()
-        mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3]]
+        mock_embeddings_model.embed_documents.side_effect = lambda batch: [[0.1, 0.2, 0.3] for _ in batch]
         mock_get_embeddings.return_value = mock_embeddings_model
 
         with patch('backend.indexing.get_tags', return_value="test"), \
-             patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
+             patch('backend.indexing.perform_global_clustering', return_value={0: [0, 1]}), \
              patch('backend.indexing.smart_summary', return_value="Summary"):
             res = create_index(self.temp_dir, "openai", "fake_key")
             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
