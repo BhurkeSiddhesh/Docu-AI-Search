@@ -265,14 +265,28 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
     for i in range(len(batches)):
         if i in chunk_embeddings_map:
             chunk_embeddings.extend(chunk_embeddings_map[i])
-        else:
-             logger.info(f"Warning: Missing embeddings for batch {i}")
-             # This will still cause index misalignment later. 
-             # Ideally we should fail or retry.
-             # For now, let's append zero-vectors or simple filler?
-             # No, if we lose embeddings, the cluster map indices will point to wrong things.
-             # We must ensure length matches.
-             pass
+
+    # Fail fast on embedding failures rather than silently produce a corrupt index.
+    # If even one batch returned empty (error path at line ~256), the FAISS vectors
+    # no longer line up 1:1 with chunk_strings and downstream search returns wrong chunks.
+    if not chunk_embeddings:
+        logger.error(
+            "Indexing aborted: every embedding batch failed (0/%d). "
+            "Check the embedding provider/API key.",
+            len(batches),
+        )
+        _clear_checkpoint()
+        return None, None, None, None, None, None, None, {}
+
+    if len(chunk_embeddings) != len(chunk_strings):
+        logger.error(
+            "Indexing aborted: embedding/chunk count mismatch (%d embeddings vs %d chunks). "
+            "Some batches failed — aborting to avoid a misaligned index.",
+            len(chunk_embeddings),
+            len(chunk_strings),
+        )
+        _clear_checkpoint()
+        return None, None, None, None, None, None, None, {}
 
     # 5b. BM25 Indexing - 65% to 68%
     if progress_callback: progress_callback(66, 100, "Building Keyword Index...")
