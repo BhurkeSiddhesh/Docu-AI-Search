@@ -305,6 +305,11 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-05-14 (Indexing Failure Hardening)
+- **fix**: `create_index` now aborts with a clear log and the empty 8-tuple when (a) every embedding batch fails or (b) the assembled embedding count doesn't match `chunk_strings`. Previously path (a) crashed at `chunk_emb_np.shape[1]` (IndexError on a 1-D empty array) and path (b) silently built a FAISS index whose vectors no longer aligned with the chunk indices stored in `cluster_map`, routing later searches to the wrong chunks. The checkpoint is cleared on abort so the next run re-extracts cleanly.
+- **test**: Added `TestIndexingEmbeddingBatchFailures` (all-fail, partial-fail, checkpoint-cleared-on-abort) and `TestIndexingNonexistentFolder` (mixed valid/missing folder list) to `backend/tests/test_indexing.py`.
+- **Files**: `backend/indexing.py`, `backend/tests/test_indexing.py`, `AGENTS.md`
+
 ### 2026-04-30 (Backend CI Stabilization & API Fixes)
 - **Resolved critical backend regressions for 100% test pass rate**
   - **fix**: Added `BackgroundTasks` to `/api/search` for offloading search history logging, resolving `test_background_history.py` failure.

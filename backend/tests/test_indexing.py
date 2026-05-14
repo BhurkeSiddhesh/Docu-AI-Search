@@ -1143,5 +1143,162 @@ class TestIndexingErrorRecovery(unittest.TestCase):
             create_index(self.temp_dir, "openai", "fake_key")
 
 
+class TestIndexingEmbeddingBatchFailures(unittest.TestCase):
+    """
+    Regression tests for indexing crashes caused by failed embedding batches.
+
+    Previously create_index would either crash with `IndexError: tuple index out
+    of range` at `chunk_emb_np.shape[1]` (all batches failed → empty array) or
+    silently produce a misaligned FAISS index (some batches failed → embeddings
+    fewer than chunks). It must now return the empty 8-tuple instead.
+    """
+
+    def setUp(self):
+        from backend import database
+        database.init_database()
+        self.temp_dir = tempfile.mkdtemp()
+        for i in range(2):
+            with open(os.path.join(self.temp_dir, f"doc{i}.txt"), 'w') as f:
+                f.write(f"content {i}")
+
+        self.pp_patcher = patch('concurrent.futures.ProcessPoolExecutor', side_effect=MockExecutor)
+        self.tp_patcher = patch('concurrent.futures.ThreadPoolExecutor', side_effect=MockExecutor)
+        self.ac_patcher = patch('concurrent.futures.as_completed', side_effect=lambda fs: fs)
+        self.pp_patcher.start()
+        self.tp_patcher.start()
+        self.ac_patcher.start()
+
+    def tearDown(self):
+        self.pp_patcher.stop()
+        self.tp_patcher.stop()
+        self.ac_patcher.stop()
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
+    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.get_embeddings')
+    @patch('backend.indexing.extract_text')
+    def test_all_embedding_batches_fail_returns_empty_tuple(self, mock_extract, mock_get_embeddings, mock_splitter_cls):
+        """
+        When every embedding batch fails (production catches the exception and
+        stores `[]`), create_index must abort cleanly — NOT crash on `shape[1]`
+        of an empty np.array.
+        """
+        mock_splitter_cls.return_value.split_text.return_value = ["chunk1", "chunk2"]
+        mock_extract.return_value = "some text"
+
+        # Simulate the post-catch state at indexing.py L254-256: every batch
+        # returns [] (this is what the production try/except puts in the map).
+        failing_embedder = MagicMock()
+        failing_embedder.embed_documents.return_value = []
+        mock_get_embeddings.return_value = failing_embedder
+
+        with patch('backend.indexing.get_tags', return_value=""), \
+             patch('backend.indexing.perform_global_clustering', return_value={}), \
+             patch('backend.indexing.smart_summary', return_value=""):
+            res = create_index(self.temp_dir, "openai", "fake_key")
+
+        # Must return the empty 8-tuple, not crash.
+        self.assertEqual(len(res), 8)
+        self.assertIsNone(res[0])  # index_chunks
+        self.assertEqual(res[7], {})  # meta
+
+    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.get_embeddings')
+    @patch('backend.indexing.extract_text')
+    def test_partial_embedding_failure_aborts_instead_of_corrupting(self, mock_extract, mock_get_embeddings, mock_splitter_cls):
+        """
+        When some embedding batches fail, create_index must abort rather than
+        silently produce a FAISS index that's misaligned with chunk_strings
+        (which would route searches to the wrong chunks).
+        """
+        # Force enough chunks to span multiple batches (default batch_size=100).
+        many_chunks = [f"chunk{i}" for i in range(150)]
+        mock_splitter_cls.return_value.split_text.return_value = many_chunks
+        mock_extract.return_value = "long text"
+
+        embedder = MagicMock()
+
+        def partial_embed(batch):
+            # First batch returns full vectors; second batch returns [] —
+            # the same state the production try/except produces on a failure.
+            if len(batch) == 100:
+                return [[0.1, 0.2, 0.3] for _ in batch]
+            return []
+
+        embedder.embed_documents.side_effect = partial_embed
+        mock_get_embeddings.return_value = embedder
+
+        with patch('backend.indexing.get_tags', return_value=""), \
+             patch('backend.indexing.perform_global_clustering', return_value={0: list(range(150))}), \
+             patch('backend.indexing.smart_summary', return_value="Summary"):
+            res = create_index(self.temp_dir, "openai", "fake_key")
+
+        # Must abort with the empty 8-tuple — not return a corrupt index.
+        self.assertEqual(len(res), 8)
+        self.assertIsNone(res[0])
+
+    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.get_embeddings')
+    @patch('backend.indexing.extract_text')
+    def test_checkpoint_cleared_after_embedding_abort(self, mock_extract, mock_get_embeddings, mock_splitter_cls):
+        """
+        When create_index aborts due to embedding failure, the on-disk
+        checkpoint must be cleared so the next attempt starts fresh
+        (rather than silently skipping previously-extracted files).
+        """
+        from backend import indexing as indexing_module
+
+        mock_splitter_cls.return_value.split_text.return_value = ["chunk1"]
+        mock_extract.return_value = "text"
+
+        failing_embedder = MagicMock()
+        failing_embedder.embed_documents.return_value = []
+        mock_get_embeddings.return_value = failing_embedder
+
+        # Redirect checkpoint to a temp path so we don't touch real data/.
+        ckpt_path = os.path.join(self.temp_dir, "index_checkpoint.json")
+        with patch.object(indexing_module, '_CHECKPOINT_PATH', ckpt_path), \
+             patch('backend.indexing.get_tags', return_value=""), \
+             patch('backend.indexing.perform_global_clustering', return_value={}), \
+             patch('backend.indexing.smart_summary', return_value=""):
+            create_index(self.temp_dir, "openai", "fake_key")
+            self.assertFalse(
+                os.path.exists(ckpt_path),
+                "Checkpoint must be cleared on embedding-failure abort so the next "
+                "run re-extracts files instead of silently skipping them."
+            )
+
+
+class TestIndexingNonexistentFolder(unittest.TestCase):
+    """Regression: a misconfigured folder list should not crash the API task."""
+
+    def setUp(self):
+        from backend import database
+        database.init_database()
+        self.temp_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
+    def test_mixed_existing_and_nonexistent_folders(self):
+        """If one folder is missing, indexing should still scan the others."""
+        good = os.path.join(self.temp_dir, "good")
+        os.makedirs(good)
+        with open(os.path.join(good, "a.txt"), 'w') as f:
+            f.write("hi")
+        missing = os.path.join(self.temp_dir, "does_not_exist")
+
+        # No files-found path returns the empty 8-tuple; a real run would
+        # extract from `good`. Either way the call must NOT raise FileNotFoundError.
+        try:
+            res = create_index([missing, good], "openai", "fake_key")
+        except FileNotFoundError as e:
+            self.fail(f"create_index raised on missing folder instead of skipping it: {e}")
+
+        self.assertEqual(len(res), 8)
+
+
 if __name__ == '__main__':
     unittest.main()
