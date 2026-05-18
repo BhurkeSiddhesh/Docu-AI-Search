@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(gh run view *)"
+      "Bash(gh run view *)",
+      "Bash(git push:*)",
+      "Bash(gh pr *)",
+      "PowerShell(gh pr list --state all --limit 50 --json number,title,state,author,createdAt,updatedAt,headRefName,baseRefName,isDraft,mergeable,mergeStateStatus,additions,deletions,changedFiles)",
+      "PowerShell(try { $prs = Invoke-RestMethod -Uri \"https://api.github.com/repos/BhurkeSiddhesh/Docu-AI-Search/pulls?state=all&per_page=100\" -ErrorAction Stop; $prs | Select-Object number, state, title, @{N='head';E={$_.head.ref}}, @{N='base';E={$_.base.ref}}, @{N='user';E={$_.user.login}}, draft, mergeable_state, created_at, updated_at, merged_at, @{N='merged';E={$_.merged_at -ne $null}} | Format-Table -AutoSize | Out-String -Width 300 } catch { Write-Output \"ERROR: $_\" })",
+      "PowerShell(git fetch --all --prune 2>&1)",
+      "PowerShell(winget install --id GitHub.cli -e --source winget --accept-source-agreements --accept-package-agreements 2>&1)"
     ]
   }
 }

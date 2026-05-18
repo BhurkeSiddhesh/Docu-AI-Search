@@ -1904,11 +1904,14 @@ def run_indexing(config, folders):
         embedding_client = get_active_embedding_client(app)
         _model_name = getattr(embedding_client, 'model_name', None) or getattr(embedding_client, 'model', 'unknown')
 
-        # Unpack first 7 values
+        # Unpack first 7 values. Passing existing_index_path lets create_index
+        # reuse cached chunks+vectors for files whose content hash hasn't changed
+        # since the last indexing run.
         res = create_index(
             folders, provider, api_key, model_path,
             progress_callback=indexing_progress_callback,
             embedding_client=embedding_client,
+            existing_index_path=INDEX_PATH,
         )
         new_index, new_docs, new_tags, new_summ_index, new_summ_docs, new_cluster_map, new_bm25 = res[:7]
         if new_index:

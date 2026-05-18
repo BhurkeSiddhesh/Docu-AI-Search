@@ -98,7 +98,8 @@ def init_database():
             last_modified FLOAT,
             faiss_start_idx INTEGER,
             faiss_end_idx INTEGER,
-            tags TEXT
+            tags TEXT,
+            content_hash TEXT
         )
     ''')
 
@@ -113,6 +114,10 @@ def init_database():
         cursor.execute("ALTER TABLE files ADD COLUMN file_type TEXT")
     if 'tags' not in existing_columns:
         cursor.execute("ALTER TABLE files ADD COLUMN tags TEXT")
+    if 'content_hash' not in existing_columns:
+        # Files with NULL content_hash will be treated as "needs re-extraction"
+        # on the first incremental run; this is the one-time upgrade cost.
+        cursor.execute("ALTER TABLE files ADD COLUMN content_hash TEXT")
     
     # Search history table
     cursor.execute('''
@@ -187,7 +192,8 @@ def init_database():
 # -----------------------------------------------------------------------------
 
 def add_file(path: str, filename: str, file_type: str, size: int, last_modified: float,
-             faiss_start_idx: int, faiss_end_idx: int, tags: List[str] = None):
+             faiss_start_idx: int, faiss_end_idx: int, tags: List[str] = None,
+             content_hash: Optional[str] = None):
     """
     Insert or replace a single file's metadata in the database.
 
@@ -200,18 +206,20 @@ def add_file(path: str, filename: str, file_type: str, size: int, last_modified:
         faiss_start_idx (int): Beginning index in the vector database.
         faiss_end_idx (int): Ending index in the vector database.
         tags (List[str], optional): List of descriptive tags. Defaults to None.
+        content_hash (str, optional): SHA-256 of file bytes, used by incremental
+            indexing to skip unchanged files.
     """
     conn = get_connection()
     cursor = conn.cursor()
-    
+
     tags_json = json.dumps(tags) if tags else '[]'
-    
+
     try:
         cursor.execute('''
             INSERT OR REPLACE INTO files
-            (path, filename, file_type, size, last_modified, faiss_start_idx, faiss_end_idx, tags)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (path, filename, file_type, size, last_modified, faiss_start_idx, faiss_end_idx, tags_json))
+            (path, filename, file_type, size, last_modified, faiss_start_idx, faiss_end_idx, tags, content_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (path, filename, file_type, size, last_modified, faiss_start_idx, faiss_end_idx, tags_json, content_hash))
         conn.commit()
     except Exception as e:
         print(f"Error adding file to DB: {e}")
@@ -223,23 +231,54 @@ def add_files_batch(files_data: List[Dict]):
     Batch insert multiple files for better performance.
 
     Args:
-        files_data (List[Dict]): A list of dictionaries containing file metadata 
-            keys matching the 'files' table columns.
+        files_data (List[Dict]): A list of dictionaries containing file metadata
+            keys matching the 'files' table columns. Each dict must include
+            ``content_hash`` (use None for legacy callers).
     """
     conn = get_connection()
     cursor = conn.cursor()
-    
+
+    # Backfill content_hash=None for callers that pre-date the column so the
+    # named-parameter executemany below doesn't KeyError on older test fixtures.
+    for row in files_data:
+        row.setdefault('content_hash', None)
+
     try:
         cursor.executemany('''
             INSERT OR REPLACE INTO files
-            (path, filename, file_type, size, last_modified, faiss_start_idx, faiss_end_idx, tags)
-            VALUES (:path, :filename, :file_type, :size, :last_modified, :faiss_start_idx, :faiss_end_idx, :tags)
+            (path, filename, file_type, size, last_modified, faiss_start_idx, faiss_end_idx, tags, content_hash)
+            VALUES (:path, :filename, :file_type, :size, :last_modified, :faiss_start_idx, :faiss_end_idx, :tags, :content_hash)
         ''', files_data)
         conn.commit()
     except Exception as e:
         print(f"Error adding batch files to DB: {e}")
     finally:
         conn.close()
+
+
+def get_indexed_state() -> Dict[str, Dict[str, Any]]:
+    """
+    Return the indexed-state snapshot used by incremental indexing.
+
+    Returns:
+        Dict mapping file path → {content_hash, faiss_start_idx, faiss_end_idx}.
+        Files with a NULL content_hash (carried over from pre-migration rows)
+        will appear with content_hash=None, which the caller treats as
+        "needs re-extraction".
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT path, content_hash, faiss_start_idx, faiss_end_idx FROM files')
+    state = {
+        row['path']: {
+            'content_hash': row['content_hash'],
+            'faiss_start_idx': row['faiss_start_idx'],
+            'faiss_end_idx': row['faiss_end_idx'],
+        }
+        for row in cursor.fetchall()
+    }
+    conn.close()
+    return state
 
 def get_all_files(limit: int = 100, offset: int = 0) -> List[Dict]:
     """

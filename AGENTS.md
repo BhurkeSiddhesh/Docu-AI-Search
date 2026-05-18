@@ -305,9 +305,19 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-05-14 (Incremental Indexing + Speedups)
+- **perf**: `create_index` is now incremental. Re-runs over a previously-indexed folder reuse cached chunks and vectors for files whose sha256 content hash hasn't changed; only new/changed files go through extraction and embedding. The first run after upgrade is a one-time full rebuild because pre-migration rows have no `content_hash`.
+- **perf**: Extraction checkpoint now persists every 25 files instead of every file, eliminating hundreds of fsyncs per run while still bounding crash-resume work to ≤25 files.
+- **perf**: Embedding `ThreadPoolExecutor` raised from 5 to 10 workers for better cloud-API saturation.
+- **perf**: Cluster summarization (the LLM-heavy RAPTOR step) is now gated behind `[AdvancedRAG] cluster_summarization` in `config.ini` and defaults to **off**. Users who want hierarchical summary retrieval can opt back in. Hybrid FAISS+BM25 search continues to work unchanged when summaries are absent.
+- **schema**: New `content_hash TEXT` column on the `files` table with idempotent `ALTER TABLE` migration. New helper `database.get_indexed_state()` returns `{path: {content_hash, faiss_start_idx, faiss_end_idx}}` for the incremental classification step.
+- **api**: The `api.py` indexing worker now passes `existing_index_path=INDEX_PATH` so create_index can read the prior on-disk index for vector reuse.
+- **test**: Added `TestIncrementalIndexing` (no-change reuse, new file, modified file, deleted file) and `TestClusterSummarizationGating` (default-off + explicit-on) to `backend/tests/test_indexing.py`.
+- **Files**: `backend/indexing.py`, `backend/database.py`, `backend/api.py`, `backend/tests/test_indexing.py`, `AGENTS.md`
+
 ### 2026-05-14 (Indexing Failure Hardening)
 - **fix**: `create_index` now aborts with a clear log and the empty 8-tuple when (a) every embedding batch fails or (b) the assembled embedding count doesn't match `chunk_strings`. Previously path (a) crashed at `chunk_emb_np.shape[1]` (IndexError on a 1-D empty array) and path (b) silently built a FAISS index whose vectors no longer aligned with the chunk indices stored in `cluster_map`, routing later searches to the wrong chunks. The checkpoint is cleared on abort so the next run re-extracts cleanly.
-- **test**: Added `TestIndexingEmbeddingBatchFailures` (all-fail, partial-fail, checkpoint-cleared-on-abort) and `TestIndexingNonexistentFolder` (mixed valid/missing folder list) to `backend/tests/test_indexing.py`.
+- **test**: Added `TestIndexingEmbeddingBatchFailures` (all-fail, partial-fail, checkpoint-cleared-on-abort) and `TestIndexingNonexistentFolder` (mixed valid/missing folder list) to `backend/tests/test_indexing.py`. Follow-up: also added a test-side fix for the symlink test that ran only on Linux CI and tripped the new alignment guard.
 - **Files**: `backend/indexing.py`, `backend/tests/test_indexing.py`, `AGENTS.md`
 
 ### 2026-04-30 (Backend CI Stabilization & API Fixes)

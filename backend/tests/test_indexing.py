@@ -1311,5 +1311,362 @@ class TestIndexingNonexistentFolder(unittest.TestCase):
         self.assertIsNone(res[0])
 
 
+class _StubFaissIndex:
+    """
+    A minimal stand-in for faiss.IndexFlatL2 used by the incremental tests.
+    The top of this test file globally mocks faiss.IndexFlatL2 with MagicMock,
+    so we cannot build a real one for the "prior" index — but the incremental
+    branch in create_index calls `.ntotal` and `.reconstruct_n(start, n)`,
+    which a bare MagicMock would silently return MagicMocks for.
+    """
+
+    def __init__(self, dim: int):
+        self.d = dim
+        self._vecs = np.zeros((0, dim), dtype='float32')
+
+    @property
+    def ntotal(self) -> int:
+        return int(self._vecs.shape[0])
+
+    def add(self, vecs):
+        self._vecs = np.vstack([self._vecs, np.asarray(vecs, dtype='float32')])
+
+    def reconstruct_n(self, start: int, n: int):
+        return self._vecs[start:start + n].copy()
+
+
+class TestIncrementalIndexing(unittest.TestCase):
+    """
+    Tests for the incremental-indexing fast path: re-running create_index over
+    a folder whose files haven't changed should reuse their cached chunks and
+    vectors from the existing on-disk index instead of re-extracting and
+    re-embedding from scratch.
+    """
+
+    def setUp(self):
+        from backend import database
+        database.init_database()
+        # Each test must start with a clean DB so prior tests' file rows don't
+        # accidentally satisfy the "unchanged" check for the new temp_dir.
+        database.clear_files()
+        database.clear_clusters()
+        # Keep the index sidecar OUTSIDE the scanned folder, otherwise os.walk
+        # would pick it up as a 4th "file" to index.
+        self.scratch_root = tempfile.mkdtemp()
+        self.temp_dir = os.path.join(self.scratch_root, "docs")
+        os.makedirs(self.temp_dir)
+        self.fake_index_path = os.path.join(self.scratch_root, "index.faiss")
+        with open(self.fake_index_path, 'w') as f:
+            f.write("stub")
+
+        self.pp_patcher = patch('concurrent.futures.ProcessPoolExecutor', side_effect=MockExecutor)
+        self.tp_patcher = patch('concurrent.futures.ThreadPoolExecutor', side_effect=MockExecutor)
+        self.ac_patcher = patch('concurrent.futures.as_completed', side_effect=lambda fs: fs)
+        self.pp_patcher.start()
+        self.tp_patcher.start()
+        self.ac_patcher.start()
+
+    def tearDown(self):
+        self.pp_patcher.stop()
+        self.tp_patcher.stop()
+        self.ac_patcher.stop()
+        if os.path.exists(self.scratch_root):
+            shutil.rmtree(self.scratch_root)
+
+    def _write_file(self, name: str, content: str) -> str:
+        path = os.path.join(self.temp_dir, name)
+        with open(path, 'w') as f:
+            f.write(content)
+        return path
+
+    def _seed_prior_state(self, file_specs):
+        """
+        Pre-populate the DB and build a fake "prior" FAISS index + docs list
+        as if create_index had run before. ``file_specs`` is a list of
+        ``(path, n_chunks)`` tuples in the order they were originally indexed.
+
+        Returns the prior (index, docs) tuple shaped like load_index()[0:2].
+        """
+        import hashlib
+
+        prior_docs = []
+        all_vecs = []
+        files_rows = []
+        cursor = 0
+        for path, n_chunks in file_specs:
+            with open(path, 'rb') as f:
+                content_hash = hashlib.sha256(f.read()).hexdigest()
+            file_start = cursor
+            for j in range(n_chunks):
+                prior_docs.append({
+                    'text': f"prior-chunk-{path}-{j}",
+                    'filepath': path,
+                    'faiss_idx': cursor,
+                    'file_id': None,
+                })
+                # Distinctive vector values let a future test assert reuse if needed.
+                all_vecs.append([float(cursor) + 0.5, 0.0, 0.0])
+                cursor += 1
+            file_stat = os.stat(path)
+            files_rows.append({
+                'path': path,
+                'filename': os.path.basename(path),
+                'file_type': os.path.splitext(path)[1].lower(),
+                'size': file_stat.st_size,
+                'last_modified': file_stat.st_mtime,
+                'faiss_start_idx': file_start,
+                'faiss_end_idx': cursor - 1,
+                'tags': '[]',
+                'content_hash': content_hash,
+            })
+
+        from backend import database as _database
+        _database.add_files_batch(files_rows)
+
+        # Real (stubbed) ntotal/reconstruct_n behavior — see _StubFaissIndex above
+        # for why a bare MagicMock isn't sufficient here.
+        prior_index = _StubFaissIndex(3)
+        prior_index.add(np.array(all_vecs, dtype='float32'))
+        return prior_index, prior_docs
+
+    @patch('backend.indexing.load_index')
+    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.get_embeddings')
+    @patch('backend.indexing.extract_text')
+    def test_rerun_with_no_changes_does_not_re_embed(self, mock_extract, mock_get_embeddings,
+                                                     mock_splitter_cls, mock_load_index):
+        """
+        The core incremental promise: when nothing has changed, the embedding
+        client is never asked to embed anything.
+        """
+        path1 = self._write_file("a.txt", "alpha content")
+        path2 = self._write_file("b.txt", "beta content")
+
+        prior_index, prior_docs = self._seed_prior_state([(path1, 1), (path2, 1)])
+        mock_load_index.return_value = (prior_index, prior_docs, [""] * 2, None, None, None, None, {'model_name': 'test', 'embedding_dim': 3})
+
+        # If these are called, the test should fail — they signal we re-did
+        # work that should have been skipped.
+        mock_extract.side_effect = AssertionError("extract_text must not be called for unchanged files")
+        mock_splitter_cls.return_value.split_text.side_effect = AssertionError("split_text must not be called for unchanged files")
+        embedder = MagicMock()
+        embedder.embed_documents.side_effect = AssertionError("embed_documents must not be called for unchanged files")
+        mock_get_embeddings.return_value = embedder
+
+        res = create_index(self.temp_dir, "openai", "fake_key", existing_index_path=self.fake_index_path)
+        index, docs, tags, idx_sum, clus_sum, clus_map, bm25, meta = res
+
+        self.assertIsNotNone(index, "Incremental run must still produce an index from reused vectors")
+        self.assertEqual(len(docs), 2, "All prior chunks should have been carried over")
+        self.assertEqual(meta.get('embedding_dim'), 3)
+        # The actual returned `index` is the module-mocked faiss.IndexFlatL2,
+        # so we can't introspect ntotal here. The real proof of reuse is that
+        # the embedding-client mock was never called (asserted via side_effect).
+
+    @patch('backend.indexing.load_index')
+    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.get_embeddings')
+    @patch('backend.indexing.extract_text')
+    def test_rerun_with_new_file_only_embeds_the_new_one(self, mock_extract, mock_get_embeddings,
+                                                          mock_splitter_cls, mock_load_index):
+        """
+        Adding one new file to a previously-indexed folder should only run
+        extraction+embedding for that one file; the other two stay reused.
+        """
+        path1 = self._write_file("a.txt", "alpha content")
+        path2 = self._write_file("b.txt", "beta content")
+
+        prior_index, prior_docs = self._seed_prior_state([(path1, 1), (path2, 1)])
+        mock_load_index.return_value = (prior_index, prior_docs, [""] * 2, None, None, None, None, {'model_name': 'test', 'embedding_dim': 3})
+
+        # Now add a new file the prior index doesn't know about.
+        path3 = self._write_file("c.txt", "gamma content")
+
+        mock_extract.return_value = "gamma content"
+        mock_splitter_cls.return_value.split_text.return_value = ["gamma-chunk"]
+        embedder = MagicMock()
+        embedder.embed_documents.side_effect = lambda batch: [[9.9, 0.0, 0.0] for _ in batch]
+        mock_get_embeddings.return_value = embedder
+
+        res = create_index(self.temp_dir, "openai", "fake_key", existing_index_path=self.fake_index_path)
+        index, docs, tags, _, _, _, _, _ = res
+
+        self.assertIsNotNone(index)
+        self.assertEqual(len(docs), 3, "Two reused + one new chunk")
+        # extract_text should have been called exactly once — for the new file.
+        # (mock_extract.call_count reflects only direct calls inside this run.)
+        self.assertEqual(mock_extract.call_count, 1)
+        # And the embedding client should have been called once with the new chunk.
+        embedder.embed_documents.assert_called_once()
+        called_batch = embedder.embed_documents.call_args[0][0]
+        self.assertEqual(called_batch, ["gamma-chunk"])
+
+    @patch('backend.indexing.load_index')
+    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.get_embeddings')
+    @patch('backend.indexing.extract_text')
+    def test_rerun_with_modified_file_re_embeds_only_that_file(self, mock_extract, mock_get_embeddings,
+                                                                 mock_splitter_cls, mock_load_index):
+        """
+        Touching the content of one file should cause it to be re-extracted
+        and re-embedded; siblings stay reused.
+        """
+        path1 = self._write_file("a.txt", "alpha content")
+        path2 = self._write_file("b.txt", "beta content")
+
+        prior_index, prior_docs = self._seed_prior_state([(path1, 1), (path2, 1)])
+        mock_load_index.return_value = (prior_index, prior_docs, [""] * 2, None, None, None, None, {'model_name': 'test', 'embedding_dim': 3})
+
+        # Modify b.txt — its hash no longer matches the DB row.
+        with open(path2, 'w') as f:
+            f.write("beta content MUTATED")
+
+        mock_extract.return_value = "beta content MUTATED"
+        mock_splitter_cls.return_value.split_text.return_value = ["new-beta-chunk"]
+        embedder = MagicMock()
+        embedder.embed_documents.side_effect = lambda batch: [[7.7, 0.0, 0.0] for _ in batch]
+        mock_get_embeddings.return_value = embedder
+
+        res = create_index(self.temp_dir, "openai", "fake_key", existing_index_path=self.fake_index_path)
+        index, docs, _, _, _, _, _, _ = res
+
+        self.assertIsNotNone(index)
+        self.assertEqual(len(docs), 2, "One reused + one re-embedded chunk")
+        self.assertEqual(mock_extract.call_count, 1, "Only the modified file should be re-extracted")
+        embedder.embed_documents.assert_called_once()
+
+    @patch('backend.indexing.load_index')
+    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.get_embeddings')
+    @patch('backend.indexing.extract_text')
+    def test_rerun_with_deleted_file_drops_its_chunks(self, mock_extract, mock_get_embeddings,
+                                                       mock_splitter_cls, mock_load_index):
+        """
+        A file removed from the folder between runs should disappear from the
+        new index entirely; the remaining file is still reused.
+        """
+        path1 = self._write_file("a.txt", "alpha content")
+        path2 = self._write_file("b.txt", "beta content")
+
+        prior_index, prior_docs = self._seed_prior_state([(path1, 1), (path2, 1)])
+        mock_load_index.return_value = (prior_index, prior_docs, [""] * 2, None, None, None, None, {'model_name': 'test', 'embedding_dim': 3})
+
+        # Delete b.txt so the new scan only sees a.txt.
+        os.remove(path2)
+
+        # Neither extract nor embed should be called: a.txt is unchanged.
+        mock_extract.side_effect = AssertionError("must not re-extract unchanged file")
+        mock_splitter_cls.return_value.split_text.side_effect = AssertionError("must not chunk")
+        embedder = MagicMock()
+        embedder.embed_documents.side_effect = AssertionError("must not embed")
+        mock_get_embeddings.return_value = embedder
+
+        res = create_index(self.temp_dir, "openai", "fake_key", existing_index_path=self.fake_index_path)
+        index, docs, _, _, _, _, _, _ = res
+
+        self.assertIsNotNone(index)
+        self.assertEqual(len(docs), 1, "Deleted file's chunk should be gone")
+
+
+class TestClusterSummarizationGating(unittest.TestCase):
+    """
+    The cluster-summarization step is the single biggest cost in a full-rebuild
+    (one LLM call per cluster). It's now gated behind [AdvancedRAG]
+    cluster_summarization in config.ini and should default to off.
+    """
+
+    def setUp(self):
+        from backend import database
+        database.init_database()
+        database.clear_files()
+        database.clear_clusters()
+        self.temp_dir = tempfile.mkdtemp()
+        self._write_file = lambda name, content: (
+            open(os.path.join(self.temp_dir, name), 'w').write(content)
+            or os.path.join(self.temp_dir, name)
+        )
+        with open(os.path.join(self.temp_dir, "doc.txt"), 'w') as f:
+            f.write("hello")
+
+        self.pp_patcher = patch('concurrent.futures.ProcessPoolExecutor', side_effect=MockExecutor)
+        self.tp_patcher = patch('concurrent.futures.ThreadPoolExecutor', side_effect=MockExecutor)
+        self.ac_patcher = patch('concurrent.futures.as_completed', side_effect=lambda fs: fs)
+        self.pp_patcher.start()
+        self.tp_patcher.start()
+        self.ac_patcher.start()
+
+    def tearDown(self):
+        self.pp_patcher.stop()
+        self.tp_patcher.stop()
+        self.ac_patcher.stop()
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir)
+
+    @patch('backend.indexing.smart_summary')
+    @patch('backend.indexing.perform_global_clustering')
+    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.get_embeddings')
+    @patch('backend.indexing.extract_text')
+    def test_cluster_summarization_off_by_default(self, mock_extract, mock_get_embeddings,
+                                                    mock_splitter_cls, mock_clustering, mock_smart_summary):
+        """
+        With no [AdvancedRAG] cluster_summarization=true in config, indexing
+        should not invoke clustering or smart_summary at all.
+        """
+        mock_extract.return_value = "hello"
+        mock_splitter_cls.return_value.split_text.return_value = ["chunk"]
+        embedder = MagicMock()
+        embedder.embed_documents.side_effect = lambda batch: [[0.1] * 3 for _ in batch]
+        mock_get_embeddings.return_value = embedder
+
+        # _clustering_enabled() reads config.ini at the project root. We point
+        # it at a temp file with the flag explicitly off.
+        ini_path = os.path.join(self.temp_dir, "config.ini")
+        with open(ini_path, 'w') as f:
+            f.write("[AdvancedRAG]\ncluster_summarization = false\n")
+
+        from backend import indexing as indexing_module
+        with patch.object(indexing_module, '_CONFIG_PATH', ini_path):
+            res = create_index(self.temp_dir, "openai", "fake_key")
+
+        self.assertIsNotNone(res[0])
+        mock_clustering.assert_not_called()
+        mock_smart_summary.assert_not_called()
+        # And the returned cluster_summaries / index_summaries should be empty.
+        self.assertEqual(res[3], None)
+        self.assertEqual(res[4], [])
+
+    @patch('backend.indexing.smart_summary')
+    @patch('backend.indexing.perform_global_clustering')
+    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.get_embeddings')
+    @patch('backend.indexing.extract_text')
+    def test_cluster_summarization_runs_when_explicitly_enabled(self, mock_extract, mock_get_embeddings,
+                                                                  mock_splitter_cls, mock_clustering, mock_smart_summary):
+        """
+        Power users who set cluster_summarization=true should still get the
+        full RAPTOR pipeline.
+        """
+        mock_extract.return_value = "hello"
+        mock_splitter_cls.return_value.split_text.return_value = ["chunk"]
+        embedder = MagicMock()
+        embedder.embed_documents.side_effect = lambda batch: [[0.1] * 3 for _ in batch]
+        mock_get_embeddings.return_value = embedder
+        mock_clustering.return_value = {0: [0]}
+        mock_smart_summary.return_value = "summary"
+
+        ini_path = os.path.join(self.temp_dir, "config.ini")
+        with open(ini_path, 'w') as f:
+            f.write("[AdvancedRAG]\ncluster_summarization = true\n")
+
+        from backend import indexing as indexing_module
+        with patch.object(indexing_module, '_CONFIG_PATH', ini_path):
+            res = create_index(self.temp_dir, "openai", "fake_key")
+
+        self.assertIsNotNone(res[0])
+        mock_clustering.assert_called_once()
+        mock_smart_summary.assert_called_once()
+
+
 if __name__ == '__main__':
     unittest.main()
