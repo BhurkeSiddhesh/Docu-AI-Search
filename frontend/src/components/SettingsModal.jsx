@@ -43,6 +43,18 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
 
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') onClose();
+        };
+        if (isOpen) {
+            window.addEventListener('keydown', handleKeyDown);
+        }
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isOpen, onClose]);
+
     const loadAll = async () => {
         try {
             const [c, e, h, cs] = await Promise.all([
@@ -334,7 +346,7 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                                                         <button
                                                             onClick={() => removeFolder(f)}
                                                             className="p-1.5 rounded-md text-slate-500 hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-500 transition"
-                                                            aria-label="Remove folder"
+                                                            aria-label={`Remove ${f} from index`}
                                                         >
                                                             <Trash2 className="w-3.5 h-3.5" />
                                                         </button>
@@ -401,18 +413,20 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                                         </div>
 
                                         <div>
-                                            <div className="label">Model name</div>
+                                            <label htmlFor="embedding-model-name" className="label">Model name</label>
                                             <input
+                                                id="embedding-model-name"
                                                 className="input font-mono text-xs"
                                                 value={embedding.model_name}
                                                 onChange={(e) => setEmbedding((s) => ({ ...s, model_name: e.target.value }))}
                                             />
                                         </div>
-
+ 
                                         {EMBEDDING_TYPES.find((t) => t.value === embedding.provider_type)?.needsKey && (
                                             <div>
-                                                <div className="label">API key</div>
+                                                <label htmlFor="embedding-api-key" className="label">API key</label>
                                                 <input
+                                                    id="embedding-api-key"
                                                     type="password"
                                                     className="input"
                                                     value={embedding.api_key}
@@ -613,7 +627,7 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                 <footer className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-200 dark:border-slate-800">
                     <button onClick={onClose} className="btn-ghost">Cancel</button>
                     <button onClick={save} disabled={saving || !config} className="btn-primary">
-                        {saving ? 'Saving…' : 'Save changes'}
+                        {saving ? 'Saving…' : 'Save Changes'}
                     </button>
                 </footer>
             </div>
