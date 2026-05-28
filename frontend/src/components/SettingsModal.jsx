@@ -216,24 +216,33 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
             toast.error('Could not clear cache');
         }
     };
-
     if (!isOpen) return null;
 
     return (
         <div
             className="fixed inset-0 z-[80] bg-slate-900/50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in"
             onClick={(e) => e.target === e.currentTarget && onClose()}
+            onKeyDown={(e) => {
+                if (e.key === 'Escape') onClose();
+            }}
+            tabIndex={-1}
+            aria-hidden="true"
         >
-            <div className="bg-white dark:bg-slate-900 w-full sm:max-w-5xl h-[92vh] sm:h-[88vh] sm:rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden">
+            <div 
+                className="bg-white dark:bg-slate-900 w-full sm:max-w-5xl h-[92vh] sm:h-[88vh] sm:rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="settings-modal-title"
+            >
                 {/* Header */}
                 <header className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
                     <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
                             <SettingsIcon className="w-4 h-4" />
                         </div>
-                        <h2 className="font-semibold text-slate-900 dark:text-slate-50">Settings</h2>
+                        <h2 id="settings-modal-title" className="font-semibold text-slate-900 dark:text-slate-50">Settings</h2>
                     </div>
-                    <button onClick={onClose} className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close">
+                    <button onClick={onClose} className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close settings">
                         <X className="w-5 h-5" />
                     </button>
                 </header>
