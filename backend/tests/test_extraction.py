@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from backend.file_processing import extract_text
 
 # Test folder
-test_folder = r'C:\Users\siddh\OneDrive\Desktop\Resume'
+test_folder = '/app/test_docs'
 
 print(f"Testing file extraction from: {test_folder}")
 print("="*60)
