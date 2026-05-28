@@ -217,7 +217,6 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
         }
     };
     if (!isOpen) return null;
-
     return (
         <div
             className="fixed inset-0 z-[80] bg-slate-900/50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in"
@@ -226,7 +225,6 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                 if (e.key === 'Escape') onClose();
             }}
             tabIndex={-1}
-            aria-hidden="true"
         >
             <div 
                 className="bg-white dark:bg-slate-900 w-full sm:max-w-5xl h-[92vh] sm:h-[88vh] sm:rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden"

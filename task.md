@@ -5,8 +5,8 @@
     - [x] Merge compatibility `fix/slowapi-middleware-compat` branch
     - [x] Merge pagination `fix/api-files-pagination` branch
     - [x] Merge config preservation `claude/sleepy-shaw-33a61c` branch
-    - [/] Merge test fix `claude/interesting-mcclintock-4e358d` branch
-    - [ ] Merge a11y and exceptions `claude/xenodochial-noether-9e832f` branch
+    - [x] Merge test fix `claude/interesting-mcclintock-4e358d` branch
+    - [/] Merge a11y and exceptions `claude/xenodochial-noether-9e832f` branch
 - [ ] Run full test suites and code validation
     - [ ] Run quick backend test suite (`npm run test`)
     - [ ] Run full frontend Vitest test suite (`cd frontend && npm run test`)
