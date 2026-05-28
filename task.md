@@ -3,8 +3,8 @@
 - [/] Merge target feature/bugfix branches into `main`
     - [x] Merge cumulative `fix/issue-81` branch
     - [x] Merge compatibility `fix/slowapi-middleware-compat` branch
-    - [/] Merge pagination `fix/api-files-pagination` branch
-    - [ ] Merge config preservation `claude/sleepy-shaw-33a61c` branch
+    - [x] Merge pagination `fix/api-files-pagination` branch
+    - [/] Merge config preservation `claude/sleepy-shaw-33a61c` branch
     - [ ] Merge test fix `claude/interesting-mcclintock-4e358d` branch
     - [ ] Merge a11y and exceptions `claude/xenodochial-noether-9e832f` branch
 - [ ] Run full test suites and code validation
