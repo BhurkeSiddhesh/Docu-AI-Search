@@ -1825,7 +1825,7 @@ def indexing_progress_callback(current, total, message=None):
         pass
 
 @app.get("/api/agent/chat")
-async def agent_chat(query: str, request: Request):
+async def agent_chat(query: str, request: Request, _auth=Depends(require_auth)):
     """
     Stream AI agent's internal thoughts and final grounded answer.
 
