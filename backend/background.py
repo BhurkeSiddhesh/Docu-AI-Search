@@ -63,15 +63,23 @@ def start_background_indexing():
     config.read('config.ini')
 
     if config.has_section('General') and config.getboolean('General', 'auto_index', fallback=False):
-        folder = config.get('General', 'folder')
+        # Support both 'folders' (plural, written by POST /api/config) and legacy 'folder'
+        folders_str = config.get('General', 'folders', fallback='')
+        folder_legacy = config.get('General', 'folder', fallback='')
+        folders = [f.strip() for f in folders_str.split(',') if f.strip()] or (
+            [folder_legacy] if folder_legacy else []
+        )
+        if not folders:
+            return
         provider = config.get('LocalLLM', 'provider', fallback='openai')
         api_key = config.get('APIKeys', 'openai_api_key', fallback=None)
         model_path = config.get('LocalLLM', 'model_path', fallback=None)
 
-        event_handler = IndexingEventHandler(folder, provider, api_key, model_path)
-        event_handler.update_index()
         observer = Observer()
-        observer.schedule(event_handler, folder, recursive=True)
+        for folder in folders:
+            event_handler = IndexingEventHandler(folder, provider, api_key, model_path)
+            event_handler.update_index()
+            observer.schedule(event_handler, folder, recursive=True)
         observer.start()
 
         try:
