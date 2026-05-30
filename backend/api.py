@@ -1379,7 +1379,8 @@ async def get_search_history(request: Request, _auth=Depends(require_auth)):
         history = await asyncio.to_thread(database.get_search_history, limit=50)
         return history
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("[API] Failed to retrieve search history: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to retrieve search history")
 
 @app.delete("/api/search/history/{history_id}")
 async def delete_search_history_item(history_id: int, request: Request, _auth=Depends(require_auth)):
@@ -1402,7 +1403,8 @@ async def delete_search_history_item(history_id: int, request: Request, _auth=De
             return {"status": "success", "message": "History item deleted"}
         raise HTTPException(status_code=404, detail="History item not found")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("[API] Failed to delete history item %s: %s", history_id, e)
+        raise HTTPException(status_code=500, detail="Failed to delete history item")
 
 @app.delete("/api/search/history")
 async def delete_all_search_history(request: Request, _auth=Depends(require_auth)):
@@ -1422,8 +1424,8 @@ async def delete_all_search_history(request: Request, _auth=Depends(require_auth
         count = database.delete_all_search_history()
         return {"status": "success", "message": f"Deleted {count} history items", "deleted_count": count}
     except Exception as e:
-        logger.error(f"Error clearing history: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("[API] Failed to clear search history: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to clear search history")
 
 class LogRequest(BaseModel):
     """
@@ -1557,7 +1559,8 @@ async def list_indexed_files(request: Request, limit: int = 100, offset: int = 0
         total = await asyncio.to_thread(database.count_files)
         return {"files": files, "total": total, "limit": limit, "offset": offset}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("[API] Failed to list indexed files: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to retrieve indexed files")
 
 @app.get("/api/files/preview")
 async def preview_file(path: str, request: Request, chars: int = 2000, _auth=Depends(require_auth)):
