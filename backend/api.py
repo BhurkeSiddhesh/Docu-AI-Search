@@ -1013,8 +1013,12 @@ async def search_files(search_data: SearchRequest, request: Request, background_
                 'cluster_map': cluster_map, 'bm25': bm25
             })
             async def _agent_sse():
-                async for event in agent.stream_chat(search_data.query):
-                    yield f"data: {json.dumps(event)}\n\n"
+                try:
+                    async for event in agent.stream_chat(search_data.query):
+                        yield f"data: {json.dumps(event)}\n\n"
+                except Exception as e:
+                    logger.error("[Agent Search] Stream error: %s", e)
+                    yield f"data: {json.dumps({'type': 'error', 'content': 'An error occurred processing your request'})}\n\n"
             return StreamingResponse(_agent_sse(), media_type="text/event-stream")
 
         model_path = config.get('LocalLLM', 'model_path', fallback=None)
