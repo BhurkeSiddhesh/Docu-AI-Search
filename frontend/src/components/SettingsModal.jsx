@@ -72,7 +72,8 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                 ollama_base_url:    cfg.ollama_base_url || 'http://localhost:11434',
                 lmstudio_base_url:  cfg.lmstudio_base_url || 'http://localhost:1234/v1',
                 external_model_name: cfg.external_model_name || '',
-                external_api_key:   cfg.external_api_key || '',
+                external_api_key:     '',
+                external_api_key_set: cfg.external_api_key_set,
             });
             setEmbedding({
                 provider_type: e.data.provider_type || 'local',
@@ -522,12 +523,20 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                                             />
                                         </div>
                                         <div>
-                                            <div className="label">External API key (optional)</div>
+                                            <div className="label flex items-center justify-between">
+                                                <span>External API key (optional)</span>
+                                                {config.external_api_key_set && (
+                                                    <span className="text-[10px] font-medium normal-case tracking-normal text-green-600 dark:text-green-400">
+                                                        Key configured
+                                                    </span>
+                                                )}
+                                            </div>
                                             <input
                                                 type="password"
                                                 className="input"
                                                 value={config.external_api_key}
                                                 onChange={(e) => setConfig((c) => ({ ...c, external_api_key: e.target.value }))}
+                                                placeholder={config.external_api_key_set ? 'Leave blank to keep existing key' : 'Paste API key'}
                                             />
                                         </div>
                                     </div>
