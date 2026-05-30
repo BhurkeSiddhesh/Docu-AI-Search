@@ -1347,14 +1347,14 @@ async def list_system_prompts(request: Request, category: Optional[str] = None):
     return get_system_prompts(category=category)
 
 @app.post("/api/system-prompts")
-async def create_system_prompt(body: SystemPromptRequest, request: Request):
+async def create_system_prompt(body: SystemPromptRequest, request: Request, _auth=Depends(require_auth)):
     """Create a new system prompt."""
     from backend.system_prompts import add_system_prompt
     prompt_id = add_system_prompt(body.name, body.content, body.category)
     return {"status": "success", "id": prompt_id}
 
 @app.delete("/api/system-prompts/{prompt_id}")
-async def delete_system_prompt_endpoint(prompt_id: int, request: Request):
+async def delete_system_prompt_endpoint(prompt_id: int, request: Request, _auth=Depends(require_auth)):
     """Delete a system prompt by ID."""
     from backend.system_prompts import delete_system_prompt
     if delete_system_prompt(prompt_id):
