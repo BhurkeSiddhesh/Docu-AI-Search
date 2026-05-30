@@ -1012,7 +1012,10 @@ async def search_files(search_data: SearchRequest, request: Request, background_
                 'index_summaries': index_summaries, 'cluster_summaries': cluster_summaries,
                 'cluster_map': cluster_map, 'bm25': bm25
             })
-            return StreamingResponse(agent.stream_chat(search_data.query), media_type="text/event-stream")
+            async def _agent_sse():
+                async for event in agent.stream_chat(search_data.query):
+                    yield f"data: {json.dumps(event)}\n\n"
+            return StreamingResponse(_agent_sse(), media_type="text/event-stream")
 
         model_path = config.get('LocalLLM', 'model_path', fallback=None)
         tensor_split_str = config.get('LocalLLM', 'tensor_split', fallback=None)
