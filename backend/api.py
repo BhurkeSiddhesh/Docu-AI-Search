@@ -1401,6 +1401,8 @@ async def delete_search_history_item(history_id: int, request: Request):
         if success:
             return {"status": "success", "message": "History item deleted"}
         raise HTTPException(status_code=404, detail="History item not found")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
