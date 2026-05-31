@@ -1398,13 +1398,12 @@ async def delete_search_history_item(history_id: int, request: Request):
     """
     try:
         success = database.delete_search_history_item(history_id)
-        if success:
-            return {"status": "success", "message": "History item deleted"}
-        raise HTTPException(status_code=404, detail="History item not found")
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+    if success:
+        return {"status": "success", "message": "History item deleted"}
+    raise HTTPException(status_code=404, detail="History item not found")
 
 @app.delete("/api/search/history")
 async def delete_all_search_history(request: Request):
