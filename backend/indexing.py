@@ -328,16 +328,12 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
         
         clusters_batch_data = []
         for future in concurrent.futures.as_completed(future_to_cid):
+            cid, summary = None, None
             try:
                 cid, summary = future.result()
             except Exception as exc:
                 failed_cid = future_to_cid[future]
                 logger.warning("Cluster %s summarization failed, skipping: %s", failed_cid, exc)
-                processed_clusters += 1
-                if progress_callback:
-                    percent = 75 + int((processed_clusters / total_clusters) * 20)
-                    progress_callback(percent, 100, f"Summarizing cluster {processed_clusters}/{total_clusters}")
-                continue
             if summary:
                 # Collect for batch insert
                 clusters_batch_data.append((summary, 1))
