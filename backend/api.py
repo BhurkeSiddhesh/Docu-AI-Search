@@ -1284,11 +1284,13 @@ class ProviderQueryRequest(BaseModel):
     api_key: Optional[str] = ""
 
 def _validate_local_provider_url(base_url: Optional[str]) -> None:
-    """Reject non-localhost base_url values to prevent SSRF."""
+    """Reject non-localhost or non-HTTP(S) base_url values to prevent SSRF."""
     if not base_url:
         return
     from urllib.parse import urlparse
     parsed = urlparse(base_url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="base_url must use http or https scheme")
     if parsed.hostname not in ("localhost", "127.0.0.1", "::1"):
         raise HTTPException(status_code=400, detail="base_url must point to localhost")
 
