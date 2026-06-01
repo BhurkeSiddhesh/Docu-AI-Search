@@ -1207,11 +1207,26 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
         logger.info(f"[API] Using provided context ({len(search_data.context)} snippets) for streaming answer")
         final_context_snippets = search_data.context
     else:
-        results, context_snippets = search(
-            search_data.query, index, docs, tags,
-            get_active_embedding_client(request.app),
-            index_summaries, cluster_summaries, cluster_map, bm25
-        )
+        from backend.search import EmbeddingDimensionMismatchError
+        _search_timeout = int(os.getenv("SEARCH_TIMEOUT_SECONDS", "30"))
+        try:
+            results, context_snippets = await asyncio.wait_for(
+                asyncio.to_thread(
+                    search,
+                    search_data.query, index, docs, tags,
+                    get_active_embedding_client(request.app),
+                    index_summaries, cluster_summaries, cluster_map, bm25,
+                ),
+                timeout=_search_timeout,
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail="Search timed out. The embedding service may be unavailable.")
+        except EmbeddingDimensionMismatchError as dim_err:
+            logger.error("[Search] Embedding dimension mismatch: %s", dim_err)
+            raise HTTPException(
+                status_code=409,
+                detail="Embedding dimension mismatch: the index was built with a different model. Please re-index your documents.",
+            )
 
         # OPTIMIZATION: Batch fetch missing file info to avoid N+1 queries and improve context quality
         missing_faiss_idxs = [
