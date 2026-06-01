@@ -294,6 +294,10 @@ app.state.limiter = limiter
 app.add_middleware(SlowAPIASGIMiddleware)
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+@app.on_event("startup")
+async def startup_event():
+    import asyncio
+    app.state.event_loop = asyncio.get_event_loop()
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -1826,16 +1830,19 @@ def indexing_progress_callback(current, total, message=None):
     # Broadcast to WebSocket clients (fire-and-forget via asyncio task)
     import asyncio
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(ws_manager.broadcast({
-                "type": "indexing_progress",
-                "percent": indexing_status["progress"],
-                "current_file": indexing_status.get("current_file", ""),
-                "total": total,
-            }))
-    except Exception:
-        pass
+        loop = getattr(app.state, "event_loop", None)
+        if loop and loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                ws_manager.broadcast({
+                    "type": "indexing_progress",
+                    "percent": indexing_status["progress"],
+                    "current_file": indexing_status.get("current_file", ""),
+                    "total": total,
+                }),
+                loop
+            )
+    except Exception as exc:
+        logger.debug("WebSocket broadcast from thread failed: %s", exc)
 
 @app.get("/api/agent/chat")
 async def agent_chat(query: str, request: Request):
