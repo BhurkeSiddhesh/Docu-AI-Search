@@ -18,6 +18,7 @@ export default function BenchmarkView() {
     const [status, setStatus] = useState({ running: false, progress: 0 });
     const [loading, setLoading] = useState(true);
     const prevRunningRef = useRef(false);
+    prevRunningRef.current = status.running;
     const toast = useToast();
 
     useEffect(() => {
@@ -43,7 +44,6 @@ export default function BenchmarkView() {
         try {
             const r = await api.benchmarkStatus();
             const wasRunning = prevRunningRef.current;
-            prevRunningRef.current = r.data.running;
             setStatus(r.data);
             if (wasRunning && !r.data.running) load();
         } catch {
