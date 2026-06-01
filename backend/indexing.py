@@ -372,14 +372,34 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
         'model_name': _model_name,
         'embedding_dim': _embedding_dim,
     }
-    # Atomically replace DB: clear old records only after all indexing work succeeded.
-    # This preserves the previous DB if the pipeline failed at any earlier stage.
-    database.clear_files()
-    database.clear_clusters()
-    if files_to_add:
-        database.add_files_batch(files_to_add)
-    if clusters_batch_data:
-        database.add_clusters_batch(clusters_batch_data)
+    # Atomically replace DB inside a single transaction so a partial write
+    # (e.g. clear succeeds but insert fails) never leaves the DB empty.
+    conn = database.get_connection()
+    try:
+        conn.execute("BEGIN")
+        conn.execute("DELETE FROM files")
+        conn.execute("DELETE FROM clusters")
+        if files_to_add:
+            conn.executemany(
+                '''INSERT OR REPLACE INTO files
+                   (path, filename, file_type, size, last_modified,
+                    faiss_start_idx, faiss_end_idx, tags)
+                   VALUES (:path, :filename, :file_type, :size, :last_modified,
+                           :faiss_start_idx, :faiss_end_idx, :tags)''',
+                files_to_add,
+            )
+        if clusters_batch_data:
+            conn.executemany(
+                "INSERT INTO clusters (summary, level) VALUES (?, ?)",
+                clusters_batch_data,
+            )
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        logger.error("Failed to atomically update database after indexing: %s", exc)
+        raise
+    finally:
+        conn.close()
 
     _clear_checkpoint()
     return index_chunks, all_chunks, tags, index_summaries, cluster_summaries, final_cluster_map, bm25, meta
