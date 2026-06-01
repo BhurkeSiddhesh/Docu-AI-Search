@@ -7,6 +7,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIASGIMiddleware
 from fastapi.responses import StreamingResponse
 import json
+import sys
 import asyncio
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -348,6 +349,14 @@ cluster_summaries = []
 cluster_map = None
 bm25 = None
 _index_lock = threading.Lock()
+_server_event_loop = None  # Captured at startup for thread-safe async dispatch
+
+
+@app.on_event("startup")
+async def _capture_event_loop():
+    """Store the running event loop so background threads can schedule coroutines safely."""
+    global _server_event_loop
+    _server_event_loop = asyncio.get_running_loop()
 
 @app.get("/")
 async def root(request: Request):
@@ -1486,14 +1495,12 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
     Raises:
         HTTPException: 400 if path missing/invalid, 403 if access denied, 404 if file missing, 500 on system error.
     """
-    logger.info("[DEBUG-OPEN] Entered open_file")
     file_path = body.get('path', '')
     if not file_path:
         raise HTTPException(status_code=400, detail="File path is required")
     
     # Normalize and resolve symlinks to prevent path traversal
     file_path = os.path.realpath(os.path.normpath(file_path))
-    logger.info(f"[DEBUG-OPEN] Normalized path: {file_path}")
 
     # Security: Prevent argument injection (files starting with -)
     if os.path.basename(file_path).startswith("-"):
@@ -1502,9 +1509,7 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
     
     # Security: Only allow opening files that are in the index
     # This prevents opening arbitrary files on the system
-    logger.info("[DEBUG-OPEN] Querying database for file...")
     _indexed_file = database.get_file_by_path(file_path)
-    logger.info(f"[DEBUG-OPEN] Database returned: {_indexed_file}")
     if not _indexed_file:
         logger.warning("[Security] Attempt to open non-indexed file: %s", file_path)
         raise HTTPException(status_code=403, detail="Access denied: File is not in the index")
@@ -1513,31 +1518,21 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
 
     # Security: File type validation (additional layer)
     _, ext = os.path.splitext(file_path)
-    logger.info(f"[DEBUG-OPEN] Extension check: {ext}")
     if ext.lower() not in ALLOWED_EXTENSIONS:
         logger.warning(f"Security: Blocked attempt to open disallowed file type: {ext}")
         raise HTTPException(status_code=403, detail="Access denied: File type not allowed")
 
-    logger.info("[DEBUG-OPEN] Checking if file exists...")
     if not os.path.exists(file_path):
-        logger.info("[DEBUG-OPEN] File not found!")
         raise HTTPException(status_code=404, detail="File not found")
 
-    logger.info("[DEBUG-OPEN] Attempting to launch file...")
     try:
         import subprocess
-        import platform
         
-        logger.info(f"[DEBUG-OPEN] Platform: {platform.system()}")
-        if platform.system() == 'Windows':
-            logger.info("[DEBUG-OPEN] Calling os.startfile...")
+        if sys.platform == 'win32':
             os.startfile(file_path)
-            logger.info("[DEBUG-OPEN] os.startfile completed successfully")
-        elif platform.system() == 'Darwin':  # macOS
-            logger.info("[DEBUG-OPEN] Calling open via subprocess...")
+        elif sys.platform == 'darwin':  # macOS
             subprocess.run(['open', file_path])
         else:  # Linux
-            logger.info("[DEBUG-OPEN] Calling xdg-open via subprocess...")
             subprocess.run(['xdg-open', file_path])
         
         return {"status": "success", "message": f"Opened {os.path.basename(file_path)}"}
@@ -1823,19 +1818,21 @@ def indexing_progress_callback(current, total, message=None):
     if indexing_status["progress"] % 10 == 0 or message:
         logger.info(f"Indexing Progress: {indexing_status['progress']}% - {indexing_status['current_file']}")
 
-    # Broadcast to WebSocket clients (fire-and-forget via asyncio task)
-    import asyncio
+    # Broadcast to WebSocket clients (thread-safe via run_coroutine_threadsafe)
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(ws_manager.broadcast({
-                "type": "indexing_progress",
-                "percent": indexing_status["progress"],
-                "current_file": indexing_status.get("current_file", ""),
-                "total": total,
-            }))
-    except Exception:
-        pass
+        loop = _server_event_loop
+        if loop is not None and loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                ws_manager.broadcast({
+                    "type": "indexing_progress",
+                    "percent": indexing_status["progress"],
+                    "current_file": indexing_status.get("current_file", ""),
+                    "total": total,
+                }),
+                loop,
+            )
+    except Exception as exc:
+        logger.debug("WebSocket broadcast from thread failed: %s", exc)
 
 @app.get("/api/agent/chat")
 async def agent_chat(query: str, request: Request):
