@@ -312,6 +312,26 @@ def get_file_by_faiss_index(idx: int) -> Optional[Dict]:
     conn.close()
     return dict(row) if row else None
 
+def get_file_by_name(filename: str) -> Optional[Dict]:
+    """
+    Return the first file record whose basename matches filename.
+    
+    Args:
+        filename (str): The name of the file to search for.
+        
+    Returns:
+        Optional[Dict]: The file metadata dictionary if found, else None.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM files WHERE path LIKE ? LIMIT 1",
+            (f"%/{filename}",)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
 def clear_files():
     """
     Delete all entries from the files table.
