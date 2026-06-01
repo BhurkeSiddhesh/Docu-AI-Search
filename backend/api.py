@@ -594,7 +594,7 @@ async def download_status_endpoint(request: Request):
     return get_download_status()
 
 @app.delete("/api/models/delete")
-async def delete_model(request: dict, req: Request):
+async def delete_model(request: dict, req: Request, _=Depends(verify_local_request)):
     """
     Delete a downloaded model file from disk.
 
