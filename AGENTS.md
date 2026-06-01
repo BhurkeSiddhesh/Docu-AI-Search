@@ -305,6 +305,12 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-06-01 (Daily Automated Fix Pass — Run 2)
+- **fix**: Auto-merged 4 pre-existing fix PRs: #280 (background.py absolute paths, issue #130), #279 (database.get_file_by_name, issue #133), #278 (api.py search race condition, issue #140), #277 (browse_folder verify_local_request + to_thread, issue #158).
+- **fix**: Opened 3 new P1 PRs: #286 (tools.py api_key to get_embeddings, issue #139), #287 (SSRF on provider endpoints, issue #171), #288 (indexing.py atomic DB writes, issue #165).
+- **fix**: Addressed Gemini review comments on PRs #286, #287, #288, #276 (defensive config access, scheme validation, SQLite transaction, timeout/mismatch error handling).
+- **Files**: `backend/tools.py`, `backend/api.py`, `backend/indexing.py`, `internal_fix_log.md`, `AGENTS.md`
+
 ### 2026-05-28 (Daily Audit Log Consolidation)
 - **feat**: Consolidated 28 unique daily automated code audit log entries spanning early May to late May 2026 into a single, unified, reverse-chronologically sorted `internal_audit_log.md` file.
 - **verification**: Validated layout and verified project compliance via structure check.
