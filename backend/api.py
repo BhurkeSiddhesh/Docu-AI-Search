@@ -502,7 +502,7 @@ async def load_initial_index():
                 bm25 = None
 
 @app.get("/api/browse")
-async def browse_folder(request: Request):
+async def browse_folder(request: Request, _=Depends(verify_local_request)):
     """
     Open a folder browser dialog and return the selected path.
 
@@ -517,14 +517,19 @@ async def browse_folder(request: Request):
     """
     import tkinter as tk
     from tkinter import filedialog
-    try:
+    
+    def _open_dialog() -> str | None:
         # Create a hidden root window
         root = tk.Tk()
         root.withdraw()
         root.attributes('-topmost', True)  # Bring dialog to front
         
-        folder_path = filedialog.askdirectory(title="Select Folder to Index")
+        path = filedialog.askdirectory(title="Select Folder to Index")
         root.destroy()
+        return path or None
+
+    try:
+        folder_path = await asyncio.to_thread(_open_dialog)
         
         if folder_path:
             return {"folder": folder_path}
