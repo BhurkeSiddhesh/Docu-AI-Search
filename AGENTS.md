@@ -305,6 +305,22 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-06-01 (Daily Issue Resolution)
+- **fix**: Resolved race condition in `/api/search` by using snapshot variables instead of rewriting globals (`#140`).
+- **fix**: Implemented `get_file_by_name` in `database.py` to support agentic mode file reading fallback (`#133`).
+- **fix**: Fixed Watchdog auto-indexer writing to a relative path instead of `DATA_DIR` (`#130`).
+- **fix**: Fixed stale closure in `ModelManager.jsx` by using `useRef` for download status tracking (`#264`).
+- **fix**: Offloaded blocking CPU/IO operations in `stream_answer_endpoint` and `browse_folder` to `asyncio.to_thread` (`#206`, `#158`).
+- **Files**: `backend/api.py`, `backend/database.py`, `backend/background.py`, `frontend/src/components/ModelManager.jsx`
+
+### 2026-05-30 (Hanging Test Fixes & Project Structure Alignment)
+- **fix**: Resolved backend test suite hangs by replacing `platform.system()` with the built-in, non-blocking `sys.platform` in `backend/api.py` and `backend/tests/test_security_command_injection.py`.
+- **fix**: Resolved `NameError: name 'sys' is not defined` crash in the `/api/open-file` endpoint by adding `import sys` to `backend/api.py` imports.
+- **feat**: Updated `scripts/validate_structure.py` to allow standard Docker files (`Dockerfile`, `docker-compose.yml`) and ignore/skip temporary workspace development directories (`tmp`, `scratch`).
+- **clean**: Cleaned up the project root by removing lingering temporary files/folders (`scratch`, `tmp`, `test_output.log`, `test_output.txt`, `test_output_utf8.txt`).
+- **verification**: All backend tests (154 tests) and frontend tests (24 tests) are passing 100% successfully. Run structure checks verify 100% compliance.
+- **Files**: `backend/api.py`, `backend/tests/test_security_command_injection.py`, `scripts/validate_structure.py`, `AGENTS.md`
+
 ### 2026-05-28 (Daily Audit Log Consolidation)
 - **feat**: Consolidated 28 unique daily automated code audit log entries spanning early May to late May 2026 into a single, unified, reverse-chronologically sorted `internal_audit_log.md` file.
 - **verification**: Validated layout and verified project compliance via structure check.
