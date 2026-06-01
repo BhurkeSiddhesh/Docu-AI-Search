@@ -55,6 +55,13 @@ _embeddings_cache = {}
 _llm_cache = {}
 _llm_client_cache = {}
 
+
+def _key_fingerprint(api_key: str) -> str:
+    """Return a short non-reversible fingerprint of the API key."""
+    if not api_key:
+        return ""
+    return hashlib.sha256(api_key.encode()).hexdigest()[:16]
+
 def get_embeddings(provider: str, api_key: str = None, model_path: str = None) -> Any:
     """
     Returns an embeddings model instance based on the provider.
@@ -69,7 +76,7 @@ def get_embeddings(provider: str, api_key: str = None, model_path: str = None) -
     Returns:
         Any: An instance of the requested embeddings model (e.g., OpenAIEmbeddings).
     """
-    cache_key = f"{provider}:{api_key or ''}"
+    cache_key = f"{provider}:{_key_fingerprint(api_key)}"
     
     if cache_key in _embeddings_cache:
         return _embeddings_cache[cache_key]
@@ -294,7 +301,7 @@ def get_llm_client(provider: str, api_key: str = None, model_path: str = None, b
         Any: A LangChain chat client, or a "LOCAL:path" string for local models, 
              or None if configuration is invalid.
     """
-    cache_key = f"{provider}:{api_key or ''}:{model_path or ''}"
+    cache_key = f"{provider}:{_key_fingerprint(api_key)}:{model_path or ''}"
     if cache_key in _llm_client_cache:
         return _llm_client_cache[cache_key]
 
