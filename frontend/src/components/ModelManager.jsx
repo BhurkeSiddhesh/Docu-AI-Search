@@ -11,6 +11,7 @@ export default function ModelManager({ activeModelPath, onSelectModel }) {
     const [filter, setFilter] = useState('all');
     const [query, setQuery] = useState('');
     const prevDownloadingRef = useRef(false);
+    prevDownloadingRef.current = downloadStatus.downloading;
     const toast = useToast();
 
     useEffect(() => {
@@ -34,7 +35,6 @@ export default function ModelManager({ activeModelPath, onSelectModel }) {
         try {
             const r = await api.modelDownloadStatus();
             const wasDownloading = prevDownloadingRef.current;
-            prevDownloadingRef.current = r.data.downloading;
             setDownloadStatus(r.data);
             if (wasDownloading && !r.data.downloading) load();
         } catch {
