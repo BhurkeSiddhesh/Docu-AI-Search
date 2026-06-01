@@ -594,13 +594,13 @@ async def download_status_endpoint(request: Request):
     return get_download_status()
 
 @app.delete("/api/models/delete")
-async def delete_model(request: dict, req: Request, _=Depends(verify_local_request)):
+async def delete_model(body: dict, request: Request, _=Depends(verify_local_request)):
     """
     Delete a downloaded model file from disk.
 
     Args:
-        request (dict): Body containing 'path' of the model to delete.
-        req (Request): The incoming request.
+        body (dict): Body containing 'path' of the model to delete.
+        request (Request): The incoming request.
 
     Returns:
         dict: Success status and message.
@@ -608,7 +608,7 @@ async def delete_model(request: dict, req: Request, _=Depends(verify_local_reque
     Raises:
         HTTPException: 400 if path is missing, 404 if file missing, 500 on error.
     """
-    model_path = request.get('path', '')
+    model_path = body.get('path', '')
     if not model_path:
         raise HTTPException(status_code=400, detail="Model path required")
     
