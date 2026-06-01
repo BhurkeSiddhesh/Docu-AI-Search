@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Download, Cpu, Trash2, Check, Loader2, Star } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from './Toast';
@@ -10,6 +10,7 @@ export default function ModelManager({ activeModelPath, onSelectModel }) {
     const [downloadStatus, setDownloadStatus] = useState({ downloading: false });
     const [filter, setFilter] = useState('all');
     const [query, setQuery] = useState('');
+    const prevDownloadingRef = useRef(false);
     const toast = useToast();
 
     useEffect(() => {
@@ -32,7 +33,8 @@ export default function ModelManager({ activeModelPath, onSelectModel }) {
     const pollStatus = async () => {
         try {
             const r = await api.modelDownloadStatus();
-            const wasDownloading = downloadStatus.downloading;
+            const wasDownloading = prevDownloadingRef.current;
+            prevDownloadingRef.current = r.data.downloading;
             setDownloadStatus(r.data);
             if (wasDownloading && !r.data.downloading) load();
         } catch {
