@@ -982,8 +982,7 @@ async def search_files(search_data: SearchRequest, request: Request, background_
     if not index_snap:
         raise HTTPException(status_code=400, detail="Index not loaded. Please configure and index a folder first.")
 
-    index, docs, tags = index_snap, docs_snap, tags_snap
-    index_summaries, cluster_summaries, cluster_map, bm25 = isumm_snap, csumm_snap, cmap_snap, bm25_snap
+    # Using snapshotted variables to prevent race condition during re-indexing
 
     logger.info(f"\n[API] POST /api/search - Query: <redacted>")
 
@@ -1008,9 +1007,9 @@ async def search_files(search_data: SearchRequest, request: Request, background_
             logger.info("[API] Running in AGENTIC mode.")
             from backend.agent import ReActAgent
             agent = ReActAgent({
-                'index': index, 'docs': docs, 'tags': tags, 'config': config,
-                'index_summaries': index_summaries, 'cluster_summaries': cluster_summaries,
-                'cluster_map': cluster_map, 'bm25': bm25
+                'index': index_snap, 'docs': docs_snap, 'tags': tags_snap, 'config': config,
+                'index_summaries': isumm_snap, 'cluster_summaries': csumm_snap,
+                'cluster_map': cmap_snap, 'bm25': bm25_snap
             })
             return StreamingResponse(agent.stream_chat(search_data.query), media_type="text/event-stream")
 
@@ -1030,9 +1029,9 @@ async def search_files(search_data: SearchRequest, request: Request, background_
             results, _context_snippets = await asyncio.wait_for(
                 asyncio.to_thread(
                     search,
-                    search_data.query, index, docs, tags,
+                    search_data.query, index_snap, docs_snap, tags_snap,
                     get_active_embedding_client(request.app),
-                    index_summaries, cluster_summaries, cluster_map, bm25
+                    isumm_snap, csumm_snap, cmap_snap, bm25_snap
                 ),
                 timeout=_search_timeout,
             )
