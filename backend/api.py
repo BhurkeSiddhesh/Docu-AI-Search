@@ -1441,10 +1441,10 @@ class LogRequest(BaseModel):
     source: Optional[str] = "Frontend"
     stack: Optional[str] = None
 
-_ANSI_OR_NEWLINE = re.compile(r'[\r\n\x1b].*', re.DOTALL)
-
 def _sanitize_log_field(value: str) -> str:
-    return _ANSI_OR_NEWLINE.sub('', value) if value else value
+    if not value:
+        return value
+    return value.replace('\x1b', '').replace('\r', '\\r').replace('\n', '\\n')
 
 @app.post("/api/logs")
 @limiter.limit("20/minute")
