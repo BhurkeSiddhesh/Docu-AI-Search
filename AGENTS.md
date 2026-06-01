@@ -764,3 +764,15 @@ python scripts/verify_golden_set.py
   - **fix**: Added validation to reject filenames starting with `-` in `backend/api.py`.
   - **test**: Added `backend/tests/test_security_command_injection.py` to verify the fix.
   - **Files**: `backend/api.py`, `backend/tests/test_security_command_injection.py`
+
+### 2026-06-01 (Daily Fix Pass — 5 Critical Bug PRs)
+- **BenchmarkView stale closure** — `prevRunningRef` synced in render body so auto-load fires after fast completions (PR #267)
+  - **Files**: `frontend/src/components/BenchmarkView.jsx`
+- **ModelManager stale closure** — `prevDownloadingRef` synced in render body so model list auto-reloads after downloads (PR #268)
+  - **Files**: `frontend/src/components/ModelManager.jsx`
+- **POST /api/config missing auth** — added `verify_local_request` to prevent remote API-key overwrite (PR #269)
+  - **Files**: `backend/api.py`
+- **DELETE /api/models/delete missing auth** — added `verify_local_request` + fixed parameter naming convention (PR #270)
+  - **Files**: `backend/api.py`
+- **POST /api/logs unauthenticated injection** — added `verify_local_request`, rate limit, and log-field sanitizer (PR #271)
+  - **Files**: `backend/api.py`
