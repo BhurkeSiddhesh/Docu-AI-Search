@@ -8,6 +8,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from fastapi.responses import StreamingResponse
 import json
 import asyncio
+import re
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Tuple
@@ -1440,8 +1441,14 @@ class LogRequest(BaseModel):
     source: Optional[str] = "Frontend"
     stack: Optional[str] = None
 
+_ANSI_OR_NEWLINE = re.compile(r'[\r\n\x1b].*', re.DOTALL)
+
+def _sanitize_log_field(value: str) -> str:
+    return _ANSI_OR_NEWLINE.sub('', value) if value else value
+
 @app.post("/api/logs")
-async def receive_log(log: LogRequest, request: Request):
+@limiter.limit("20/minute")
+async def receive_log(log: LogRequest, request: Request, _=Depends(verify_local_request)):
     """
     Receive logs from the frontend and pipe them to the backend logger.
 
@@ -1452,9 +1459,12 @@ async def receive_log(log: LogRequest, request: Request):
     Returns:
         dict: Status 'logged'.
     """
-    log_msg = f"[{log.source}] {log.message}"
-    if log.stack:
-        log_msg += f"\nStack: {log.stack}"
+    message = _sanitize_log_field(log.message)
+    source = _sanitize_log_field(log.source or "Frontend")
+    stack = _sanitize_log_field(log.stack) if log.stack else None
+    log_msg = f"[{source}] {message}"
+    if stack:
+        log_msg += f"\nStack: {stack}"
     
     if log.level.lower() == 'error':
         logger.error(log_msg)
