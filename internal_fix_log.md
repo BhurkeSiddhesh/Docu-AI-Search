@@ -25,7 +25,7 @@ Automated fix pass results from the daily issue resolver.
 | #279 | #133 | Implement missing `get_file_by_name` in `database.py` (agentic tool crash) | `backend/database.py` | Auto-merged |
 | #278 | #140 | Remove global write-back of index snapshots in `/api/search` (race condition) | `backend/api.py` | Auto-merged |
 | #277 | #158 | Add `verify_local_request` + `asyncio.to_thread` to `/api/browse` (blocking + auth) | `backend/api.py` | Auto-merged |
-| #276 | #206 | Wrap `search()` in `asyncio.wait_for` in stream endpoint (event loop blocking) | `backend/api.py` | Pending (CI running) |
+| #276 | #206 | Wrap `search()` in `asyncio.wait_for` in stream endpoint (event loop blocking) | `backend/api.py` | Auto-merged |
 
 **CodeRabbit note:** All rate-limited ("Insufficient review credits") on all five PRs — bypassed per protocol. All non-CodeRabbit CI checks (test-backend, test-frontend, security-scan, CodeQL, GitGuardian, submit-pypi, Analyze×3) passed green before merge.
 
@@ -45,4 +45,4 @@ Automated fix pass results from the daily issue resolver.
 - PR #288: addressed atomicity (replaced separate clear/insert calls with single `BEGIN`/`COMMIT` transaction)
 - PR #276: addressed missing `try/except` around `asyncio.wait_for` — now returns 504 on timeout, 409 on embedding dimension mismatch
 
-**Summary:** 3 PRs opened (Phase B) · 4 auto-merged (Phase A) · 1 pending merge (PR #276) · 3 awaiting human review (PRs #286, #287, #288 — all P1) · 2 skipped (existing PRs)
+**Summary:** 3 PRs opened (Phase B) · 5 auto-merged (PRs #280 #279 #278 #277 #276) · 3 awaiting human review (PRs #286, #287, #288 — all P1) · 2 skipped (existing PRs)
