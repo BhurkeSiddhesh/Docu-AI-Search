@@ -788,12 +788,12 @@ def cleanup_test_data() -> Dict[str, int]:
         counts['folders'] += cursor.rowcount
     
     # Clean search_history with known synthetic test query strings only.
-    # Exact-match or a tight prefix to avoid deleting real user searches that
-    # happen to contain words like "test", "delete", or "structure".
+    # Use exact IN + substr prefix (not LIKE) because '_' is a single-char
+    # wildcard in SQL LIKE and would unintentionally match other strings.
     cursor.execute(
         "DELETE FROM search_history "
         "WHERE query IN ('test query', 'history test query', 'structure test', 'delete single test') "
-        "   OR query LIKE 'test_query_%'"
+        "   OR substr(query, 1, 11) = 'test_query_'"
     )
     counts['search_history'] = cursor.rowcount
     
