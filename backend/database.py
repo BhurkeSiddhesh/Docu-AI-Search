@@ -794,6 +794,7 @@ def cleanup_test_data() -> Dict[str, int]:
         "DELETE FROM search_history "
         "WHERE query IN ('test query', 'history test query', 'structure test', 'delete single test') "
         "   OR substr(query, 1, 11) = 'test_query_'"
+        "   OR query = ''"
     )
     counts['search_history'] = cursor.rowcount
     
