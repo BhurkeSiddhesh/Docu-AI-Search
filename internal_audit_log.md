@@ -4,6 +4,34 @@ Automated daily code audit results for [BhurkeSiddhesh/Docu-AI-Search](https://g
 
 ---
 
+## Audit: 2026-06-03
+
+- Issues filed: 3
+- Categories: 0 Critical Bug, 2 Logic Enhancement, 1 Developer Experience
+- Auto-merge eligible: 3
+- Needs human review: 0
+- Status: Issues Filed
+
+### Issues Created This Run
+
+| # | Category | Title | Auto-fix |
+|---|----------|-------|----------|
+| [#291](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/291) | Logic Enhancement | `database.cleanup_test_data()` overly broad SQL patterns — silently deletes legitimate production search history | yes |
+| [#292](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/292) | Logic Enhancement | `SystemPromptRequest` has no field-length limits — authenticated users can exhaust SQLite storage | yes |
+| [#293](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/293) | Developer Experience | `llm_integration.py` default RAG prompt hardcodes developer's personal name 'Siddhesh' — testing artifact in production | yes |
+
+### Scope Covered
+- `backend/api.py`, `backend/agent.py`, `backend/auth.py`, `backend/background.py`
+- `backend/database.py`, `backend/file_processing.py`, `backend/indexing.py`
+- `backend/llm_integration.py`, `backend/model_manager.py`, `backend/providers.py`
+- `backend/rag_optimizers.py`, `backend/search.py`, `backend/settings.py`
+- `backend/system_prompts.py`, `backend/tools.py`, `backend/websocket_manager.py`
+- `frontend/src/components/` (all 13 components), `frontend/src/lib/api.js`
+- `.github/workflows/ci.yml`, `Dockerfile`, `docker-compose.yml`
+- Existing open issues cross-referenced (86 issues checked for duplicates)
+
+---
+
 ## Audit: 2026-05-28
 
 - Issues filed: 6
