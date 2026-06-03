@@ -1355,9 +1355,9 @@ async def list_providers(request: Request):
 # -------------------------------------------------------------------------
 
 class SystemPromptRequest(BaseModel):
-    name:     str = Field(..., min_length=1, max_length=200)
-    content:  str = Field(..., min_length=1, max_length=20_000)
-    category: str = Field(default="general", max_length=100)
+    name:     str = Field(..., min_length=1, max_length=200, pattern=r'.*\S.*')
+    content:  str = Field(..., min_length=1, max_length=20_000, pattern=r'.*\S.*')
+    category: str = Field(default="general", max_length=100, pattern=r'.*\S.*')
 
 @app.get("/api/system-prompts")
 async def list_system_prompts(request: Request, category: Optional[str] = None):
