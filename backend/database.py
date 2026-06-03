@@ -787,8 +787,14 @@ def cleanup_test_data() -> Dict[str, int]:
         cursor.execute("DELETE FROM folder_history WHERE path LIKE ?", (pattern,))
         counts['folders'] += cursor.rowcount
     
-    # Clean search_history with test-like queries
-    cursor.execute("DELETE FROM search_history WHERE query LIKE '%test%' OR query LIKE 'delete%' OR query LIKE 'structure%'")
+    # Clean search_history with known synthetic test query strings only.
+    # Exact-match or a tight prefix to avoid deleting real user searches that
+    # happen to contain words like "test", "delete", or "structure".
+    cursor.execute(
+        "DELETE FROM search_history "
+        "WHERE query IN ('test query', 'history test query', 'structure test', 'delete single test') "
+        "   OR query LIKE 'test_query_%'"
+    )
     counts['search_history'] = cursor.rowcount
     
     conn.commit()
