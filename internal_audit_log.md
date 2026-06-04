@@ -4,6 +4,32 @@ Automated daily code audit results for [BhurkeSiddhesh/Docu-AI-Search](https://g
 
 ---
 
+## Audit: 2026-06-04
+
+- Issues filed: 3
+- Categories: 1 Critical Bug, 0 Logic Enhancement, 2 Developer Experience
+- Auto-merge eligible: 2
+- Needs human review: 1
+- Status: Issues Filed
+
+### Issues Created This Run
+
+| # | Category | Title | Labels |
+|---|----------|-------|--------|
+| [#298](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/298) | Critical Bug | Frontend axios client has no auth token injection — AUTH_ENABLED=true makes entire UI non-functional | needs-human-review |
+| [#299](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/299) | Developer Experience | SearchView.jsx swallows streamAnswer errors — stream failure never surfaced to user | auto-merge-ok |
+| [#300](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/300) | Developer Experience | scripts/e2e_verify.py bare except swallows KeyboardInterrupt and trigger_indexing() has unbounded while-True poll loop | auto-merge-ok |
+
+### Scope Covered
+- `backend/api.py`, `backend/agent.py`, `backend/auth.py`, `backend/background.py`
+- `backend/database.py`, `backend/file_processing.py`, `backend/indexing.py`, `backend/settings.py`
+- `frontend/src/lib/api.js`, `frontend/src/components/SearchView.jsx`
+- `frontend/src/components/LibraryView.jsx`, `frontend/src/components/AgentView.jsx`
+- `scripts/e2e_verify.py`
+- 94 existing open issues cross-referenced to avoid duplicates
+
+---
+
 ## Audit: 2026-05-28
 
 - Issues filed: 6
