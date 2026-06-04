@@ -32,4 +32,4 @@ No PRs were auto-merged in Phase A.
 | #292 | P2 | Logic Enhancement | `SystemPromptRequest` had no field-length limits — could exhaust SQLite storage | PR #295 | Auto-merged ✅ |
 | #293 | P3 | DX / Cleanup | Default RAG system prompt contained hardcoded personal name (`'Siddhesh'`) — development testing artefact | PR #296 | Auto-merged ✅ (pending at log time) |
 
-**Summary:** 3 PRs opened · 3 auto-merged · 0 awaiting human review · 0 escalated · 0 auto-closed · 0 skipped
+**Summary:** 3 PRs opened · 3 auto-merged · 0 awaiting human review · 0 escalated · 0 auto-closed · 2 skipped (Phase A: #273 and #274 had no auto-merge disposition)
