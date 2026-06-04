@@ -305,6 +305,10 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-06-04 (Fix flaky test_stream_answer_rerun_search)
+- **fix**: `test_stream_answer_rerun_search` was making a real HuggingFace HTTP call despite `backend.api.search` being mocked. Root cause: `get_active_embedding_client(request.app)` is evaluated as a positional argument to `search` before Python calls the mock, bypassing the patch. Added `patch('backend.api.get_active_embedding_client', return_value=MagicMock())` to the test's context block to prevent the real network call.
+- **Files**: `backend/tests/test_api.py`, `AGENTS.md`
+
 ### 2026-05-28 (Daily Audit Log Consolidation)
 - **feat**: Consolidated 28 unique daily automated code audit log entries spanning early May to late May 2026 into a single, unified, reverse-chronologically sorted `internal_audit_log.md` file.
 - **verification**: Validated layout and verified project compliance via structure check.

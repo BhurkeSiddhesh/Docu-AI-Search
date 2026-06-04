@@ -1099,6 +1099,7 @@ class TestAPIStreamingEdgeCases(unittest.TestCase):
         with patch('backend.api.index', MagicMock()), \
              patch('backend.api.docs', []), \
              patch('backend.api.tags', []), \
+             patch('backend.api.get_active_embedding_client', return_value=MagicMock()), \
              patch('backend.database.get_files_by_faiss_indices', return_value={}):
 
             response = self.client.post("/api/stream-answer", json={
