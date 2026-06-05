@@ -549,7 +549,7 @@ def load_index(filepath: str) -> Tuple:
             with open(bm25_path, 'rb') as f:
                 bm25 = pickle.load(f)
             logger.info("Loaded BM25 from disk.")
-        except (OSError, pickle.UnpicklingError, EOFError, ValueError) as e:
+        except Exception as e:
             logger.warning(f"BM25 index load failed ({type(e).__name__}: {e}); will reconstruct from corpus.")
              
     if bm25 is None and all_chunks:
