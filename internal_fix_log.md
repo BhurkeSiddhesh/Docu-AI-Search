@@ -5,7 +5,7 @@ Automated fix pass results from the daily issue resolver.
 ## Fix Pass: 2026-06-01
 
 | Issue | Label | Description | PR | Disposition |
-|-------|-------|-------------|----|----||
+|-------|-------|-------------|----|----|  
 | #123 | Critical Bug | Plaintext API keys stored as embedding cache dictionary keys in process memory | PR #273 | Awaiting human review |
 | #120 | Logic Enhancement | asyncio.get_event_loop() called from background thread is broken in Python 3.12 | PR #274 | Awaiting human review |
 | #119 | Critical Bug | Silent vector-document misalignment when embedding batch fails during indexing | — | Auto-closed — already mitigated in main (abort assertions added in 2026-05-14) |
@@ -16,7 +16,7 @@ Automated fix pass results from the daily issue resolver.
 ## Fix Pass: 2026-06-05
 
 | Issue | Label | Description | PR | Disposition |
-|-------|-------|-------------|----|----||
+|-------|-------|-------------|----|----|  
 | #299 | Developer Experience | Stream error catch block only logged to console, never showed user-facing toast | PR #302 | Auto-merged |
 | #300 | Developer Experience | Bare `except:` swallows `KeyboardInterrupt`; unbounded `while True:` in `trigger_indexing()` has no timeout | PR #302 | Auto-merged |
 
