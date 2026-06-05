@@ -4,6 +4,36 @@ Automated daily code audit results for [BhurkeSiddhesh/Docu-AI-Search](https://g
 
 ---
 
+## Audit: 2026-06-05
+
+- Issues filed: 5
+- Categories: 2 Critical Bug, 3 Logic Enhancement, 0 Developer Experience
+- Auto-merge eligible: 3
+- Needs human review: 2
+- Status: Issues Filed
+
+### Issues Created This Run
+
+| # | Category | Labels | Title |
+|---|----------|--------|-------|
+| [#304](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/304) | Critical Bug | needs-human-review | WebSocket active_connections iterated without asyncio.Lock — concurrent disconnect causes RuntimeError mid-broadcast |
+| [#305](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/305) | Critical Bug | needs-human-review | Agent.run() LLM calls have no per-step timeout — stalled provider hangs backend thread indefinitely |
+| [#306](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/306) | Logic Enhancement | auto-merge-ok | Bare `except: pass` in BM25 loader silently swallows all exceptions including pickle corruption and MemoryError |
+| [#307](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/307) | Logic Enhancement | auto-merge-ok | indexing_status dict mutated outside _index_lock — concurrent readers observe torn progress state |
+| [#308](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/308) | Logic Enhancement | auto-merge-ok | Dockerfile runs application as root and docker-compose binds port 8000 on all interfaces |
+
+### Scope Covered
+- `backend/api.py` (indexing status race condition, bare except in tensor_split)
+- `backend/agent.py` (LLM step timeout)
+- `backend/indexing.py` (bare except in BM25 loader)
+- `backend/websocket_manager.py` (broadcast race condition)
+- `backend/llm_integration.py`, `backend/search.py`, `backend/database.py`, `backend/auth.py`
+- `frontend/src/components/*.jsx`, `frontend/src/lib/api.js`
+- `Dockerfile`, `docker-compose.yml`
+- Pre-existing open issues cross-referenced: 4 (#266, #298, #299, #300); no duplicates filed
+
+---
+
 ## Audit: 2026-05-28
 
 - Issues filed: 6
