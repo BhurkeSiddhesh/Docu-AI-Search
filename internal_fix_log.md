@@ -5,7 +5,7 @@ Automated fix pass results from the daily issue resolver.
 ## Fix Pass: 2026-06-01
 
 | Issue | Label | Description | PR | Disposition |
-|-------|-------|-------------|----|----||
+|-------|-------|-------------|----|-----------|
 | #123 | Critical Bug | Plaintext API keys stored as embedding cache dictionary keys in process memory | PR #273 | Awaiting human review |
 | #120 | Logic Enhancement | asyncio.get_event_loop() called from background thread is broken in Python 3.12 | PR #274 | Awaiting human review |
 | #119 | Critical Bug | Silent vector-document misalignment when embedding batch fails during indexing | — | Auto-closed — already mitigated in main (abort assertions added in 2026-05-14) |
