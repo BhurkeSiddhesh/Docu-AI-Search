@@ -12,6 +12,7 @@ Automated fix pass results from the daily issue resolver.
 | #118 | Critical Bug | CORS middleware hardcodes allow_origins=["*"]; computed ALLOWED_ORIGINS never used | — | Skipped — PR #256 already open |
 
 **Summary:** 2 PRs opened · 0 auto-merged · 2 awaiting human review · 0 escalated · 1 auto-closed · 1 skipped (existing PR)
+
 ## Fix Pass: 2026-06-05
 
 | Issue | Label | Description | PR | Disposition |
