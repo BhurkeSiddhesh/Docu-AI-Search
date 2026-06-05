@@ -305,6 +305,11 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-06-05 (P3 Batch Fix Pass — Daily Automated Fix)
+- **fix**: Added toast error notification to AI stream failure path in `SearchView.jsx` — silent `console.error` catch block now shows `toast.error('AI answer stream failed. Search results are still available.')` (closes #299)
+- **fix**: Hardened `scripts/e2e_verify.py` — replaced bare `except:` with `except requests.RequestException:` to avoid swallowing `KeyboardInterrupt`; replaced unbounded `while True:` loop in `trigger_indexing()` with a 300-iteration (10-min) hard cap with timeout fallback (closes #300)
+- **Files**: `frontend/src/components/SearchView.jsx`, `scripts/e2e_verify.py`, `internal_fix_log.md`, `AGENTS.md`
+
 ### 2026-05-28 (Daily Audit Log Consolidation)
 - **feat**: Consolidated 28 unique daily automated code audit log entries spanning early May to late May 2026 into a single, unified, reverse-chronologically sorted `internal_audit_log.md` file.
 - **verification**: Validated layout and verified project compliance via structure check.
