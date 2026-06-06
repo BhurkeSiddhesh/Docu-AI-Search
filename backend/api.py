@@ -4,7 +4,7 @@ from backend.websocket_manager import manager as ws_manager
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
+from slowapi.middleware import SlowAPIASGIMiddleware
 from fastapi.responses import StreamingResponse
 import json
 import asyncio
@@ -291,7 +291,7 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 app.state.limiter = limiter
-app.add_middleware(SlowAPIMiddleware)
+app.add_middleware(SlowAPIASGIMiddleware)
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
@@ -502,7 +502,7 @@ async def load_initial_index():
                 bm25 = None
 
 @app.get("/api/browse")
-async def browse_folder(request: Request):
+async def browse_folder(request: Request, _=Depends(verify_local_request)):
     """
     Open a folder browser dialog and return the selected path.
 
@@ -517,14 +517,19 @@ async def browse_folder(request: Request):
     """
     import tkinter as tk
     from tkinter import filedialog
-    try:
+    
+    def _open_dialog() -> str | None:
         # Create a hidden root window
         root = tk.Tk()
         root.withdraw()
         root.attributes('-topmost', True)  # Bring dialog to front
         
-        folder_path = filedialog.askdirectory(title="Select Folder to Index")
+        path = filedialog.askdirectory(title="Select Folder to Index")
         root.destroy()
+        return path or None
+
+    try:
+        folder_path = await asyncio.to_thread(_open_dialog)
         
         if folder_path:
             return {"folder": folder_path}
@@ -982,8 +987,7 @@ async def search_files(search_data: SearchRequest, request: Request, background_
     if not index_snap:
         raise HTTPException(status_code=400, detail="Index not loaded. Please configure and index a folder first.")
 
-    index, docs, tags = index_snap, docs_snap, tags_snap
-    index_summaries, cluster_summaries, cluster_map, bm25 = isumm_snap, csumm_snap, cmap_snap, bm25_snap
+    # Using snapshotted variables to prevent race condition during re-indexing
 
     logger.info(f"\n[API] POST /api/search - Query: <redacted>")
 
@@ -1008,9 +1012,9 @@ async def search_files(search_data: SearchRequest, request: Request, background_
             logger.info("[API] Running in AGENTIC mode.")
             from backend.agent import ReActAgent
             agent = ReActAgent({
-                'index': index, 'docs': docs, 'tags': tags, 'config': config,
-                'index_summaries': index_summaries, 'cluster_summaries': cluster_summaries,
-                'cluster_map': cluster_map, 'bm25': bm25
+                'index': index_snap, 'docs': docs_snap, 'tags': tags_snap, 'config': config,
+                'index_summaries': isumm_snap, 'cluster_summaries': csumm_snap,
+                'cluster_map': cmap_snap, 'bm25': bm25_snap
             })
             return StreamingResponse(agent.stream_chat(search_data.query), media_type="text/event-stream")
 
@@ -1030,9 +1034,9 @@ async def search_files(search_data: SearchRequest, request: Request, background_
             results, _context_snippets = await asyncio.wait_for(
                 asyncio.to_thread(
                     search,
-                    search_data.query, index, docs, tags,
+                    search_data.query, index_snap, docs_snap, tags_snap,
                     get_active_embedding_client(request.app),
-                    index_summaries, cluster_summaries, cluster_map, bm25
+                    isumm_snap, csumm_snap, cmap_snap, bm25_snap
                 ),
                 timeout=_search_timeout,
             )
@@ -1203,11 +1207,26 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
         logger.info(f"[API] Using provided context ({len(search_data.context)} snippets) for streaming answer")
         final_context_snippets = search_data.context
     else:
-        results, context_snippets = search(
-            search_data.query, index, docs, tags,
-            get_active_embedding_client(request.app),
-            index_summaries, cluster_summaries, cluster_map, bm25
-        )
+        from backend.search import EmbeddingDimensionMismatchError
+        _search_timeout = int(os.getenv("SEARCH_TIMEOUT_SECONDS", "30"))
+        try:
+            results, context_snippets = await asyncio.wait_for(
+                asyncio.to_thread(
+                    search,
+                    search_data.query, index, docs, tags,
+                    get_active_embedding_client(request.app),
+                    index_summaries, cluster_summaries, cluster_map, bm25,
+                ),
+                timeout=_search_timeout,
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail="Search timed out. The embedding service may be unavailable.")
+        except EmbeddingDimensionMismatchError as dim_err:
+            logger.error("[Search] Embedding dimension mismatch: %s", dim_err)
+            raise HTTPException(
+                status_code=409,
+                detail="Embedding dimension mismatch: the index was built with a different model. Please re-index your documents.",
+            )
 
         # OPTIMIZATION: Batch fetch missing file info to avoid N+1 queries and improve context quality
         missing_faiss_idxs = [
@@ -1336,9 +1355,9 @@ async def list_providers(request: Request):
 # -------------------------------------------------------------------------
 
 class SystemPromptRequest(BaseModel):
-    name: str
-    content: str
-    category: str = "general"
+    name:     str = Field(..., min_length=1, max_length=200, pattern=r'.*\S.*')
+    content:  str = Field(..., min_length=1, max_length=20_000, pattern=r'.*\S.*')
+    category: str = Field(default="general", max_length=100, pattern=r'.*\S.*')
 
 @app.get("/api/system-prompts")
 async def list_system_prompts(request: Request, category: Optional[str] = None):
@@ -1487,12 +1506,14 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
     Raises:
         HTTPException: 400 if path missing/invalid, 403 if access denied, 404 if file missing, 500 on system error.
     """
+    logger.info("[DEBUG-OPEN] Entered open_file")
     file_path = body.get('path', '')
     if not file_path:
         raise HTTPException(status_code=400, detail="File path is required")
     
     # Normalize and resolve symlinks to prevent path traversal
     file_path = os.path.realpath(os.path.normpath(file_path))
+    logger.info(f"[DEBUG-OPEN] Normalized path: {file_path}")
 
     # Security: Prevent argument injection (files starting with -)
     if os.path.basename(file_path).startswith("-"):
@@ -1501,7 +1522,9 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
     
     # Security: Only allow opening files that are in the index
     # This prevents opening arbitrary files on the system
+    logger.info("[DEBUG-OPEN] Querying database for file...")
     _indexed_file = database.get_file_by_path(file_path)
+    logger.info(f"[DEBUG-OPEN] Database returned: {_indexed_file}")
     if not _indexed_file:
         logger.warning("[Security] Attempt to open non-indexed file: %s", file_path)
         raise HTTPException(status_code=403, detail="Access denied: File is not in the index")
@@ -1510,22 +1533,31 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
 
     # Security: File type validation (additional layer)
     _, ext = os.path.splitext(file_path)
+    logger.info(f"[DEBUG-OPEN] Extension check: {ext}")
     if ext.lower() not in ALLOWED_EXTENSIONS:
         logger.warning(f"Security: Blocked attempt to open disallowed file type: {ext}")
         raise HTTPException(status_code=403, detail="Access denied: File type not allowed")
 
+    logger.info("[DEBUG-OPEN] Checking if file exists...")
     if not os.path.exists(file_path):
+        logger.info("[DEBUG-OPEN] File not found!")
         raise HTTPException(status_code=404, detail="File not found")
 
+    logger.info("[DEBUG-OPEN] Attempting to launch file...")
     try:
         import subprocess
         import platform
         
+        logger.info(f"[DEBUG-OPEN] Platform: {platform.system()}")
         if platform.system() == 'Windows':
+            logger.info("[DEBUG-OPEN] Calling os.startfile...")
             os.startfile(file_path)
+            logger.info("[DEBUG-OPEN] os.startfile completed successfully")
         elif platform.system() == 'Darwin':  # macOS
+            logger.info("[DEBUG-OPEN] Calling open via subprocess...")
             subprocess.run(['open', file_path])
         else:  # Linux
+            logger.info("[DEBUG-OPEN] Calling xdg-open via subprocess...")
             subprocess.run(['xdg-open', file_path])
         
         return {"status": "success", "message": f"Opened {os.path.basename(file_path)}"}
@@ -1923,12 +1955,10 @@ def run_indexing(config, folders):
                 index, docs, tags = new_index, new_docs, new_tags
                 index_summaries, cluster_summaries, cluster_map = new_summ_index, new_summ_docs, new_cluster_map
                 bm25 = new_bm25
-            
+                indexing_progress_callback(100, 100, "Complete")
+                indexing_status["running"] = False
+
             logger.info("Indexing completed successfully.")
-            indexing_status["running"] = False
-            indexing_status["progress"] = 100
-            indexing_status["progress"] = 100
-            indexing_status["current_file"] = "Complete"
             
             # Mark folders as successfully indexed for history
             for folder in folders:

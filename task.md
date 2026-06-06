@@ -1,29 +1,19 @@
-# Tasks
+# Execution Checklist - Git Branch Consolidation
 
-- [ ] Implement Liquid Glass & Calm Contrast Design System <!-- id: 12 -->
-    - [ ] Update CSS Foundation and Tailwind Config <!-- id: 13 -->
-    - [ ] Refactor Layout and Global Components (Header, Sidebar) <!-- id: 14 -->
-    - [ ] Refactor Search Components (SearchBar, SearchResults) <!-- id: 15 -->
-    - [ ] Refactor Modals and Panels (SettingsModal, ModelManager) <!-- id: 16 -->
-    - [ ] Final Polishing and Animation Tuning <!-- id: 17 -->
-
-- [x] Identify all relevant branches <!-- id: 0 -->
-- [ ] Review and Clean Up Stale Branches <!-- id: 1 -->
-    - [x] `fix/command-injection-open-file-14511753768852143137` (STALE - redundant with `598ea28`)
-    - [x] `fix/log-injection-17769544387223096572` (MERGED to main)
-    - [x] `perf-optimize-summarization-4529264541560000095` (MERGED to main)
-- [ ] Review Unmerged Feature/Security Branches <!-- id: 2 -->
-    - [ ] `origin/add-license-file-10697111616399852256`
-    - [ ] `origin/add-qwen-35b-model-15766450201582755034`
-    - [ ] `origin/chore-cleanup-logs-6385257577513788368417`
-    - [ ] `origin/security-fix-rate-limiting-9734473305422310188`
-    - [ ] `origin/security-fix-redact-logs-8941179334005175137`
-- [ ] Merge/Drop Verified Branches <!-- id: 3 -->
-- [ ] Final Verification and Push to Main <!-- id: 4 -->
-- [x] Fix React `act()` warnings in frontend tests <!-- id: 9 -->
-- [x] Resolve structure validation failures in project root <!-- id: 10 -->
-- [ ] Push changes to main and verify CI <!-- id: 11 -->
-- [ ] Recursively generate/update Google Style docstrings for all Python files (excluding venv, __pycache__, and tests) <!-- id: 5 -->
-    - [ ] Scan Python files and identify missing/outdated docstrings <!-- id: 6 -->
-    - [ ] Generate docstrings for classes and functions <!-- id: 7 -->
-    - [ ] Verify no functional changes and run basic validation <!-- id: 8 -->
+- [x] Merge target feature/bugfix branches into `main`
+    - [x] Merge cumulative `fix/issue-81` branch
+    - [x] Merge compatibility `fix/slowapi-middleware-compat` branch
+    - [x] Merge pagination `fix/api-files-pagination` branch
+    - [x] Merge config preservation `claude/sleepy-shaw-33a61c` branch
+    - [x] Merge test fix `claude/interesting-mcclintock-4e358d` branch
+    - [x] Merge a11y and exceptions `claude/xenodochial-noether-9e832f` branch
+- [x] Run full test suites and code validation
+    - [x] Run quick backend test suite (`npm run test`)
+    - [x] Run full frontend Vitest test suite (`cd frontend && npm run test`)
+    - [x] Run structure validation (`npm run validate`)
+- [x] Resolve any test failures or bugs discovered during merge
+- [x] Repository cleanup & stale branch deletion
+    - [x] Delete merged local branches
+    - [x] Delete stale remote branches
+    - [x] Discard sandboxing `claude/determined-hoover-341185` branch
+- [x] Update `AGENTS.md` Change Log
