@@ -1355,9 +1355,9 @@ async def list_providers(request: Request):
 # -------------------------------------------------------------------------
 
 class SystemPromptRequest(BaseModel):
-    name: str
-    content: str
-    category: str = "general"
+    name:     str = Field(..., min_length=1, max_length=200, pattern=r'.*\S.*')
+    content:  str = Field(..., min_length=1, max_length=20_000, pattern=r'.*\S.*')
+    category: str = Field(default="general", max_length=100, pattern=r'.*\S.*')
 
 @app.get("/api/system-prompts")
 async def list_system_prompts(request: Request, category: Optional[str] = None):
@@ -1954,12 +1954,10 @@ def run_indexing(config, folders):
                 index, docs, tags = new_index, new_docs, new_tags
                 index_summaries, cluster_summaries, cluster_map = new_summ_index, new_summ_docs, new_cluster_map
                 bm25 = new_bm25
-            
+                indexing_progress_callback(100, 100, "Complete")
+                indexing_status["running"] = False
+
             logger.info("Indexing completed successfully.")
-            indexing_status["running"] = False
-            indexing_status["progress"] = 100
-            indexing_status["progress"] = 100
-            indexing_status["current_file"] = "Complete"
             
             # Mark folders as successfully indexed for history
             for folder in folders:

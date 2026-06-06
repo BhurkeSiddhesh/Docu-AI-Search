@@ -55,6 +55,13 @@ _embeddings_cache = {}
 _llm_cache = {}
 _llm_client_cache = {}
 
+_DEFAULT_RAG_SYSTEM_PROMPT = (
+    "You are a precise document search assistant. "
+    "Answer ONLY using information from the provided documents. "
+    "Distinguish carefully between people, entities, or topics with similar names. "
+    "Quote specific facts and reference file names when possible."
+)
+
 def get_embeddings(provider: str, api_key: str = None, model_path: str = None) -> Any:
     """
     Returns an embeddings model instance based on the provider.
@@ -414,9 +421,7 @@ def generate_ai_answer(context: str, question: str, provider: str,
 
     # Default logic for non-raw (RAG) mode
     if not raw:
-        system_prompt = system_instruction or """You are a precise document search assistant.
-                CRITICAL: You must distinguish between similar names. If the question asks about 'Siddhesh', do NOT provide info about 'Siddharth'.
-                Only answer based on the provided documents. Quote facts and reference file names."""
+        system_prompt = system_instruction or _DEFAULT_RAG_SYSTEM_PROMPT
 
         # Prepare context
         # Truncate context to fit within model's context window (roughly)
@@ -526,9 +531,7 @@ def stream_ai_answer(context: str, question: str, provider: str,
         yield "Error: Could not initialize AI model. Check settings and API keys."
         return
 
-    system_prompt = system_instruction or """You are a precise document search assistant.
-CRITICAL: You must distinguish between similar names. If the question asks about 'Siddhesh', do NOT provide info about 'Siddharth'.
-Only answer based on the provided documents. Quote facts and reference file names."""
+    system_prompt = system_instruction or _DEFAULT_RAG_SYSTEM_PROMPT
 
     user_content = f"Documents:\n{context}\n\nQuestion: {question}\n\nAnswer (cite specific details from the documents):"
 
