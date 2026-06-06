@@ -328,18 +328,23 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
         
         clusters_batch_data = []
         for future in concurrent.futures.as_completed(future_to_cid):
-            cid, summary = future.result()
+            cid, summary = None, None
+            try:
+                cid, summary = future.result()
+            except Exception as exc:
+                failed_cid = future_to_cid[future]
+                logger.warning("Cluster %s summarization failed, skipping: %s", failed_cid, exc)
             if summary:
                 # Collect for batch insert
                 clusters_batch_data.append((summary, 1))
-                
+
                 # The index in this list will be the FAISS index
                 current_summary_idx = len(cluster_summaries)
                 cluster_summaries.append(summary)
-                
+
                 # Remap: Summary Index ID -> Original Chunk Indices
                 final_cluster_map[current_summary_idx] = cluster_map[cid]
-            
+
             processed_clusters += 1
             if progress_callback:
                 # Map 0-total_clusters to 75-95% (range of 20)
