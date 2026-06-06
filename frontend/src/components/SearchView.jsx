@@ -105,6 +105,7 @@ export default function SearchView({ pendingQuery }) {
                     });
                 } catch (e) {
                     console.error('Stream error:', e);
+                    toast.error('AI answer stream failed. Search results are still available.');
                 } finally {
                     setIsStreaming(false);
                 }

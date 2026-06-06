@@ -3,6 +3,11 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from backend.indexing import create_index, save_index
 import configparser
+import os
+
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_INDEX_PATH = os.path.join(_BASE_DIR, 'data', 'index.faiss')
+_CONFIG_PATH = os.path.join(_BASE_DIR, 'config.ini')
 
 class IndexingEventHandler(FileSystemEventHandler):
     """
@@ -49,7 +54,7 @@ class IndexingEventHandler(FileSystemEventHandler):
         res = create_index(self.folder, self.provider, self.api_key, self.model_path)
         index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
         if index:
-            save_index(index, docs, tags, 'index.faiss', idx_sum, clus_sum, clus_map, bm25)
+            save_index(index, docs, tags, _INDEX_PATH, idx_sum, clus_sum, clus_map, bm25)
             print("Index updated.")
 
 def start_background_indexing():
@@ -60,7 +65,7 @@ def start_background_indexing():
     and runs a continuous loop until a KeyboardInterrupt is received.
     """
     config = configparser.ConfigParser()
-    config.read('config.ini')
+    config.read(_CONFIG_PATH)
 
     if config.has_section('General') and config.getboolean('General', 'auto_index', fallback=False):
         folder = config.get('General', 'folder')
