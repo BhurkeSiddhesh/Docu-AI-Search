@@ -1833,9 +1833,9 @@ def indexing_progress_callback(current, total, message=None):
     indexing_status["processed_files"] = current
     indexing_status["total_files"] = total
     # If 0-100 scale is passed directly as current, respect it
-    if total == 100 and current > 1: 
+    if total == 100 and current > 1:
         indexing_status["progress"] = current
-    else:
+    elif total > 0:
         indexing_status["progress"] = int((current / total) * 100)
     
     # Debug log
