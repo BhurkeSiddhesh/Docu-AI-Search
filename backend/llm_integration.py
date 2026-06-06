@@ -489,15 +489,15 @@ def generate_ai_answer(context: str, question: str, provider: str,
 
             messages.append(HumanMessage(content=user_content))
 
-            # Use bind for stop sequences if supported, otherwise just invoke
+            retry_client = client.with_retry(stop_after_attempt=3)
             if stop_seqs:
                  try:
-                    response = client.bind(stop=stop_seqs).invoke(messages)
+                    response = retry_client.bind(stop=stop_seqs).invoke(messages)
                  except Exception:
                     # Fallback if bind not supported
-                    response = client.invoke(messages)
+                    response = retry_client.invoke(messages)
             else:
-                 response = client.invoke(messages)
+                 response = retry_client.invoke(messages)
 
             return response.content.strip()
 
@@ -589,7 +589,8 @@ def stream_ai_answer(context: str, question: str, provider: str,
                 messages.append(SystemMessage(content=system_prompt))
             messages.append(HumanMessage(content=user_content))
 
-            for chunk in client.stream(messages):
+            retry_client = client.with_retry(stop_after_attempt=3)
+            for chunk in retry_client.stream(messages):
                  yield chunk.content
 
     except Exception as e:
