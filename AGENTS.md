@@ -305,10 +305,39 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-05-28 (Daily Audit Log Consolidation)
+- **feat**: Consolidated 28 unique daily automated code audit log entries spanning early May to late May 2026 into a single, unified, reverse-chronologically sorted `internal_audit_log.md` file.
+- **verification**: Validated layout and verified project compliance via structure check.
+- **Files**: `internal_audit_log.md`, `AGENTS.md`
+
+### 2026-05-28 (Git Branch Consolidation & Test Suite Stabilization)
+- **feat**: Consolidated, reviewed, and successfully merged all active development, bugfix, and configuration-preservation branches (`fix/issue-81`, `fix/slowapi-middleware-compat`, `fix/api-files-pagination`, `claude/sleepy-shaw-33a61c`, `claude/interesting-mcclintock-4e358d`, `claude/xenodochial-noether-9e832f`) into `main`.
+- **clean**: Cleaned up the repository by deleting all 6 merged local branches, 23 individual issue branches (`fix/issue-55` to `fix/issue-80`), 8 helper `claude/` branches, discarding unmerged sandbox branch `claude/determined-hoover-341185`, and pruning 12 stale git worktrees.
+- **fix**: Stabilized the premium sidebar settings UI (`SettingsModal.jsx`) and resolved 9 failing frontend tests (`SettingsModal.test.jsx`) by:
+  - Designing a robust axios client factory mock to intercept custom axios instances created via `axios.create()`.
+  - Correcting the save changes button text to use premium `'Save Changes'` title capitalization.
+  - Adding asynchronous wait logic (`waitFor`) to prevent race conditions during modal configuration load before triggering save clicks.
+  - Wrapping all Vitest test renders in a mock `<ToastProvider>` to correctly supply toast context.
+  - Aligning tab selectors, aria-labels, and input assertions to the updated sidebar settings panels instead of the obsolete accordion layout.
+- **verification**: Ran all backend pytest tests and frontend Vitest tests, achieving 100% pass rates. Verified project structure compliance with `npm run validate`.
+- **Files**: `frontend/src/components/SettingsModal.jsx`, `frontend/src/test/SettingsModal.test.jsx`, `task.md`, `AGENTS.md`
+
 ### 2026-05-14 (Indexing Failure Hardening)
 - **fix**: `create_index` now aborts with a clear log and the empty 8-tuple when (a) every embedding batch fails or (b) the assembled embedding count doesn't match `chunk_strings`. Previously path (a) crashed at `chunk_emb_np.shape[1]` (IndexError on a 1-D empty array) and path (b) silently built a FAISS index whose vectors no longer aligned with the chunk indices stored in `cluster_map`, routing later searches to the wrong chunks. The checkpoint is cleared on abort so the next run re-extracts cleanly.
 - **test**: Added `TestIndexingEmbeddingBatchFailures` (all-fail, partial-fail, checkpoint-cleared-on-abort) and `TestIndexingNonexistentFolder` (mixed valid/missing folder list) to `backend/tests/test_indexing.py`.
 - **Files**: `backend/indexing.py`, `backend/tests/test_indexing.py`, `AGENTS.md`
+
+### 2026-05-06 (Fix SettingsModal test selectors for dual mobile/desktop nav)
+- **Fixed 9 failing Vitest tests in SettingsModal caused by dual navigation rendering**
+  - **fix**: `openModal()` helper was using `findByText('Library')` which matched both mobile and desktop nav buttons simultaneously, causing 8 s retries and Vitest 5 s default timeout kills. Changed to `findByText('System Configuration')` (unique modal title).
+  - **fix**: All nav-tab `getByText(label)` calls changed to `getAllByText(label)[0]` to handle both mobile (`md:hidden`) and desktop (`hidden md:flex`) nav bars being present in happy-dom (CSS media queries not applied in tests).
+  - **Files**: `frontend/src/test/SettingsModal.test.jsx`, `AGENTS.md`
+
+### 2026-05-06 (CLAUDE.md & Frontend Test Fixes)
+- **Added CLAUDE.md with codebase guidance for Claude Code sessions**
+  - **docs**: Added `CLAUDE.md` with setup commands, architecture overview, testing commands, and project conventions.
+  - **fix**: Corrected hardcoded `http://localhost:8000` URLs in `SearchResults.test.jsx` (4 tests) and `SearchHistory.test.jsx` (2 tests) to use relative `/api` paths matching actual component behavior via Vite proxy.
+  - **Files**: `CLAUDE.md`, `frontend/src/test/SearchResults.test.jsx`, `frontend/src/test/SearchHistory.test.jsx`, `AGENTS.md`
 
 ### 2026-04-30 (Backend CI Stabilization & API Fixes)
 - **Resolved critical backend regressions for 100% test pass rate**
