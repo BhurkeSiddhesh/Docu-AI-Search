@@ -43,6 +43,18 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
 
+    useEffect(() => {
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') onClose();
+        };
+        if (isOpen) {
+            window.addEventListener('keydown', handleKeyDown);
+        }
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isOpen, onClose]);
+
     const loadAll = async () => {
         try {
             const [c, e, h, cs] = await Promise.all([
@@ -216,24 +228,31 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
             toast.error('Could not clear cache');
         }
     };
-
     if (!isOpen) return null;
-
     return (
         <div
             className="fixed inset-0 z-[80] bg-slate-900/50 flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in"
             onClick={(e) => e.target === e.currentTarget && onClose()}
+            onKeyDown={(e) => {
+                if (e.key === 'Escape') onClose();
+            }}
+            tabIndex={-1}
         >
-            <div className="bg-white dark:bg-slate-900 w-full sm:max-w-5xl h-[92vh] sm:h-[88vh] sm:rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden">
+            <div 
+                className="bg-white dark:bg-slate-900 w-full sm:max-w-5xl h-[92vh] sm:h-[88vh] sm:rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="settings-modal-title"
+            >
                 {/* Header */}
                 <header className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
                     <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
                             <SettingsIcon className="w-4 h-4" />
                         </div>
-                        <h2 className="font-semibold text-slate-900 dark:text-slate-50">Settings</h2>
+                        <h2 id="settings-modal-title" className="font-semibold text-slate-900 dark:text-slate-50">Settings</h2>
                     </div>
-                    <button onClick={onClose} className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close">
+                    <button onClick={onClose} className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Close settings">
                         <X className="w-5 h-5" />
                     </button>
                 </header>
@@ -327,7 +346,7 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                                                         <button
                                                             onClick={() => removeFolder(f)}
                                                             className="p-1.5 rounded-md text-slate-500 hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-500 transition"
-                                                            aria-label="Remove folder"
+                                                            aria-label={`Remove ${f} from index`}
                                                         >
                                                             <Trash2 className="w-3.5 h-3.5" />
                                                         </button>
@@ -394,18 +413,20 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                                         </div>
 
                                         <div>
-                                            <div className="label">Model name</div>
+                                            <label htmlFor="embedding-model-name" className="label">Model name</label>
                                             <input
+                                                id="embedding-model-name"
                                                 className="input font-mono text-xs"
                                                 value={embedding.model_name}
                                                 onChange={(e) => setEmbedding((s) => ({ ...s, model_name: e.target.value }))}
                                             />
                                         </div>
-
+ 
                                         {EMBEDDING_TYPES.find((t) => t.value === embedding.provider_type)?.needsKey && (
                                             <div>
-                                                <div className="label">API key</div>
+                                                <label htmlFor="embedding-api-key" className="label">API key</label>
                                                 <input
+                                                    id="embedding-api-key"
                                                     type="password"
                                                     className="input"
                                                     value={embedding.api_key}
@@ -606,7 +627,7 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                 <footer className="flex items-center justify-end gap-2 px-5 py-3 border-t border-slate-200 dark:border-slate-800">
                     <button onClick={onClose} className="btn-ghost">Cancel</button>
                     <button onClick={save} disabled={saving || !config} className="btn-primary">
-                        {saving ? 'Saving…' : 'Save changes'}
+                        {saving ? 'Saving…' : 'Save Changes'}
                     </button>
                 </footer>
             </div>
