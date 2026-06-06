@@ -312,6 +312,26 @@ def get_file_by_faiss_index(idx: int) -> Optional[Dict]:
     conn.close()
     return dict(row) if row else None
 
+def get_file_by_name(filename: str) -> Optional[Dict]:
+    """
+    Return the first file record whose basename matches filename.
+    
+    Args:
+        filename (str): The name of the file to search for.
+        
+    Returns:
+        Optional[Dict]: The file metadata dictionary if found, else None.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM files WHERE path LIKE ? LIMIT 1",
+            (f"%/{filename}",)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
 def clear_files():
     """
     Delete all entries from the files table.
@@ -767,8 +787,15 @@ def cleanup_test_data() -> Dict[str, int]:
         cursor.execute("DELETE FROM folder_history WHERE path LIKE ?", (pattern,))
         counts['folders'] += cursor.rowcount
     
-    # Clean search_history with test-like queries
-    cursor.execute("DELETE FROM search_history WHERE query LIKE '%test%' OR query LIKE 'delete%' OR query LIKE 'structure%'")
+    # Clean search_history with known synthetic test query strings only.
+    # Use exact IN + substr prefix (not LIKE) because '_' is a single-char
+    # wildcard in SQL LIKE and would unintentionally match other strings.
+    cursor.execute(
+        "DELETE FROM search_history "
+        "WHERE query IN ('test query', 'history test query', 'structure test', 'delete single test') "
+        "   OR substr(query, 1, 11) = 'test_query_'"
+        "   OR query = ''"
+    )
     counts['search_history'] = cursor.rowcount
     
     conn.commit()
