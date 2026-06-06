@@ -288,6 +288,14 @@ def warmup_local_model(model_path: str, tensor_split: List[float] = None) -> Non
         get_local_llm(model_path, tensor_split=tensor_split)
 
 
+def _read_llm_model_override() -> str | None:
+    """Read optional model_name from [LLM] section of config.ini; returns None if absent."""
+    import configparser as _cp
+    _cfg = _cp.ConfigParser()
+    _cfg.read(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.ini'))
+    return _cfg.get('LLM', 'model_name', fallback='') or None
+
+
 def get_llm_client(provider: str, api_key: str = None, model_path: str = None, base_url: str = None) -> Any:
     """
     Returns a LangChain-compatible Chat Model or special path for local models.
@@ -305,25 +313,28 @@ def get_llm_client(provider: str, api_key: str = None, model_path: str = None, b
     if cache_key in _llm_client_cache:
         return _llm_client_cache[cache_key]
 
+    # Allow per-deployment model override via [LLM] model_name in config.ini
+    llm_model = _read_llm_model_override()
+
     client = None
     try:
         if provider == 'openai':
             if not api_key:
                 logger.warning("OpenAI API Key missing")
                 return None
-            client = ChatOpenAI(api_key=api_key, model="gpt-4o-mini", temperature=0.3)
+            client = ChatOpenAI(api_key=api_key, model=llm_model or "gpt-4o-mini", temperature=0.3)
 
         elif provider == 'gemini':
             if not api_key:
                 logger.warning("Gemini API Key missing")
                 return None
-            client = ChatGoogleGenerativeAI(google_api_key=api_key, model="gemini-1.5-flash", temperature=0.3)
+            client = ChatGoogleGenerativeAI(google_api_key=api_key, model=llm_model or "gemini-2.0-flash", temperature=0.3)
 
         elif provider == 'anthropic':
             if not api_key:
                 logger.warning("Anthropic API Key missing")
                 return None
-            client = ChatAnthropic(api_key=api_key, model="claude-3-haiku-20240307", temperature=0.3)
+            client = ChatAnthropic(api_key=api_key, model=llm_model or "claude-haiku-4-5-20251001", temperature=0.3)
 
         elif provider == 'grok':
             if not api_key:
@@ -333,7 +344,7 @@ def get_llm_client(provider: str, api_key: str = None, model_path: str = None, b
             client = ChatOpenAI(
                 api_key=api_key,
                 base_url="https://api.x.ai/v1",
-                model="grok-beta",
+                model=llm_model or "grok-2-1212",
                 temperature=0.3
             )
 
