@@ -323,17 +323,15 @@ class TestDatabaseFileOperations(TestDatabaseBase):
         self.assertNotIn(9999, results)
 
     def test_get_files_by_faiss_indices_exceeds_max(self):
-        """Test that ValueError is raised when exceeding MAX_INDICES limit."""
+        """More than MAX_INDICES indices are handled via chunked queries, not ValueError."""
         from backend import database
 
-        # Create a list of MAX_INDICES+1 indices (exceeds limit)
+        # Create a list of MAX_INDICES+1 indices (exceeds single-batch limit)
         indices = list(range(database.MAX_INDICES + 1))
 
-        # Should raise ValueError
-        with self.assertRaises(ValueError) as context:
-            database.get_files_by_faiss_indices(indices)
-
-        self.assertIn("Too many indices", str(context.exception))
+        # Should NOT raise — chunking processes all batches and returns a dict
+        result = database.get_files_by_faiss_indices(indices)
+        self.assertIsInstance(result, dict)
 
 
 class TestDatabasePreferences(TestDatabaseBase):
@@ -377,15 +375,13 @@ class TestGetFilesByFaissIndices(unittest.TestCase):
         result = database.get_files_by_faiss_indices([])
         self.assertEqual(result, {})
 
-    def test_exceeding_max_indices_raises_value_error(self):
-        """More than MAX_INDICES unique indices raises ValueError."""
+    def test_exceeding_max_indices_chunked_without_error(self):
+        """More than MAX_INDICES unique indices are chunked, not rejected."""
         from backend import database
         indices = list(range(database.MAX_INDICES + 1))
-        with self.assertRaises(ValueError) as ctx:
-            database.get_files_by_faiss_indices(indices)
-        error_msg = str(ctx.exception)
-        self.assertIn(str(database.MAX_INDICES), error_msg)
-        self.assertIn("Too many indices", error_msg)
+        # Should not raise — processed in batches of MAX_INDICES
+        result = database.get_files_by_faiss_indices(indices)
+        self.assertIsInstance(result, dict)
 
     def test_exactly_max_indices_does_not_raise(self):
         """Exactly MAX_INDICES unique indices does not raise."""
