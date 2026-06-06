@@ -4,6 +4,36 @@ Automated daily code audit results for [BhurkeSiddhesh/Docu-AI-Search](https://g
 
 ---
 
+## Audit: 2026-06-06
+
+- Issues filed: 3
+- Categories: 0 Critical Bug, 2 Logic Enhancement, 1 Developer Experience
+- Auto-merge eligible: 1 (#317)
+- Needs human review: 0
+- Status: Issues Filed
+
+### Issues Created This Run
+
+| # | Category | Title | Confidence | Auto-fix |
+|---|----------|-------|------------|---------|
+| [#316](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/316) | Logic Enhancement | `generate_ai_answer()` and `stream_ai_answer()` have no retry logic — transient API failures immediately surface as user errors | MEDIUM | yes |
+| [#317](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/317) | Logic Enhancement | `SettingsModal` `loadAll()` missing per-call `.catch()` on `api.getConfig()` — single `/api/config` failure blanks entire settings panel | HIGH | yes (auto-merge-ok) |
+| [#318](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/318) | Developer Experience | LLM model names hardcoded in `get_llm_client()` and not user-configurable — `grok-beta` deprecated, `gemini-1.5-flash`/`claude-3-haiku` outdated | MEDIUM | yes |
+
+### Scope Covered
+- `backend/llm_integration.py` (generate_ai_answer, stream_ai_answer, get_llm_client — complete)
+- `backend/agent.py` (stream_chat ReAct loop)
+- `backend/database.py` (init_database, connection pool)
+- `backend/auth.py` (token validation, config reads)
+- `backend/background.py` (watchdog update_index)
+- `frontend/src/components/SettingsModal.jsx` (loadAll, Promise.all guards)
+- `frontend/src/components/ResultCard.jsx` (togglePreview, async race)
+- `frontend/src/components/AgentView.jsx` (EventSource lifecycle)
+- `frontend/src/lib/api.js` (streamAnswer, Promise.all patterns)
+- Existing open issues cross-referenced (99 issues checked for duplicates)
+
+---
+
 ## Audit: 2026-05-28
 
 - Issues filed: 6
