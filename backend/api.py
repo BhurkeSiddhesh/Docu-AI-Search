@@ -901,7 +901,7 @@ async def get_config(request: Request):
 
 @app.post("/api/config")
 @limiter.limit("10/minute")
-async def update_config(config_data: ConfigModel, request: Request):
+async def update_config(config_data: ConfigModel, request: Request, _=Depends(verify_local_request)):
     """
     Update the application configuration.
 
