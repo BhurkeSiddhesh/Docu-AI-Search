@@ -1084,17 +1084,21 @@ class TestAPIStreamingEdgeCases(unittest.TestCase):
         """Set up test client before each test method."""
         self.client = TestClient(app)
 
+    @patch('backend.api.cached_smart_summary')
+    @patch('backend.api.get_active_embedding_client')
     @patch('backend.api.stream_ai_answer')
     @patch('backend.api.search')
     @patch('backend.api.summarize')
     @patch('backend.api.load_config')
     def test_stream_answer_rerun_search(self, mock_config, mock_summarize,
-                                        mock_search, mock_stream):
+                                        mock_search, mock_stream, mock_embedding_client,
+                                        mock_smart_summary):
         """Test streaming answer when context not provided (re-runs search)."""
         mock_config.return_value.get.return_value = 'openai'
         mock_search.return_value = ([{'document': 'test', 'tags': [], 'faiss_idx': 0}], ['context'])
         mock_summarize.return_value = "Summary"
         mock_stream.return_value = iter(["token1", "token2"])
+        mock_smart_summary.return_value = "Smart Summary"
 
         with patch('backend.api.index', MagicMock()), \
              patch('backend.api.docs', []), \
