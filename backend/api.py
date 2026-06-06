@@ -896,7 +896,7 @@ async def get_config(request: Request):
         "ollama_base_url": config.get('ExternalProviders', 'ollama_base_url', fallback='http://localhost:11434'),
         "lmstudio_base_url": config.get('ExternalProviders', 'lmstudio_base_url', fallback='http://localhost:1234/v1'),
         "external_model_name": config.get('ExternalProviders', 'external_model_name', fallback=''),
-        "external_api_key": config.get('ExternalProviders', 'external_api_key', fallback=''),
+        "external_api_key_set": bool(config.get('ExternalProviders', 'external_api_key', fallback='')),
     }
 
 @app.post("/api/config")
@@ -942,7 +942,7 @@ async def update_config(config_data: ConfigModel, request: Request):
         'ollama_base_url': config_data.ollama_base_url or 'http://localhost:11434',
         'lmstudio_base_url': config_data.lmstudio_base_url or 'http://localhost:1234/v1',
         'external_model_name': config_data.external_model_name or '',
-        'external_api_key': config_data.external_api_key or '',
+        'external_api_key': _key(config_data.external_api_key, 'ExternalProviders', 'external_api_key'),
     }
     save_config_file(config)
     
