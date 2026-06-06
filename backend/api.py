@@ -1418,12 +1418,13 @@ async def delete_search_history_item(history_id: int, request: Request, _auth=De
     """
     try:
         success = database.delete_search_history_item(history_id)
-        if success:
-            return {"status": "success", "message": "History item deleted"}
-        raise HTTPException(status_code=404, detail="History item not found")
     except Exception as e:
         logger.error("[API] Failed to delete history item %s: %s", history_id, e)
         raise HTTPException(status_code=500, detail="Failed to delete history item")
+
+    if success:
+        return {"status": "success", "message": "History item deleted"}
+    raise HTTPException(status_code=404, detail="History item not found")
 
 @app.delete("/api/search/history")
 async def delete_all_search_history(request: Request, _auth=Depends(require_auth)):
