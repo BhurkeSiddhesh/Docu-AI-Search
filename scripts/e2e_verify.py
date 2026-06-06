@@ -18,7 +18,7 @@ def check_backend():
             requests.get(f"{API_URL}/config", timeout=5)
             print("Backend is online!")
             return True
-        except:
+        except requests.RequestException:
             print(f"Backend unavailable, retrying ({i+1}/12)...")
             time.sleep(5)
     return False
@@ -33,8 +33,9 @@ def trigger_indexing():
     """
     print("Triggering index...")
     requests.post(f"{API_URL}/index")
-    
-    while True:
+
+    MAX_WAIT = 300  # iterations × 2 s = 10 min
+    for _ in range(MAX_WAIT):
         status = requests.get(f"{API_URL}/index/status").json()
         print(f"Progress: {status['progress']}% - {status['current_file']}")
         if not status['running']:
@@ -43,6 +44,9 @@ def trigger_indexing():
                 return False
             return True
         time.sleep(2)
+    else:
+        print("Indexing did not complete within the timeout.")
+        return False
 
 def query_system():
     """

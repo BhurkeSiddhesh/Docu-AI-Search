@@ -7,6 +7,7 @@ import BenchmarkView from './components/BenchmarkView';
 import SettingsModal from './components/SettingsModal';
 import HistoryDrawer from './components/HistoryDrawer';
 import IndexingBanner from './components/IndexingBanner';
+import ErrorBoundary from './components/ErrorBoundary';
 
 export default function App() {
     const [darkMode, setDarkMode] = useState(() => {
@@ -78,16 +79,18 @@ export default function App() {
                 </div>
 
                 <main className="flex-1 min-w-0">
-                    {activeTab === 'search' && (
-                        <SearchView
-                            key={resetKey}
-                            pendingQuery={pendingQuery}
-                        />
-                    )}
-                    {activeTab === 'library' && (
-                        <LibraryView onOpenSettings={() => setSettingsOpen(true)} />
-                    )}
-                    {activeTab === 'benchmarks' && <BenchmarkView />}
+                    <ErrorBoundary>
+                        {activeTab === 'search' && (
+                            <SearchView
+                                key={resetKey}
+                                pendingQuery={pendingQuery}
+                            />
+                        )}
+                        {activeTab === 'library' && (
+                            <LibraryView onOpenSettings={() => setSettingsOpen(true)} />
+                        )}
+                        {activeTab === 'benchmarks' && <BenchmarkView />}
+                    </ErrorBoundary>
                 </main>
             </div>
 
