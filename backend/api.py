@@ -1017,7 +1017,16 @@ async def search_files(search_data: SearchRequest, request: Request, background_
                 'index_summaries': isumm_snap, 'cluster_summaries': csumm_snap,
                 'cluster_map': cmap_snap, 'bm25': bm25_snap
             })
-            return StreamingResponse(agent.stream_chat(search_data.query), media_type="text/event-stream")
+
+            async def _agentic_sse():
+                try:
+                    async for event in agent.stream_chat(search_data.query):
+                        yield f"data: {json.dumps(event)}\n\n"
+                except Exception as e:
+                    logger.error("[Agent/search] Stream error: %s", e)
+                    yield f"data: {json.dumps({'type': 'error', 'content': 'Agent error'})}\n\n"
+
+            return StreamingResponse(_agentic_sse(), media_type="text/event-stream")
 
         model_path = config.get('LocalLLM', 'model_path', fallback=None)
         tensor_split_str = config.get('LocalLLM', 'tensor_split', fallback=None)
