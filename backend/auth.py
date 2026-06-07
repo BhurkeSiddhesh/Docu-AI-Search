@@ -35,8 +35,12 @@ def _get_or_create_token() -> str:
     if not token_hash:
         token = secrets.token_hex(32)
         config.set("Auth", "token_hash", hashlib.sha256(token.encode()).hexdigest())
-        with open(_CONFIG_PATH, "w") as f:
-            config.write(f)
+        import tempfile, os as _os
+        _dir = _os.path.dirname(_CONFIG_PATH)
+        with tempfile.NamedTemporaryFile("w", dir=_dir, delete=False, suffix=".tmp") as _tmp:
+            config.write(_tmp)
+            _tmp_path = _tmp.name
+        _os.replace(_tmp_path, _CONFIG_PATH)
         logger.info("Generated new API auth token. Retrieve it via GET /api/auth/token (localhost only).")
         return token
     # Token was already created; can't recover plaintext from hash.

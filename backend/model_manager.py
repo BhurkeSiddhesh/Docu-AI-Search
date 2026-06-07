@@ -1,8 +1,11 @@
 import os
+import logging
 import requests
 import threading
 import shutil
 import psutil
+
+_logger = logging.getLogger(__name__)
 
 # Path configuration for new folder structure
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -625,28 +628,29 @@ def start_download(model_id):
             - str: A success or error message for the caller.
     """
     global download_status
-    
-    if download_status["downloading"]:
-        return False, "Another download is in progress"
-    
+
     model = next((m for m in AVAILABLE_MODELS if m["id"] == model_id), None)
     if not model:
         return False, f"Model not found: {model_id}"
-    
+
     filename = f"{model_id}.gguf"
     filepath = os.path.join(MODELS_DIR, filename)
-    
-    # Check if already downloaded
+
     if os.path.exists(filepath):
         return False, "Model already downloaded"
-    
-    # Check system resources
+
     can_download, warnings = check_system_resources(model)
     if not can_download:
         return False, f"Cannot download: {'; '.join(warnings)}"
-    
+
+    with _download_lock:
+        if download_status["downloading"]:
+            return False, "Another download is in progress"
+        download_status["downloading"] = True
+        download_status["model_id"] = model_id
+
     thread = threading.Thread(
-        target=download_file, 
+        target=download_file,
         args=(model["url"], filename, model_id, model.get("size_bytes", 0))
     )
     thread.daemon = True
@@ -715,16 +719,15 @@ def delete_model(model_path):
               False if the path was unsafe or an error occurred.
     """
     if not is_safe_model_path(model_path):
-        print(f"Security Warning: Attempt to delete unsafe path: {model_path}")
+        _logger.warning("Security: attempt to delete unsafe path: %s", model_path)
         return False
 
-    # Use the validated absolute path for all filesystem operations
     abs_model_path = os.path.abspath(model_path)
     if os.path.exists(abs_model_path):
         try:
             os.remove(abs_model_path)
             return True
         except OSError as e:
-            print(f"Error deleting model: {e}")
+            _logger.error("Error deleting model: %s", e)
             return False
     return False

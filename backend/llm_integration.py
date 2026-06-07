@@ -65,17 +65,9 @@ def _invoke_with_retry(client, messages, retries: int = 3):
             _time.sleep(2 ** attempt)
 
 
-# DEBUG: Print environment info IMMEDIATELY
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-try:
-    logger.info(f"LLM Integration Module Loading...")
-    logger.info(f"Python Executable: {sys.executable}")
-    logger.info(f"Python Path: {sys.path}")
-    logger.info(f"CWD: {os.getcwd()}")
-except Exception as e:
-    logger.error(f"{e}")
+logger.debug("llm_integration module loaded")
 
 # IMPORTS FIXED: Lazy loading to prevent startup crashes
 # from langchain_huggingface import HuggingFaceEmbeddings

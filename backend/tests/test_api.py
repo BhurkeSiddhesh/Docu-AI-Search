@@ -1209,6 +1209,110 @@ class TestBatch1Fixes(unittest.TestCase):
         self.assertEqual(configured_origins, ALLOWED_ORIGINS)
 
 
+class TestBatch2Fixes(unittest.TestCase):
+    """Tests for batch-2 fixes (#135, #168, #212)."""
+
+    def setUp(self):
+        self.client = TestClient(app)
+        from backend.api import verify_local_request, require_auth
+        app.dependency_overrides[verify_local_request] = lambda: None
+        app.dependency_overrides[require_auth] = lambda: None
+
+    def tearDown(self):
+        app.dependency_overrides = {}
+
+    # ── #212: data-access endpoints require auth ────────────────────────────
+
+    def test_list_files_requires_auth(self):
+        """GET /api/files must have require_auth dependency wired."""
+        from backend.api import list_indexed_files
+        import inspect
+        sig = inspect.signature(list_indexed_files)
+        self.assertIn('_auth', sig.parameters)
+
+    def test_preview_file_requires_auth(self):
+        """GET /api/files/preview must have require_auth dependency wired."""
+        from backend.api import preview_file
+        import inspect
+        sig = inspect.signature(preview_file)
+        self.assertIn('_auth', sig.parameters)
+
+    def test_search_history_requires_auth(self):
+        """GET /api/search/history must have require_auth dependency wired."""
+        from backend.api import get_search_history
+        import inspect
+        sig = inspect.signature(get_search_history)
+        self.assertIn('_auth', sig.parameters)
+
+    def test_cache_stats_requires_auth(self):
+        """GET /api/cache/stats must have require_auth dependency wired."""
+        from backend.api import cache_stats_endpoint
+        import inspect
+        sig = inspect.signature(cache_stats_endpoint)
+        self.assertIn('_auth', sig.parameters)
+
+    # ── #135: download/benchmarks/index require verify_local_request ────────
+
+    def test_download_model_requires_local(self):
+        """POST /api/models/download must have verify_local_request wired."""
+        from backend.api import download_model_endpoint
+        import inspect
+        sig = inspect.signature(download_model_endpoint)
+        self.assertIn('_', sig.parameters)
+
+    def test_run_benchmarks_requires_local(self):
+        """POST /api/benchmarks/run must have verify_local_request wired."""
+        from backend.api import run_benchmarks
+        import inspect
+        sig = inspect.signature(run_benchmarks)
+        self.assertIn('_', sig.parameters)
+
+    def test_trigger_indexing_requires_local(self):
+        """POST /api/index must have verify_local_request wired."""
+        from backend.api import trigger_indexing
+        import inspect
+        sig = inspect.signature(trigger_indexing)
+        self.assertIn('_', sig.parameters)
+
+    # ── #168: stream-answer yields SSE error event ──────────────────────────
+
+    @patch('backend.api.stream_ai_answer', side_effect=RuntimeError("LLM unavailable"))
+    @patch('backend.api.index', MagicMock())
+    def test_stream_answer_yields_sse_error_on_exception(self, mock_stream):
+        """When stream_ai_answer raises, client receives an SSE [ERROR] event."""
+        # Provide context directly so the endpoint reaches stream_ai_answer
+        response = self.client.post("/api/stream-answer", json={
+            "query": "test",
+            "context": ["some relevant document context"]
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"[ERROR]", response.content)
+
+
+class TestBatch2BackgroundFix(unittest.TestCase):
+    """Tests for background.py error handling fix (#200)."""
+
+    @patch('backend.background.create_index', side_effect=RuntimeError("index exploded"))
+    def test_update_index_exception_is_caught(self, mock_create):
+        """update_index must catch exceptions and keep the watchdog running."""
+        from backend.background import IndexingEventHandler
+        handler = IndexingEventHandler("/some/folder", "openai", "key", None)
+        try:
+            handler.update_index()
+        except Exception:
+            self.fail("update_index propagated an exception; watchdog thread would die")
+
+    @patch('backend.background.create_index')
+    @patch('backend.background.save_index')
+    def test_update_index_saves_on_success(self, mock_save, mock_create):
+        """update_index still calls save_index when create_index succeeds."""
+        from backend.background import IndexingEventHandler
+        mock_create.return_value = (MagicMock(), ["doc"], ["tag"], None, None, None, None)
+        handler = IndexingEventHandler("/some/folder", "openai", "key", None)
+        handler.update_index()
+        mock_save.assert_called_once()
+
+
 class TestBatch1DatabaseFixes(unittest.TestCase):
     """Tests for database-level fixes (#186)."""
 

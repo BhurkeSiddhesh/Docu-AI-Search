@@ -566,7 +566,7 @@ async def list_local_models(request: Request):
 
 @app.post("/api/models/download/{model_id}")
 @limiter.limit("3/minute")
-async def download_model_endpoint(model_id: str, request: Request):
+async def download_model_endpoint(model_id: str, request: Request, _=Depends(verify_local_request)):
     """
     Trigger a background task to download a specific model.
 
@@ -630,7 +630,7 @@ async def delete_model(request: dict, req: Request, _=Depends(verify_local_reque
         raise HTTPException(status_code=500, detail="Failed to delete model")
 
 @app.get("/api/cache/stats")
-def cache_stats_endpoint():
+def cache_stats_endpoint(_auth=Depends(require_auth)):
     """
     Get statistics about the AI response cache.
 
@@ -706,7 +706,7 @@ def run_benchmark_task():
         benchmark_status["error"] = str(e)
 
 @app.post("/api/benchmarks/run")
-async def run_benchmarks(background_tasks: BackgroundTasks, request: Request):
+async def run_benchmarks(background_tasks: BackgroundTasks, request: Request, _=Depends(verify_local_request)):
     """
     Start the benchmark suite in the background.
 
@@ -1286,12 +1286,13 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
     async def generate():
         try:
             for token in stream_ai_answer(
-                context_text, search_data.query, provider, api_key, model_path, 
+                context_text, search_data.query, provider, api_key, model_path,
                 tensor_split, system_instruction, base_url=search_data.base_url_override
             ):
                 yield token
         except Exception as _stream_err:
-            logger.error("[Stream] Answer generation error: %s", _stream_err)
+            logger.error("[Stream] Answer generation error: %s", _stream_err, exc_info=True)
+            yield f"data: [ERROR] An error occurred while generating the answer.\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -1384,7 +1385,7 @@ async def delete_system_prompt_endpoint(prompt_id: int, request: Request, _auth=
     raise HTTPException(status_code=404, detail="System prompt not found")
 
 @app.get("/api/search/history")
-async def get_search_history(request: Request):
+async def get_search_history(request: Request, _auth=Depends(require_auth)):
     """
     Retrieve recent search history from the database.
 
@@ -1577,7 +1578,7 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
         raise HTTPException(status_code=500, detail="Failed to open file")
 
 @app.get("/api/files")
-async def list_indexed_files(request: Request, limit: int = 100, offset: int = 0):
+async def list_indexed_files(request: Request, limit: int = 100, offset: int = 0, _auth=Depends(require_auth)):
     """
     List indexed documents with pagination.
 
@@ -1605,7 +1606,7 @@ async def list_indexed_files(request: Request, limit: int = 100, offset: int = 0
         raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
 @app.get("/api/files/preview")
-async def preview_file(path: str, request: Request, chars: int = 2000):
+async def preview_file(path: str, request: Request, chars: int = 2000, _auth=Depends(require_auth)):
     """
     Return a text preview of an indexed file (path traversal protected).
 
@@ -1788,7 +1789,7 @@ async def get_indexing_status(request: Request):
 
 @app.post("/api/index")
 @limiter.limit("5/minute")
-async def trigger_indexing(background_tasks: BackgroundTasks, request: Request):
+async def trigger_indexing(background_tasks: BackgroundTasks, request: Request, _=Depends(verify_local_request)):
     """
     Manually trigger the background indexing process for configured folders.
 

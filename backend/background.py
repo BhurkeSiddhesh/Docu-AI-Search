@@ -54,11 +54,14 @@ class IndexingEventHandler(FileSystemEventHandler):
         'index.faiss' and related files.
         """
         logger.info("Change detected, updating index...")
-        res = create_index(self.folder, self.provider, self.api_key, self.model_path)
-        index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
-        if index:
-            save_index(index, docs, tags, _INDEX_PATH, idx_sum, clus_sum, clus_map, bm25)
-            logger.info("Index updated successfully.")
+        try:
+            res = create_index(self.folder, self.provider, self.api_key, self.model_path)
+            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
+            if index:
+                save_index(index, docs, tags, _INDEX_PATH, idx_sum, clus_sum, clus_map, bm25)
+                logger.info("Index updated successfully.")
+        except Exception as e:
+            logger.error("Background index update failed for %s: %s", self.folder, e, exc_info=True)
 
 def start_background_indexing():
     """
