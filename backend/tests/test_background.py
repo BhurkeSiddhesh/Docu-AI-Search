@@ -1,7 +1,8 @@
 import unittest
 import tempfile
 import os
-from unittest.mock import patch, MagicMock
+import configparser
+from unittest.mock import patch, MagicMock, call
 from backend.background import start_background_indexing, IndexingEventHandler
 
 
@@ -143,6 +144,100 @@ class TestBackground(unittest.TestCase):
         # Verify create_index was called
         mock_create_index.assert_called_once()
         mock_save_index.assert_called_once()
+
+
+class TestStartBackgroundIndexingFolderParsing(unittest.TestCase):
+    """Tests for multi-folder and legacy fallback parsing in start_background_indexing."""
+
+    def _make_config(self, general_items, tmp_path=None):
+        cfg = configparser.ConfigParser()
+        cfg['General'] = general_items
+        cfg['LocalLLM'] = {'provider': 'openai', 'model_path': ''}
+        cfg['APIKeys'] = {'openai_api_key': 'test_key'}
+        f = tempfile.NamedTemporaryFile(mode='w', suffix='.ini', delete=False)
+        cfg.write(f)
+        f.close()
+        return f.name
+
+    @patch('backend.background.Observer')
+    @patch('backend.background.IndexingEventHandler')
+    @patch('backend.background.time')
+    def test_multiple_folders_from_folders_key(self, mock_time, MockHandler, MockObserver):
+        """Comma-separated 'folders' creates one handler per folder."""
+        mock_time.sleep.side_effect = KeyboardInterrupt
+        config_path = self._make_config({
+            'auto_index': 'true',
+            'folders': '/dir/a, /dir/b, /dir/c',
+        })
+        try:
+            with patch('backend.background._CONFIG_PATH', config_path):
+                start_background_indexing()
+        except (KeyboardInterrupt, SystemExit):
+            pass
+        finally:
+            os.unlink(config_path)
+
+        self.assertEqual(MockHandler.call_count, 3)
+        folders_used = [c[0][0] for c in MockHandler.call_args_list]
+        self.assertEqual(sorted(folders_used), ['/dir/a', '/dir/b', '/dir/c'])
+
+    @patch('backend.background.Observer')
+    @patch('backend.background.IndexingEventHandler')
+    @patch('backend.background.time')
+    def test_legacy_folder_key_fallback(self, mock_time, MockHandler, MockObserver):
+        """Falls back to 'folder' key when 'folders' is empty."""
+        mock_time.sleep.side_effect = KeyboardInterrupt
+        config_path = self._make_config({
+            'auto_index': 'true',
+            'folder': '/legacy/dir',
+        })
+        try:
+            with patch('backend.background._CONFIG_PATH', config_path):
+                start_background_indexing()
+        except (KeyboardInterrupt, SystemExit):
+            pass
+        finally:
+            os.unlink(config_path)
+
+        self.assertEqual(MockHandler.call_count, 1)
+        self.assertEqual(MockHandler.call_args[0][0], '/legacy/dir')
+
+    @patch('backend.background.Observer')
+    @patch('backend.background.IndexingEventHandler')
+    @patch('backend.background.time')
+    def test_folders_key_takes_precedence_over_folder(self, mock_time, MockHandler, MockObserver):
+        """'folders' key wins when both 'folders' and 'folder' are present."""
+        mock_time.sleep.side_effect = KeyboardInterrupt
+        config_path = self._make_config({
+            'auto_index': 'true',
+            'folders': '/primary/dir',
+            'folder': '/legacy/dir',
+        })
+        try:
+            with patch('backend.background._CONFIG_PATH', config_path):
+                start_background_indexing()
+        except (KeyboardInterrupt, SystemExit):
+            pass
+        finally:
+            os.unlink(config_path)
+
+        self.assertEqual(MockHandler.call_count, 1)
+        self.assertEqual(MockHandler.call_args[0][0], '/primary/dir')
+
+    def test_auto_index_false_does_not_start(self):
+        """auto_index=false means no handlers or observer are created."""
+        config_path = self._make_config({
+            'auto_index': 'false',
+            'folders': '/some/dir',
+        })
+        with patch('backend.background.Observer') as MockObserver, \
+             patch('backend.background.IndexingEventHandler') as MockHandler, \
+             patch('backend.background._CONFIG_PATH', config_path):
+            start_background_indexing()
+        os.unlink(config_path)
+
+        MockHandler.assert_not_called()
+        MockObserver.assert_not_called()
 
 
 if __name__ == '__main__':

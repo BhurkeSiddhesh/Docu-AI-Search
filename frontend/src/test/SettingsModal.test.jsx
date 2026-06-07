@@ -23,6 +23,10 @@ vi.mock('axios', () => {
         put: vi.fn(),
         delete: vi.fn(),
         create: vi.fn(),
+        interceptors: {
+            request: { use: vi.fn() },
+            response: { use: vi.fn() },
+        },
     }
     mockAxios.create.mockReturnValue(mockAxios)
     return {

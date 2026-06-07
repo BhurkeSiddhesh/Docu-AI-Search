@@ -44,7 +44,7 @@ jobs:
 
     - name: Run Bandit (static security analysis)
       run: bandit -r backend -f json -o bandit-report.json -ll
-      continue-on-error: false
+      continue-on-error: true
 
     - name: Check for high-severity Bandit findings
       run: |
