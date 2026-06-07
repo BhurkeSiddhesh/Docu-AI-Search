@@ -107,6 +107,8 @@ class ReActAgent:
         self.max_tokens = 384 if self.is_local else 512
         # Max chars of each observation to include in history (keeps context lean)
         self.obs_window = 350 if self.is_local else 800
+        # Per-step wall-clock timeout in seconds (prevents stalled provider from blocking indefinitely)
+        self.step_timeout = 60
 
     def _extract_final_answer(self, text: str) -> str | None:
         """
@@ -200,27 +202,32 @@ class ReActAgent:
             user_content = "\n".join(history) + "\n\nThought:"
 
             try:
-                response_text = llm_integration.generate_ai_answer(
-                    context="",
-                    question=user_content,
-                    provider=self.provider,
-                    api_key=self.api_key,
-                    model_path=self.model_path,
-                    raw=True,
-                    system_instruction=self.system_prompt,
-                    stop=["Observation:", "Question:"],
-                    max_tokens=self.max_tokens,
-                    temperature=0.1
+                response_text = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        llm_integration.generate_ai_answer,
+                        context="",
+                        question=user_content,
+                        provider=self.provider,
+                        api_key=self.api_key,
+                        model_path=self.model_path,
+                        raw=True,
+                        system_instruction=self.system_prompt,
+                        stop=["Observation:", "Question:"],
+                        max_tokens=self.max_tokens,
+                        temperature=0.1,
+                    ),
+                    timeout=self.step_timeout,
                 )
 
                 if response_text.startswith("Error"):
                     raise Exception(response_text)
 
+            except asyncio.TimeoutError:
+                yield {"type": "error", "content": f"LLM step timed out after {self.step_timeout}s"}
+                return
             except Exception as e:
                 yield {"type": "error", "content": f"LLM Error: {e}"}
                 return
-
-            print(f"\n[AGENT STEP {step+1}] {response_text[:300]}\n")
 
             current_step_log = f"Thought: {response_text}"
             history.append(current_step_log)
@@ -229,12 +236,10 @@ class ReActAgent:
             final_ans = self._extract_final_answer(response_text)
             if final_ans:
                 if has_searched:
-                    print(f"[AGENT FINAL ANSWER] {final_ans[:200]}")
                     yield {"type": "answer", "content": final_ans}
                     return
                 else:
                     # Model is trying to answer without searching — force a search
-                    print(f"[AGENT BLOCK] Model tried to answer before searching. Forcing search...")
                     yield {"type": "thought", "content": "I need to search the index before answering."}
                     action, action_input = self._force_search_action(user_query)
                     # Fall through to execute the forced action below
@@ -270,20 +275,17 @@ class ReActAgent:
 
                         # If we have NOT searched yet, FORCE a search regardless
                         if not has_searched:
-                            print(f"[AGENT FORCE SEARCH step={step}] No action on first step, forcing search")
                             yield {"type": "thought", "content": "Searching the index for relevant information..."}
                             action_match_str, action_input_str = self._force_search_action(user_query)
                             # Fall through to tool execution below
 
                         # If we HAVE searched and response is document-grounded, accept it
                         elif self._is_grounded_direct_answer(thought_text):
-                            print(f"[AGENT GROUNDED ANSWER step={step}] {thought_text[:200]}")
                             yield {"type": "answer", "content": thought_text}
                             return
 
                         # If we've searched and it's a longish response, take it as answer
                         elif len(thought_text) > 100 and step >= 2:
-                            print(f"[AGENT AUTO-ANSWER step={step}] {thought_text[:200]}")
                             yield {"type": "answer", "content": thought_text}
                             return
 
@@ -305,7 +307,6 @@ class ReActAgent:
             action = action_match_str
             action_input = action_input_str
 
-            print(f"[AGENT ACTION] {action}('{action_input}')")
             yield {"type": "thought", "content": f"Searching for: {action_input!r}" if action == "search_knowledge_base" else f"Using tool: {action}"}
             yield {"type": "action", "content": f"Executing {action}..."}
 
@@ -327,9 +328,7 @@ class ReActAgent:
                 observation = f"Error: Tool '{action}' not found. Available: {list(tools.AVAILABLE_TOOLS.keys())}"
 
             obs_preview = observation[:self.obs_window]
-            print(f"[AGENT OBSERVATION] {obs_preview[:200]}...")
             history.append(f"Observation: {obs_preview}")
             yield {"type": "observation", "content": obs_preview + ("..." if len(observation) > self.obs_window else "")}
 
-        print("[AGENT ERROR] Max steps reached.")
         yield {"type": "error", "content": "The agent was unable to find a definitive answer within the allotted steps."}

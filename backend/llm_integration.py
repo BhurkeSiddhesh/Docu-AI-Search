@@ -32,6 +32,38 @@ except ImportError:
 
 _local_llm_lock = threading.Lock()
 
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_CONFIG_PATH = os.path.join(_BASE_DIR, 'config.ini')
+
+# DEFAULT model IDs — overridable via [LLM] model= in config.ini
+_DEFAULT_OPENAI_MODEL    = "gpt-4o-mini"
+_DEFAULT_GEMINI_MODEL    = "gemini-2.0-flash"
+_DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
+_DEFAULT_GROK_MODEL      = "grok-2-1212"
+
+
+def _get_configured_llm_model() -> Optional[str]:
+    """Read optional [LLM] model override from config.ini."""
+    try:
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg.read(_CONFIG_PATH)
+        return cfg.get('LLM', 'model', fallback=None) or None
+    except Exception:
+        return None
+
+
+def _invoke_with_retry(client, messages, retries: int = 3):
+    """Invoke a LangChain client with exponential backoff retry."""
+    for attempt in range(retries):
+        try:
+            return client.invoke(messages)
+        except Exception as e:
+            if attempt == retries - 1:
+                raise
+            import time as _time
+            _time.sleep(2 ** attempt)
+
 
 # DEBUG: Print environment info IMMEDIATELY
 logging.basicConfig(level=logging.INFO)
@@ -305,25 +337,27 @@ def get_llm_client(provider: str, api_key: str = None, model_path: str = None, b
     if cache_key in _llm_client_cache:
         return _llm_client_cache[cache_key]
 
+    llm_model_override = _get_configured_llm_model()
+
     client = None
     try:
         if provider == 'openai':
             if not api_key:
                 logger.warning("OpenAI API Key missing")
                 return None
-            client = ChatOpenAI(api_key=api_key, model="gpt-4o-mini", temperature=0.3)
+            client = ChatOpenAI(api_key=api_key, model=llm_model_override or _DEFAULT_OPENAI_MODEL, temperature=0.3)
 
         elif provider == 'gemini':
             if not api_key:
                 logger.warning("Gemini API Key missing")
                 return None
-            client = ChatGoogleGenerativeAI(google_api_key=api_key, model="gemini-1.5-flash", temperature=0.3)
+            client = ChatGoogleGenerativeAI(google_api_key=api_key, model=llm_model_override or _DEFAULT_GEMINI_MODEL, temperature=0.3)
 
         elif provider == 'anthropic':
             if not api_key:
                 logger.warning("Anthropic API Key missing")
                 return None
-            client = ChatAnthropic(api_key=api_key, model="claude-3-haiku-20240307", temperature=0.3)
+            client = ChatAnthropic(api_key=api_key, model=llm_model_override or _DEFAULT_ANTHROPIC_MODEL, temperature=0.3)
 
         elif provider == 'grok':
             if not api_key:
@@ -333,7 +367,7 @@ def get_llm_client(provider: str, api_key: str = None, model_path: str = None, b
             client = ChatOpenAI(
                 api_key=api_key,
                 base_url="https://api.x.ai/v1",
-                model="grok-beta",
+                model=llm_model_override or _DEFAULT_GROK_MODEL,
                 temperature=0.3
             )
 
@@ -491,13 +525,13 @@ def generate_ai_answer(context: str, question: str, provider: str,
 
             # Use bind for stop sequences if supported, otherwise just invoke
             if stop_seqs:
-                 try:
-                    response = client.bind(stop=stop_seqs).invoke(messages)
-                 except Exception:
+                try:
+                    response = _invoke_with_retry(client.bind(stop=stop_seqs), messages)
+                except Exception:
                     # Fallback if bind not supported
-                    response = client.invoke(messages)
+                    response = _invoke_with_retry(client, messages)
             else:
-                 response = client.invoke(messages)
+                response = _invoke_with_retry(client, messages)
 
             return response.content.strip()
 
@@ -583,14 +617,24 @@ def stream_ai_answer(context: str, question: str, provider: str,
         # Handle LangChain Clients (Cloud)
         else:
             from langchain_core.messages import HumanMessage, SystemMessage
+            import time as _time
 
             messages = []
             if system_prompt:
                 messages.append(SystemMessage(content=system_prompt))
             messages.append(HumanMessage(content=user_content))
 
-            for chunk in client.stream(messages):
-                 yield chunk.content
+            retries = 3
+            for attempt in range(retries):
+                try:
+                    for chunk in client.stream(messages):
+                        yield chunk.content
+                    break
+                except Exception as e:
+                    if attempt == retries - 1:
+                        raise
+                    logger.warning("Stream attempt %d failed, retrying: %s", attempt + 1, e)
+                    _time.sleep(2 ** attempt)
 
     except Exception as e:
         logger.error(f"Streaming error ({provider}): {e}")

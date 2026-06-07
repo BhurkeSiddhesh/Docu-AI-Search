@@ -291,6 +291,23 @@ def get_file_by_path(path: str) -> Optional[Dict]:
     conn.close()
     return dict(row) if row else None
 
+def get_file_by_name(filename: str) -> Optional[Dict]:
+    """
+    Retrieve metadata for a specific file by its filename (basename).
+
+    Args:
+        filename (str): The basename of the file (e.g. 'resume.pdf').
+
+    Returns:
+        Optional[Dict]: The file details if found, else None.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM files WHERE filename = ? LIMIT 1', (filename,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
 def get_file_by_faiss_index(idx: int) -> Optional[Dict]:
     """
     Find the file associated with a specific embedding index.

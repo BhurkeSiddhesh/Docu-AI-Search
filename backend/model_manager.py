@@ -426,6 +426,7 @@ download_status = {
     "bytes_downloaded": 0,
     "total_bytes": 0
 }
+_download_lock = threading.Lock()
 
 def get_available_models():
     """
@@ -532,73 +533,80 @@ def download_file(url, filename, model_id, total_bytes=0):
         This function updates the global `download_status` variable which is
         shared with the API to report progress to the frontend.
     """
+    import logging
+    _logger = logging.getLogger(__name__)
     global download_status
     filepath = os.path.join(MODELS_DIR, filename)
     temp_filepath = filepath + ".partial"
-    
+
     try:
-        print(f"Starting download: {url}")
-        download_status = {
-            "downloading": True, 
-            "model_id": model_id, 
-            "progress": 0, 
-            "error": None,
-            "bytes_downloaded": 0,
-            "total_bytes": total_bytes
-        }
-        
+        _logger.info("Starting download: %s", url)
+        with _download_lock:
+            download_status = {
+                "downloading": True,
+                "model_id": model_id,
+                "progress": 0,
+                "error": None,
+                "bytes_downloaded": 0,
+                "total_bytes": total_bytes
+            }
+
         # Check for partial download (resume support)
         headers = {}
         downloaded = 0
         if os.path.exists(temp_filepath):
             downloaded = os.path.getsize(temp_filepath)
             headers["Range"] = f"bytes={downloaded}-"
-            print(f"Resuming from byte {downloaded}")
-        
+            _logger.info("Resuming from byte %d", downloaded)
+
         response = requests.get(url, stream=True, headers=headers, timeout=30)
         response.raise_for_status()
-        
+
         # Get total size from headers
         if "content-range" in response.headers:
             total_size = int(response.headers.get("content-range", "").split("/")[-1])
         else:
             total_size = int(response.headers.get('content-length', 0)) + downloaded
-        
-        download_status["total_bytes"] = total_size
+
+        with _download_lock:
+            download_status["total_bytes"] = total_size
         block_size = 1024 * 1024  # 1MB
-        
+
         mode = 'ab' if downloaded > 0 else 'wb'
         with open(temp_filepath, mode) as file:
             for data in response.iter_content(block_size):
                 downloaded += len(data)
                 file.write(data)
                 if total_size > 0:
-                    download_status["progress"] = int((downloaded / total_size) * 100)
-                    download_status["bytes_downloaded"] = downloaded
-        
+                    with _download_lock:
+                        download_status["progress"] = int((downloaded / total_size) * 100)
+                        download_status["bytes_downloaded"] = downloaded
+
         # Rename to final filename
         os.rename(temp_filepath, filepath)
-        
-        print(f"Download complete: {filename}")
-        download_status = {
-            "downloading": False, 
-            "model_id": None, 
-            "progress": 100, 
-            "error": None,
-            "bytes_downloaded": downloaded,
-            "total_bytes": total_size
-        }
-        
+
+        _logger.info("Download complete: %s", filename)
+        with _download_lock:
+            download_status = {
+                "downloading": False,
+                "model_id": None,
+                "progress": 100,
+                "error": None,
+                "bytes_downloaded": downloaded,
+                "total_bytes": total_size
+            }
+
     except Exception as e:
-        print(f"Download failed: {e}")
-        download_status = {
-            "downloading": False, 
-            "model_id": model_id, 
-            "progress": 0, 
-            "error": str(e),
-            "bytes_downloaded": 0,
-            "total_bytes": 0
-        }
+        _logger.error("Download failed: %s", e)
+        with _download_lock:
+            download_status = {
+                "downloading": False,
+                "model_id": model_id,
+                "progress": 0,
+                "error": str(e),
+                "bytes_downloaded": 0,
+                "total_bytes": 0
+            }
         # Keep partial file for resume
 
 def start_download(model_id):
@@ -656,7 +664,8 @@ def get_download_status():
               'progress' (int), 'error' (str), 'bytes_downloaded' (int),
               and 'total_bytes' (int).
     """
-    return download_status
+    with _download_lock:
+        return dict(download_status)
 
 def is_safe_model_path(path):
     """

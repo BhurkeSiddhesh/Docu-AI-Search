@@ -1,6 +1,9 @@
+import logging
 import numpy as np
 from sklearn.cluster import KMeans
 from typing import List, Dict
+
+logger = logging.getLogger(__name__)
 
 def perform_global_clustering(embeddings: List[List[float]], max_cluster_size: int = 20) -> Dict[int, List[int]]:
     """
@@ -31,7 +34,7 @@ def perform_global_clustering(embeddings: List[List[float]], max_cluster_size: i
     if n_samples <= max_cluster_size:
         return {0: list(range(n_samples))} # Single cluster
         
-    print(f"Clustering {n_samples} items into {n_clusters} clusters...")
+    logger.info("Clustering %d items into %d clusters...", n_samples, n_clusters)
     
     kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
     labels = kmeans.fit_predict(X)

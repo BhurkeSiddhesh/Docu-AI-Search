@@ -239,9 +239,18 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
     # Use ThreadPool for Network/GPU bound
     chunk_embeddings_map = {}
 
+    def _embed_with_retry(model, batch, retries=3):
+        for attempt in range(retries):
+            try:
+                return model.embed_documents(batch)
+            except Exception as e:
+                if attempt == retries - 1:
+                    raise
+                time.sleep(2 ** attempt)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         # submit returns a future object
-        future_map = {executor.submit(embeddings_model.embed_documents, batch): i for i, batch in enumerate(batches)}
+        future_map = {executor.submit(_embed_with_retry, embeddings_model, batch): i for i, batch in enumerate(batches)}
         
         completed = 0
         total_batches = len(batches)
@@ -328,7 +337,12 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
         
         clusters_batch_data = []
         for future in concurrent.futures.as_completed(future_to_cid):
-            cid, summary = future.result()
+            try:
+                cid, summary = future.result()
+            except Exception as exc:
+                failed_cid = future_to_cid[future]
+                logger.warning("Cluster %s summarization failed, skipping: %s", failed_cid, exc)
+                continue
             if summary:
                 # Collect for batch insert
                 clusters_batch_data.append((summary, 1))

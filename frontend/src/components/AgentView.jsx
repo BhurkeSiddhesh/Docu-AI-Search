@@ -43,8 +43,8 @@ export default function AgentView({ query }) {
                     src.close();
                     setIsRunning(false);
                 }
-            } catch {
-                // ignore parse errors
+            } catch (err) {
+                console.warn('[AgentView] Failed to parse SSE frame:', e.data, err);
             }
         };
 

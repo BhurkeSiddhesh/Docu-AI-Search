@@ -896,7 +896,7 @@ async def get_config(request: Request):
         "ollama_base_url": config.get('ExternalProviders', 'ollama_base_url', fallback='http://localhost:11434'),
         "lmstudio_base_url": config.get('ExternalProviders', 'lmstudio_base_url', fallback='http://localhost:1234/v1'),
         "external_model_name": config.get('ExternalProviders', 'external_model_name', fallback=''),
-        "external_api_key": config.get('ExternalProviders', 'external_api_key', fallback=''),
+        "external_api_key_set": bool(config.get('ExternalProviders', 'external_api_key', fallback='')),
     }
 
 @app.post("/api/config")
@@ -1016,7 +1016,10 @@ async def search_files(search_data: SearchRequest, request: Request, background_
                 'index_summaries': isumm_snap, 'cluster_summaries': csumm_snap,
                 'cluster_map': cmap_snap, 'bm25': bm25_snap
             })
-            return StreamingResponse(agent.stream_chat(search_data.query), media_type="text/event-stream")
+            async def agentic_event_generator():
+                async for event in agent.stream_chat(search_data.query):
+                    yield f"data: {json.dumps(event)}\n\n"
+            return StreamingResponse(agentic_event_generator(), media_type="text/event-stream")
 
         model_path = config.get('LocalLLM', 'model_path', fallback=None)
         tensor_split_str = config.get('LocalLLM', 'tensor_split', fallback=None)
@@ -1366,14 +1369,14 @@ async def list_system_prompts(request: Request, category: Optional[str] = None):
     return get_system_prompts(category=category)
 
 @app.post("/api/system-prompts")
-async def create_system_prompt(body: SystemPromptRequest, request: Request):
+async def create_system_prompt(body: SystemPromptRequest, request: Request, _auth=Depends(require_auth)):
     """Create a new system prompt."""
     from backend.system_prompts import add_system_prompt
     prompt_id = add_system_prompt(body.name, body.content, body.category)
     return {"status": "success", "id": prompt_id}
 
 @app.delete("/api/system-prompts/{prompt_id}")
-async def delete_system_prompt_endpoint(prompt_id: int, request: Request):
+async def delete_system_prompt_endpoint(prompt_id: int, request: Request, _auth=Depends(require_auth)):
     """Delete a system prompt by ID."""
     from backend.system_prompts import delete_system_prompt
     if delete_system_prompt(prompt_id):
@@ -1398,7 +1401,8 @@ async def get_search_history(request: Request):
         history = await asyncio.to_thread(database.get_search_history, limit=50)
         return history
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error retrieving search history: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
 @app.delete("/api/search/history/{history_id}")
 async def delete_search_history_item(history_id: int, request: Request):
@@ -1420,8 +1424,11 @@ async def delete_search_history_item(history_id: int, request: Request):
         if success:
             return {"status": "success", "message": "History item deleted"}
         raise HTTPException(status_code=404, detail="History item not found")
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error deleting history item: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
 @app.delete("/api/search/history")
 async def delete_all_search_history(request: Request):
@@ -1441,8 +1448,10 @@ async def delete_all_search_history(request: Request):
         count = database.delete_all_search_history()
         return {"status": "success", "message": f"Deleted {count} history items", "deleted_count": count}
     except Exception as e:
-        logger.error(f"Error clearing history: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error clearing search history: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
+
+_VALID_LOG_LEVELS = {"info", "warn", "warning", "error"}
 
 class LogRequest(BaseModel):
     """
@@ -1454,10 +1463,10 @@ class LogRequest(BaseModel):
         source (Optional[str]): Source of the log (defaults to 'Frontend').
         stack (Optional[str]): Optional stack trace for errors.
     """
-    level: str
-    message: str
-    source: Optional[str] = "Frontend"
-    stack: Optional[str] = None
+    level: str = Field(..., max_length=20)
+    message: str = Field(..., max_length=4096)
+    source: Optional[str] = Field(default="Frontend", max_length=128)
+    stack: Optional[str] = Field(default=None, max_length=8192)
 
 @app.post("/api/logs")
 async def receive_log(log: LogRequest, request: Request):
@@ -1471,13 +1480,16 @@ async def receive_log(log: LogRequest, request: Request):
     Returns:
         dict: Status 'logged'.
     """
+    normalized_level = log.level.lower().strip()
+    if normalized_level not in _VALID_LOG_LEVELS:
+        normalized_level = "info"
     log_msg = f"[{log.source}] {log.message}"
     if log.stack:
         log_msg += f"\nStack: {log.stack}"
-    
-    if log.level.lower() == 'error':
+
+    if normalized_level == 'error':
         logger.error(log_msg)
-    elif log.level.lower() == 'warn' or log.level.lower() == 'warning':
+    elif normalized_level in ('warn', 'warning'):
         logger.warning(log_msg)
     else:
         logger.info(log_msg)
@@ -1589,7 +1601,8 @@ async def list_indexed_files(request: Request, limit: int = 100, offset: int = 0
         total = await asyncio.to_thread(database.count_files)
         return {"files": files, "total": total, "limit": limit, "offset": offset}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error listing files: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
 @app.get("/api/files/preview")
 async def preview_file(path: str, request: Request, chars: int = 2000):
@@ -1655,10 +1668,11 @@ async def get_folder_history(request: Request):
         history = database.get_folder_history(indexed_only=True)
         return [item['path'] for item in history]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error retrieving folder history: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
 @app.delete("/api/folders/history")
-async def clear_folder_history(request: Request):
+async def clear_folder_history(request: Request, _auth=Depends(require_auth)):
     """
     Remove all folder entries from the indexing history.
 
@@ -1675,10 +1689,11 @@ async def clear_folder_history(request: Request):
         count = database.clear_folder_history()
         return {"status": "success", "message": f"Cleared {count} folder history items", "deleted_count": count}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error clearing folder history: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
 @app.delete("/api/folders/history/item")
-async def delete_folder_history_item(request: dict, req: Request):
+async def delete_folder_history_item(request: dict, req: Request, _auth=Depends(require_auth)):
     """
     Remove a single folder from the indexing history.
 
@@ -1704,7 +1719,8 @@ async def delete_folder_history_item(request: dict, req: Request):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error deleting folder history item: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
 @app.post("/api/validate-path")
 async def validate_path(body: dict, request: Request):
@@ -1767,7 +1783,8 @@ async def get_indexing_status(request: Request):
     Returns:
         dict: Indexing status including progress percentage and current file.
     """
-    return indexing_status
+    with _index_lock:
+        return dict(indexing_status)
 
 @app.post("/api/index")
 @limiter.limit("5/minute")
@@ -1825,22 +1842,22 @@ def indexing_progress_callback(current, total, message=None):
         message (Optional[str]): Status message about the current task.
     """
     global indexing_status
-    if message:
-        indexing_status["current_file"] = message # Reuse current_file field for generic status message
-    elif filename := message: # Fallback if called with old signature (unlikely)
-        indexing_status["current_file"] = f"Processing {filename}"
-        
-    indexing_status["processed_files"] = current
-    indexing_status["total_files"] = total
-    # If 0-100 scale is passed directly as current, respect it
-    if total == 100 and current > 1: 
-        indexing_status["progress"] = current
+    if total == 100 and current > 1:
+        progress = current
     else:
-        indexing_status["progress"] = int((current / total) * 100)
-    
-    # Debug log
-    if indexing_status["progress"] % 10 == 0 or message:
-        logger.info(f"Indexing Progress: {indexing_status['progress']}% - {indexing_status['current_file']}")
+        progress = int((current / total) * 100)
+
+    with _index_lock:
+        if message:
+            indexing_status["current_file"] = message
+        indexing_status["processed_files"] = current
+        indexing_status["total_files"] = total
+        indexing_status["progress"] = progress
+        _progress_snap = progress
+        _file_snap = indexing_status.get("current_file", "")
+
+    if _progress_snap % 10 == 0 or message:
+        logger.info("Indexing Progress: %d%% - %s", _progress_snap, _file_snap)
 
     # Broadcast to WebSocket clients (fire-and-forget via asyncio task)
     import asyncio
@@ -1857,7 +1874,7 @@ def indexing_progress_callback(current, total, message=None):
         pass
 
 @app.get("/api/agent/chat")
-async def agent_chat(query: str, request: Request):
+async def agent_chat(query: str, request: Request, _auth=Depends(require_auth)):
     """
     Stream AI agent's internal thoughts and final grounded answer.
 
@@ -1964,12 +1981,14 @@ def run_indexing(config, folders):
                 database.mark_folder_indexed(folder)
         else:
             logger.error("Indexing failed or no documents found.")
-            indexing_status["running"] = False
-            indexing_status["error"] = "No documents found or processed"
+            with _index_lock:
+                indexing_status["running"] = False
+                indexing_status["error"] = "No documents found or processed"
     except Exception as e:
         logger.error(f"Error during indexing: {e}")
-        indexing_status["running"] = False
-        indexing_status["error"] = str(e)
+        with _index_lock:
+            indexing_status["running"] = False
+            indexing_status["error"] = str(e)
 
 @app.websocket("/ws/progress")
 async def websocket_progress(websocket: WebSocket):
@@ -1977,10 +1996,17 @@ async def websocket_progress(websocket: WebSocket):
     await ws_manager.connect(websocket)
     try:
         while True:
-            # Keep connection alive; server pushes events via ws_manager.broadcast()
-            await websocket.receive_text()
+            try:
+                # Keep connection alive; server pushes events via ws_manager.broadcast()
+                await asyncio.wait_for(websocket.receive_text(), timeout=300)
+            except asyncio.TimeoutError:
+                # Client idle for 5 minutes — close gracefully
+                await websocket.close(code=1001)
+                break
     except WebSocketDisconnect:
-        ws_manager.disconnect(websocket)
+        pass
+    finally:
+        await ws_manager.disconnect(websocket)
 
 
 if __name__ == "__main__":

@@ -84,7 +84,8 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                 ollama_base_url:    cfg.ollama_base_url || 'http://localhost:11434',
                 lmstudio_base_url:  cfg.lmstudio_base_url || 'http://localhost:1234/v1',
                 external_model_name: cfg.external_model_name || '',
-                external_api_key:   cfg.external_api_key || '',
+                external_api_key:   '',
+                external_api_key_set: cfg.external_api_key_set || false,
             });
             setEmbedding({
                 provider_type: e.data.provider_type || 'local',
@@ -143,28 +144,24 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
     };
 
     const persistFolders = async (nextFolders) => {
-        try {
-            await api.saveConfig({
-                folders:           nextFolders,
-                auto_index:        config.auto_index,
-                provider:          config.provider,
-                local_model_path:  config.local_model_path,
-                tensor_split:      config.tensor_split || null,
-                openai_api_key:    '',
-                gemini_api_key:    '',
-                anthropic_api_key: '',
-                grok_api_key:      '',
-                query_rewriting:         config.query_rewriting,
-                cross_encoder_reranking: config.cross_encoder_reranking,
-                reranker_model:          config.reranker_model,
-                ollama_base_url:     config.ollama_base_url,
-                lmstudio_base_url:   config.lmstudio_base_url,
-                external_model_name: config.external_model_name,
-                external_api_key:    config.external_api_key,
-            });
-        } catch (e) {
-            toast.error(e.response?.data?.detail || 'Could not save folder');
-        }
+        await api.saveConfig({
+            folders:           nextFolders,
+            auto_index:        config.auto_index,
+            provider:          config.provider,
+            local_model_path:  config.local_model_path,
+            tensor_split:      config.tensor_split || null,
+            openai_api_key:    '',
+            gemini_api_key:    '',
+            anthropic_api_key: '',
+            grok_api_key:      '',
+            query_rewriting:         config.query_rewriting,
+            cross_encoder_reranking: config.cross_encoder_reranking,
+            reranker_model:          config.reranker_model,
+            ollama_base_url:     config.ollama_base_url,
+            lmstudio_base_url:   config.lmstudio_base_url,
+            external_model_name: config.external_model_name,
+            external_api_key:    config.external_api_key,
+        });
     };
 
     const addFolder = async (path) => {
@@ -174,17 +171,27 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
             toast.info('Folder already added');
             return;
         }
-        const next = [...config.folders, p];
+        const prev = config.folders;
+        const next = [...prev, p];
         setConfig((c) => ({ ...c, folders: next }));
         setPathInput('');
         setPathInfo(null);
-        await persistFolders(next);
+        try {
+            await persistFolders(next);
+        } catch {
+            setConfig((c) => ({ ...c, folders: prev }));
+        }
     };
 
     const removeFolder = async (p) => {
-        const next = config.folders.filter((x) => x !== p);
+        const prev = config.folders;
+        const next = prev.filter((x) => x !== p);
         setConfig((c) => ({ ...c, folders: next }));
-        await persistFolders(next);
+        try {
+            await persistFolders(next);
+        } catch {
+            setConfig((c) => ({ ...c, folders: prev }));
+        }
     };
 
     const browseFolder = async () => {
@@ -548,6 +555,7 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                                                 type="password"
                                                 className="input"
                                                 value={config.external_api_key}
+                                                placeholder={config.external_api_key_set ? '••••••••' : ''}
                                                 onChange={(e) => setConfig((c) => ({ ...c, external_api_key: e.target.value }))}
                                             />
                                         </div>
@@ -572,6 +580,23 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                                         <div>
                                             <h3 className="font-semibold text-slate-900 dark:text-slate-50 mb-1">System</h3>
                                             <p className="text-sm text-slate-500 dark:text-slate-400">Manage caches and history.</p>
+                                        </div>
+
+                                        <div className="card p-5">
+                                            <div className="mb-2">
+                                                <div className="font-semibold text-sm text-slate-900 dark:text-slate-50">API token</div>
+                                                <div className="text-xs text-slate-500 dark:text-slate-400 mb-2">Required when AUTH_ENABLED=true. Stored in localStorage.</div>
+                                                <input
+                                                    type="password"
+                                                    className="input"
+                                                    placeholder={localStorage.getItem('api_token') ? '••••••••' : 'Paste token here'}
+                                                    onChange={(e) => {
+                                                        const t = e.target.value.trim();
+                                                        if (t) { localStorage.setItem('api_token', t); toast.success('Token saved'); }
+                                                        else { localStorage.removeItem('api_token'); toast.info('Token cleared'); }
+                                                    }}
+                                                />
+                                            </div>
                                         </div>
 
                                         <div className="card p-5">

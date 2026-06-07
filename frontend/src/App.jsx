@@ -8,6 +8,7 @@ import SettingsModal from './components/SettingsModal';
 import HistoryDrawer from './components/HistoryDrawer';
 import IndexingBanner from './components/IndexingBanner';
 import ErrorBoundary from './components/ErrorBoundary';
+import api from './lib/api';
 
 export default function App() {
     const [darkMode, setDarkMode] = useState(() => {
@@ -28,6 +29,14 @@ export default function App() {
         else root.classList.remove('dark');
         localStorage.setItem('docu-ai-theme', darkMode ? 'dark' : 'light');
     }, [darkMode]);
+
+    // On startup, fetch the auth token from the backend if AUTH_ENABLED and not yet stored
+    useEffect(() => {
+        if (localStorage.getItem('api_token')) return;
+        api.getAuthToken().then((r) => {
+            if (r.data?.token) localStorage.setItem('api_token', r.data.token);
+        }).catch(() => { /* auth disabled or already retrieved */ });
+    }, []);
 
     const handleSelectQuery = (q) => {
         setActiveTab('search');
@@ -79,18 +88,24 @@ export default function App() {
                 </div>
 
                 <main className="flex-1 min-w-0">
-                    <ErrorBoundary>
-                        {activeTab === 'search' && (
+                    {activeTab === 'search' && (
+                        <ErrorBoundary>
                             <SearchView
                                 key={resetKey}
                                 pendingQuery={pendingQuery}
                             />
-                        )}
-                        {activeTab === 'library' && (
+                        </ErrorBoundary>
+                    )}
+                    {activeTab === 'library' && (
+                        <ErrorBoundary>
                             <LibraryView onOpenSettings={() => setSettingsOpen(true)} />
-                        )}
-                        {activeTab === 'benchmarks' && <BenchmarkView />}
-                    </ErrorBoundary>
+                        </ErrorBoundary>
+                    )}
+                    {activeTab === 'benchmarks' && (
+                        <ErrorBoundary>
+                            <BenchmarkView />
+                        </ErrorBoundary>
+                    )}
                 </main>
             </div>
 
