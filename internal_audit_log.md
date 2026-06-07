@@ -363,6 +363,34 @@ Automated daily code audit results for [BhurkeSiddhesh/Docu-AI-Search](https://g
 
 ---
 
+## Audit: 2026-06-07
+
+- Issues filed: 3
+- Categories: 0 Critical Bug, 2 Logic Enhancement, 1 Developer Experience
+- Auto-merge eligible: 1
+- Needs human review: 0
+- Status: Issues Filed
+
+### Issues Created This Run
+
+| # | Category | Title | Labels |
+|---|----------|-------|--------|
+| [#326](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/326) | Logic Enhancement | `SettingsModal.jsx`: optimistic folder add/remove not rolled back on `persistFolders()` failure — UI permanently shows stale state until reload | — |
+| [#327](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/327) | Logic Enhancement | `indexing.py`: single failed embedding batch sets chunk list to `[]` and aborts entire re-index — no per-batch retry attempted | — |
+| [#328](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/328) | Developer Experience | `ErrorBoundary.jsx`: caught React component crashes only logged to console — not forwarded to backend via `logger.js` | auto-merge-ok |
+
+### Scanned & Skipped (already covered by open issues)
+
+- Bare `except:` on tensor_split parsing → covered by #145
+- Missing retry logic for LLM API calls → covered by #316
+- `api.js streamAnswer` bypasses axios client → covered by #203
+- `SearchView.jsx` silently swallows `getSystemPrompts()` failure → covered by #201
+- `AgentView.jsx` SSE parse error silently dropped → covered by #266
+- `database.py` using `print()` instead of logger → covered by #127
+- `subprocess.run` in `/api/open-file` no timeout → covered by #157
+
+---
+
 ## Audit: 2026-05-02
 - Status: Failed
 - Reason: The GitHub CLI (`gh`) command is not found or not authenticated. Cannot file issues.
