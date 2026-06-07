@@ -45,3 +45,43 @@ All remaining open fix-branch PRs carry P1 disposition (no auto-merge ever).
 - **CodeRabbit**: Rate-limited on all four PRs throughout the run — treated as neutral per protocol.
 
 **Summary:** 1 PR merged (Phase A) · 3 PRs opened auto-merge-pending-CI · 1 PR opened awaiting human review (P1) · 0 escalated · 0 skipped
+
+---
+
+## Fix Pass: 2026-06-07
+
+### Phase A — Existing PRs
+
+| PR | Label | Description | Disposition |
+|----|-------|-------------|-------------|
+| #325 | — | chore: daily audit log (branch: `audit-log-…`) | Skipped — branch not fix/ or p3-batch/ |
+| #324 | — | dependabot npm_and_yarn bump (branch: `dependabot/…`) | Skipped — branch not fix/ or p3-batch/ |
+| #323 | — | Consolidate 26 pending fix PRs into main (branch: `claude/pr-review-merge-CarEO`) | Skipped — branch not fix/ or p3-batch/ |
+
+### Phase B — New PRs
+
+| Issue | Label | Description | PR | Disposition |
+|-------|-------|-------------|----|----|
+| #205 | Critical Bug | CORS wildcard used instead of configured ALLOWED_ORIGINS | PR #329 | Opened — awaits human review (P1) |
+| #327 | Logic Enhancement | Single failed embedding batch aborts entire re-index — no per-batch retry | PR #330 | Opened — awaits human review (P2 MEDIUM) |
+| #326 | Logic Enhancement | Optimistic folder add/remove not rolled back on persistence failure | PR #331 | Opened — awaits human review (P2 MEDIUM) |
+| #328 | Developer Experience | ErrorBoundary crashes only logged to console — not forwarded via logger.js | PR #332 | Opened — auto-merge pending CI (P3 HIGH) |
+
+#### Review Activity Applied
+
+| PR | Bot | Finding | Action |
+|----|-----|---------|--------|
+| #329 | Gemini | Strip trailing slashes from ALLOWED_ORIGINS for strict CORSMiddleware matching | Applied |
+| #329 | Gemini | Restrict allow_methods/allow_headers from wildcard to explicit whitelist | Applied |
+| #329 | CodeRabbit | Full review completed — 5/5 pre-merge checks passed | No action needed |
+| #330 | Gemini | Skip retries on non-transient errors; guard None model; log warnings | Applied |
+| #330 | CodeRabbit | Rate-limited — bypassed | — |
+| #331 | Gemini | Restore pathInput on addFolder failure | Applied |
+| #331 | CodeRabbit | Rate-limited — bypassed | — |
+| #332 | Gemini | Safe error property access in componentDidCatch (high priority) | Applied |
+| #332 | CodeRabbit | Rate-limited — bypassed | — |
+
+### Summary
+Phase A: 0 merged · 3 skipped (wrong branch prefix)
+Phase B: 4 PRs opened · 0 auto-merged (CI pending) · 3 awaiting human review · 0 escalated · 0 auto-closed
+CodeRabbit: 4 rate-limit bypasses · 1 full review (all checks passed, no blocking issues)

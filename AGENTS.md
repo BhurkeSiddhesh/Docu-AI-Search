@@ -305,6 +305,14 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-06-07 (Daily Fix Pass — 4 PRs)
+- **fix(api)**: CORS middleware was using hardcoded `allow_origins=["*"]` instead of `ALLOWED_ORIGINS` env var; fixed with trailing-slash normalization and explicit methods/headers whitelist (PR #329, issue #205, P1)
+- **fix(indexing)**: Single failed embedding batch aborted entire re-index; added `_embed_batch_with_retry` with 3-attempt exponential back-off, non-transient error fast-fail, and None model guard (PR #330, issue #327, P2)
+- **fix(frontend)**: Optimistic `addFolder`/`removeFolder` state not rolled back on persistence failure; `persistFolders` now re-throws so callers revert state and restore `pathInput` (PR #331, issue #326, P2)
+- **fix(frontend)**: `ErrorBoundary.componentDidCatch` only wrote to console; now forwards via `logger.error` with safe property access for non-Error values (PR #332, issue #328, P3)
+- **chore**: Appended 2026-06-07 fix pass to `internal_fix_log.md`
+- **Files**: `backend/api.py`, `backend/indexing.py`, `frontend/src/components/SettingsModal.jsx`, `frontend/src/components/ErrorBoundary.jsx`, `internal_fix_log.md`, `AGENTS.md`
+
 ### 2026-05-28 (Daily Audit Log Consolidation)
 - **feat**: Consolidated 28 unique daily automated code audit log entries spanning early May to late May 2026 into a single, unified, reverse-chronologically sorted `internal_audit_log.md` file.
 - **verification**: Validated layout and verified project compliance via structure check.
