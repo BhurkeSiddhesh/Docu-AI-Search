@@ -1954,12 +1954,10 @@ def run_indexing(config, folders):
                 index, docs, tags = new_index, new_docs, new_tags
                 index_summaries, cluster_summaries, cluster_map = new_summ_index, new_summ_docs, new_cluster_map
                 bm25 = new_bm25
-            
+                indexing_progress_callback(100, 100, "Complete")
+                indexing_status["running"] = False
+
             logger.info("Indexing completed successfully.")
-            indexing_status["running"] = False
-            indexing_status["progress"] = 100
-            indexing_status["progress"] = 100
-            indexing_status["current_file"] = "Complete"
             
             # Mark folders as successfully indexed for history
             for folder in folders:

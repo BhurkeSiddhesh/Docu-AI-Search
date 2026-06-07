@@ -58,7 +58,7 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
     const loadAll = async () => {
         try {
             const [c, e, h, cs] = await Promise.all([
-                api.getConfig(),
+                api.getConfig().catch(() => ({ data: {} })),
                 api.getEmbeddingConfig().catch(() => ({ data: DEFAULT_EMBEDDING })),
                 api.getFolderHistory().catch(() => ({ data: [] })),
                 api.getCacheStats().catch(() => ({ data: { total_entries: 0, total_hits: 0 } })),
@@ -301,7 +301,7 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                                                 <input
                                                     value={pathInput}
                                                     onChange={(e) => { setPathInput(e.target.value); setPathInfo(null); }}
-                                                    placeholder="C:\Users\you\Documents"
+                                                    placeholder="C:\\Users\\you\\Documents"
                                                     className="input font-mono text-xs"
                                                 />
                                                 <div className="flex gap-2">
