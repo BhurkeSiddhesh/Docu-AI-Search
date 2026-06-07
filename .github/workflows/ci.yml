@@ -43,10 +43,25 @@ jobs:
       run: pip install bandit pip-audit
 
     - name: Run Bandit (static security analysis)
-      run: bandit -r backend -f json -o bandit-report.json || true
+      run: bandit -r backend -f json -o bandit-report.json -ll
+      continue-on-error: true
+
+    - name: Check for high-severity Bandit findings
+      run: |
+        python - <<'EOF'
+        import json, sys, os
+        if not os.path.exists("bandit-report.json"):
+            sys.exit(0)
+        data = json.load(open("bandit-report.json"))
+        highs = [r for r in data.get("results", []) if r.get("issue_severity") in ("HIGH", "CRITICAL")]
+        if highs:
+            for h in highs:
+                print(f"{h['filename']}:{h['line_number']} — {h['issue_text']}")
+            sys.exit(1)
+        EOF
 
     - name: Run pip-audit (dependency vulnerability scan)
-      run: pip-audit --output-format json > pip-audit-report.json || true
+      run: pip-audit
 
     - name: Upload security reports
       uses: actions/upload-artifact@v4

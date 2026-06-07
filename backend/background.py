@@ -1,3 +1,5 @@
+import logging
+import threading
 import time
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -5,9 +7,14 @@ from backend.indexing import create_index, save_index
 import configparser
 import os
 
+logger = logging.getLogger(__name__)
+
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _INDEX_PATH = os.path.join(_BASE_DIR, 'data', 'index.faiss')
 _CONFIG_PATH = os.path.join(_BASE_DIR, 'config.ini')
+
+_DEBOUNCE_SECONDS = 5
+
 
 class IndexingEventHandler(FileSystemEventHandler):
     """
@@ -30,18 +37,29 @@ class IndexingEventHandler(FileSystemEventHandler):
         self.provider = provider
         self.api_key = api_key
         self.model_path = model_path
+        self._debounce_timer: threading.Timer = None
+        self._lock = threading.Lock()
 
     def on_modified(self, event):
         """Called when a file or directory is modified."""
-        self.update_index()
+        self._schedule_update()
 
     def on_created(self, event):
         """Called when a file or directory is created."""
-        self.update_index()
+        self._schedule_update()
 
     def on_deleted(self, event):
         """Called when a file or directory is deleted."""
-        self.update_index()
+        self._schedule_update()
+
+    def _schedule_update(self):
+        """Debounce rapid filesystem events before triggering a full re-index."""
+        with self._lock:
+            if self._debounce_timer is not None:
+                self._debounce_timer.cancel()
+            self._debounce_timer = threading.Timer(_DEBOUNCE_SECONDS, self.update_index)
+            self._debounce_timer.daemon = True
+            self._debounce_timer.start()
 
     def update_index(self):
         """
@@ -50,12 +68,15 @@ class IndexingEventHandler(FileSystemEventHandler):
         Executes the `create_index` pipeline and persists the results to
         'index.faiss' and related files.
         """
-        print("Change detected, updating index...")
-        res = create_index(self.folder, self.provider, self.api_key, self.model_path)
-        index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
-        if index:
-            save_index(index, docs, tags, _INDEX_PATH, idx_sum, clus_sum, clus_map, bm25)
-            print("Index updated.")
+        logger.info("Change detected, updating index...")
+        try:
+            res = create_index(self.folder, self.provider, self.api_key, self.model_path)
+            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
+            if index:
+                save_index(index, docs, tags, _INDEX_PATH, idx_sum, clus_sum, clus_map, bm25)
+                logger.info("Index updated successfully.")
+        except Exception as e:
+            logger.error("Background index update failed for %s: %s", self.folder, e, exc_info=True)
 
 def start_background_indexing():
     """
@@ -68,15 +89,23 @@ def start_background_indexing():
     config.read(_CONFIG_PATH)
 
     if config.has_section('General') and config.getboolean('General', 'auto_index', fallback=False):
-        folder = config.get('General', 'folder')
+        folders_str = config.get('General', 'folders', fallback='')
+        folder_legacy = config.get('General', 'folder', fallback='')
+        folders = [f.strip() for f in folders_str.split(',') if f.strip()] or (
+            [folder_legacy] if folder_legacy else []
+        )
+        if not folders:
+            return
+
         provider = config.get('LocalLLM', 'provider', fallback='openai')
         api_key = config.get('APIKeys', 'openai_api_key', fallback=None)
         model_path = config.get('LocalLLM', 'model_path', fallback=None)
 
-        event_handler = IndexingEventHandler(folder, provider, api_key, model_path)
-        event_handler.update_index()
         observer = Observer()
-        observer.schedule(event_handler, folder, recursive=True)
+        for folder in folders:
+            event_handler = IndexingEventHandler(folder, provider, api_key, model_path)
+            event_handler.update_index()
+            observer.schedule(event_handler, folder, recursive=True)
         observer.start()
 
         try:

@@ -303,8 +303,12 @@ def _write_embedding_section(cfg: dict) -> None:
     config.set("Embeddings", "model_name", cfg["model_name"])
     config.set("Embeddings", "api_key", cfg["api_key"])
 
-    with open(CONFIG_PATH, "w") as fh:
-        config.write(fh)
+    import tempfile
+    dir_name = os.path.dirname(CONFIG_PATH)
+    with tempfile.NamedTemporaryFile("w", dir=dir_name, delete=False, suffix=".tmp") as tmp:
+        config.write(tmp)
+        tmp_path = tmp.name
+    os.replace(tmp_path, CONFIG_PATH)
 
 
 def seed_app_state(app) -> None:

@@ -218,7 +218,7 @@ class OllamaProvider(LLMProvider):
 
     def health_check(self) -> Dict[str, Any]:
         try:
-            resp = requests.get(f"{self.base_url}/api/tags", timeout=5)
+            resp = requests.get(f"{self.base_url}/api/tags", headers=self._headers(), timeout=5)
             resp.raise_for_status()
             model_count = len(resp.json().get("models", []))
             return {"status": "ok", "provider": "ollama", "models_available": model_count}
@@ -556,17 +556,16 @@ def get_provider(provider_type: str, config: Optional[Dict[str, Any]] = None) ->
 
     if provider_type == PROVIDER_OLLAMA:
         url = base_url or DEFAULT_OLLAMA_URL
-        cache_key = f"ollama:{url}:{model}"
+        cache_key = f"ollama:{url}:{model}:{api_key}"
         if cache_key not in _provider_cache:
             _provider_cache[cache_key] = OllamaProvider(base_url=url, model=model, api_key=api_key)
         else:
-            # Update model if changed
             _provider_cache[cache_key].model = model
         return _provider_cache[cache_key]
 
     if provider_type in (PROVIDER_LMSTUDIO, PROVIDER_OPENAI_COMPAT):
         url = base_url or DEFAULT_LMSTUDIO_URL
-        cache_key = f"openai_compat:{url}:{model}"
+        cache_key = f"openai_compat:{url}:{model}:{api_key}"
         if cache_key not in _provider_cache:
             _provider_cache[cache_key] = OpenAICompatibleProvider(base_url=url, model=model, api_key=api_key)
         else:

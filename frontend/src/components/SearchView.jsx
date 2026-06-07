@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Search, Sparkles, Loader2, Bot, ChevronDown, Filter } from 'lucide-react';
 import ResultCard from './ResultCard';
 import AgentView from './AgentView';
+import ErrorBoundary from './ErrorBoundary';
 import api from '../lib/api';
 import { useToast } from './Toast';
 
@@ -37,13 +38,16 @@ export default function SearchView({ pendingQuery }) {
     });
 
     const inputRef = useRef(null);
+    const streamAbortRef = useRef(null);
     const toast = useToast();
 
     useEffect(() => {
         // Load system prompts
         api.getSystemPrompts().then((r) => {
             setSystemPrompts(r.data || []);
-        }).catch(() => {});
+        }).catch((err) => {
+            console.warn('[SearchView] Failed to load system prompts:', err?.message || err);
+        });
     }, []);
 
     useEffect(() => {
@@ -94,6 +98,11 @@ export default function SearchView({ pendingQuery }) {
             setIsSearching(false);
 
             if ((res.data.results || []).length > 0) {
+                // Abort any previous stream before starting a new one
+                streamAbortRef.current?.abort();
+                const controller = new AbortController();
+                streamAbortRef.current = controller;
+
                 // Stream the AI answer
                 setIsStreaming(true);
                 let acc = '';
@@ -102,10 +111,12 @@ export default function SearchView({ pendingQuery }) {
                     await api.streamAnswer(q, context, selectedPromptId, (chunk) => {
                         acc += chunk;
                         setAiAnswer(acc);
-                    });
+                    }, controller.signal);
                 } catch (e) {
-                    console.error('Stream error:', e);
-                    toast.error('AI answer stream failed. Search results are still available.');
+                    if (e.name !== 'AbortError') {
+                        console.error('Stream error:', e);
+                        toast.error('AI answer stream failed. Search results are still available.');
+                    }
                 } finally {
                     setIsStreaming(false);
                 }
@@ -340,7 +351,9 @@ export default function SearchView({ pendingQuery }) {
             )}
 
             {hasSearched && agentMode && (
-                <AgentView query={agentQuery} />
+                <ErrorBoundary>
+                    <AgentView query={agentQuery} />
+                </ErrorBoundary>
             )}
         </div>
     );

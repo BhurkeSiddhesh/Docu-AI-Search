@@ -114,11 +114,7 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
     logger.info(f"Starting RAPTOR Indexing of folders: {folder_paths}")
     start_time = time.time()
     
-    # 1. Clear Database
-    database.clear_files()
-    database.clear_clusters()
-    
-    # 2. Collect Files
+    # 1. Collect Files  (DB clear deferred to after successful index build — #165)
     all_files = []
     for folder_path in folder_paths:
         if os.path.exists(folder_path):
@@ -138,13 +134,19 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
     logger.info("Step 1/5: Extracting Text (Parallel)...")
     valid_docs = [] # List of (filepath, text)
 
-    # Load checkpoint to resume after a failure
+    # Load checkpoint to resume after a failure. The checkpoint now stores only
+    # the filepaths of already-processed files (no full text) to limit memory use.
     checkpoint = _load_checkpoint()
     files_to_extract = [f for f in all_files if f not in checkpoint]
-    # Restore already-extracted docs from checkpoint
-    for cached_path, cached_text in checkpoint.items():
-        if cached_path in all_files and cached_text:
-            valid_docs.append((cached_path, cached_text))
+    # Re-extract text for checkpointed files (text is no longer cached there)
+    for cached_path in list(checkpoint.keys()):
+        if cached_path in all_files:
+            try:
+                _, text = safe_extract_text(cached_path)
+                if text:
+                    valid_docs.append((cached_path, text))
+            except Exception:
+                pass
 
     # Use fewer workers for CPU bound tasks to keep UI responsive
     with concurrent.futures.ProcessPoolExecutor(max_workers=4) as executor:
@@ -152,18 +154,26 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
 
         compete_count = len(checkpoint)
         total_files = len(all_files)
+        extracted_since_save = 0
         for future in concurrent.futures.as_completed(future_to_file):
             filepath, text = future.result()
             if text:
                 valid_docs.append((filepath, text))
-            checkpoint[filepath] = text or ""
-            _save_checkpoint(checkpoint)
+            # Store only the filepath as a marker (not the full text) to limit memory/disk use
+            checkpoint[filepath] = ""
+            extracted_since_save += 1
+            if extracted_since_save >= 10:
+                _save_checkpoint(checkpoint)
+                extracted_since_save = 0
 
             compete_count += 1
             if progress_callback:
                 # Map 0-total_files to 0-20%
                 percent = int((compete_count / total_files) * 20)
                 progress_callback(percent, 100, f"Extracting: {os.path.basename(filepath)}")
+        # Flush any remaining entries
+        if extracted_since_save > 0:
+            _save_checkpoint(checkpoint)
 
     logger.info(f"Successfully extracted text from {len(valid_docs)} files.")
 
@@ -198,11 +208,7 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
             'tags': '[]' # Default empty tags
         }
         
-        # Add to DB immediately
         files_to_add.append(file_info)
-        if len(files_to_add) >= 500:
-            database.add_files_batch(files_to_add)
-            files_to_add = []
         
         for chunk in chunks:
             all_chunks.append({
@@ -214,8 +220,6 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
             chunk_strings.append(chunk)
             current_faiss_idx += 1
             
-    if files_to_add:
-        database.add_files_batch(files_to_add)
     logger.info(f"Generated {len(chunk_strings)} total chunks.")
 
     if not chunk_strings:
@@ -239,9 +243,18 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
     # Use ThreadPool for Network/GPU bound
     chunk_embeddings_map = {}
 
+    def _embed_with_retry(model, batch, retries=3):
+        for attempt in range(retries):
+            try:
+                return model.embed_documents(batch)
+            except Exception as e:
+                if attempt == retries - 1:
+                    raise
+                time.sleep(2 ** attempt)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         # submit returns a future object
-        future_map = {executor.submit(embeddings_model.embed_documents, batch): i for i, batch in enumerate(batches)}
+        future_map = {executor.submit(_embed_with_retry, embeddings_model, batch): i for i, batch in enumerate(batches)}
         
         completed = 0
         total_batches = len(batches)
@@ -328,7 +341,12 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
         
         clusters_batch_data = []
         for future in concurrent.futures.as_completed(future_to_cid):
-            cid, summary = future.result()
+            try:
+                cid, summary = future.result()
+            except Exception as exc:
+                failed_cid = future_to_cid[future]
+                logger.warning("Cluster %s summarization failed, skipping: %s", failed_cid, exc)
+                continue
             if summary:
                 # Collect for batch insert
                 clusters_batch_data.append((summary, 1))
@@ -346,10 +364,6 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
                 percent = 75 + int((processed_clusters / total_clusters) * 20)
                 progress_callback(percent, 100, f"Summarizing cluster {processed_clusters}/{total_clusters}")
 
-        # Batch insert clusters
-        if clusters_batch_data:
-            database.add_clusters_batch(clusters_batch_data)
-    
     # 8. Create FAISS Indices - 95% to 99%
     if progress_callback: progress_callback(97, 100, "Finalizing Indices...")
     logger.info("Finalizing Indices...")
@@ -383,6 +397,14 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
         'model_name': _model_name,
         'embedding_dim': _embedding_dim,
     }
+    # Atomically commit metadata: only clear old data after a successful build (#165)
+    database.clear_files()
+    if files_to_add:
+        database.add_files_batch(files_to_add)
+    database.clear_clusters()
+    if clusters_batch_data:
+        database.add_clusters_batch(clusters_batch_data)
+
     _clear_checkpoint()
     return index_chunks, all_chunks, tags, index_summaries, cluster_summaries, final_cluster_map, bm25, meta
 

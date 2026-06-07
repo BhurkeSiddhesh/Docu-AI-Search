@@ -48,13 +48,16 @@ def extract_text(filepath):
             return "\n".join(text)
         elif ext == '.xlsx':
             workbook = load_workbook(filepath, read_only=True)
-            text = []
-            for sheet in workbook.worksheets:
-                for row in sheet.iter_rows():
-                    for cell in row:
-                        if cell.value:
-                            text.append(str(cell.value))
-            return "\n".join(text)
+            try:
+                text = []
+                for sheet in workbook.worksheets:
+                    for row in sheet.iter_rows():
+                        for cell in row:
+                            if cell.value:
+                                text.append(str(cell.value))
+                return "\n".join(text)
+            finally:
+                workbook.close()
         else:
             logger.warning(f"Unsupported file type: {ext}")
             return None
