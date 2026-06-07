@@ -536,7 +536,8 @@ async def browse_folder(request: Request, _=Depends(verify_local_request)):
         else:
             return {"folder": None}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to open folder dialog: {str(e)}")
+        logger.error("Failed to open folder dialog: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to open folder dialog. Check server logs.")
 
 @app.get("/api/models/available")
 async def list_available_models(request: Request):
@@ -1329,7 +1330,8 @@ async def provider_health_check(body: ProviderQueryRequest, request: Request, _=
             "model": "",
             "api_key": body.api_key or "",
         })
-        result = provider.health_check()
+        # health_check makes a synchronous HTTP request; run in thread to avoid blocking
+        result = await asyncio.to_thread(provider.health_check)
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1344,10 +1346,11 @@ async def provider_list_models(body: ProviderQueryRequest, request: Request, _=D
             "model": "",
             "api_key": body.api_key or "",
         })
-        models = provider.list_models()
+        # list_models makes a synchronous HTTP request; run in thread to avoid blocking
+        models = await asyncio.to_thread(provider.list_models)
         return {"models": models}
     except ConnectionError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail="Provider unreachable. Check server logs.")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -1880,14 +1883,16 @@ def indexing_progress_callback(current, total, message=None):
     # Broadcast to WebSocket clients (fire-and-forget via asyncio task)
     import asyncio
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(ws_manager.broadcast({
-                "type": "indexing_progress",
-                "percent": indexing_status["progress"],
-                "current_file": indexing_status.get("current_file", ""),
-                "total": total,
-            }))
+        loop = asyncio.get_running_loop()
+        loop.create_task(ws_manager.broadcast({
+            "type": "indexing_progress",
+            "percent": indexing_status["progress"],
+            "current_file": indexing_status.get("current_file", ""),
+            "total": total,
+        }))
+    except RuntimeError:
+        # No running event loop (e.g., called from a non-async context); skip broadcast.
+        pass
     except Exception:
         pass
 

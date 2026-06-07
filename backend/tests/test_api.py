@@ -1345,6 +1345,80 @@ class TestBatch1ProvidersCacheFix(unittest.TestCase):
         self.assertIs(p1, p2, "Same params must return the cached instance")
 
 
+class TestBatch5Fixes(unittest.TestCase):
+    """Tests for batch-5 fixes (#120, #146, #159, #201, #217, #219, #263, #264)."""
+
+    def setUp(self):
+        self.client = TestClient(app)
+
+    # --- #120: asyncio.get_running_loop() instead of get_event_loop() ---
+    def test_indexing_callback_uses_get_running_loop(self):
+        """indexing_progress_callback must use asyncio.get_running_loop(), not get_event_loop."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.indexing_progress_callback)
+        self.assertNotIn('get_event_loop()', src)
+        self.assertIn('get_running_loop()', src)
+
+    # --- #159: _local_llm_lock released before yielding tokens ---
+    def test_local_llm_lock_not_held_across_yield(self):
+        """stream_ai_answer must not yield inside the _local_llm_lock block."""
+        import inspect, ast
+        from backend import llm_integration
+        src = inspect.getsource(llm_integration.stream_ai_answer)
+        # The 'yield token' must appear AFTER the 'with _local_llm_lock:' block ends.
+        # Simple check: 'for token in tokens' (outside lock) must appear in source.
+        self.assertIn('for token in tokens:', src)
+
+    # --- #146: docker-compose.yml has healthcheck ---
+    def test_docker_compose_has_healthcheck(self):
+        """docker-compose.yml must define a healthcheck for the backend service."""
+        import os
+        compose_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'docker-compose.yml')
+        if not os.path.exists(compose_path):
+            self.skipTest("docker-compose.yml not found")
+        with open(compose_path) as f:
+            content = f.read()
+        self.assertIn('healthcheck', content)
+        self.assertIn('/api/health', content)
+
+    # --- #217: providers/health and providers/models use asyncio.to_thread ---
+    def test_provider_health_uses_to_thread(self):
+        """provider_health_check must call health_check via asyncio.to_thread."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.provider_health_check)
+        self.assertIn('asyncio.to_thread', src)
+
+    def test_provider_models_uses_to_thread(self):
+        """provider_list_models must call list_models via asyncio.to_thread."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.provider_list_models)
+        self.assertIn('asyncio.to_thread', src)
+
+    # --- #219: raw exception text not leaked in 500 responses ---
+    def test_browse_folder_dialog_error_sanitized(self):
+        """browse endpoint must not expose str(e) in 500 responses."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.browse_folder)
+        # The error message must NOT include f"...{str(e)}" or f"...{e}"
+        self.assertNotIn("detail=f\"Failed to open folder dialog: {str(e)}\"", src)
+
+    def test_provider_health_connection_error_sanitized(self):
+        """provider_list_models must not expose raw exception text for 503."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.provider_list_models)
+        # Must not have detail=str(e) on the ConnectionError catch
+        lines = src.splitlines()
+        for i, line in enumerate(lines):
+            if 'ConnectionError' in line and i + 1 < len(lines):
+                next_line = lines[i + 1]
+                self.assertNotIn('detail=str(e)', next_line)
+
+
 class TestBatch4Fixes(unittest.TestCase):
     """Tests for batch-4 fixes (#136, #144, #148, #157, #167, #187, #197, #213, #215)."""
 

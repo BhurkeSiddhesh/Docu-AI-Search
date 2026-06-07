@@ -44,7 +44,9 @@ export default function SearchView({ pendingQuery }) {
         // Load system prompts
         api.getSystemPrompts().then((r) => {
             setSystemPrompts(r.data || []);
-        }).catch(() => {});
+        }).catch((err) => {
+            console.warn('[SearchView] Failed to load system prompts:', err?.message || err);
+        });
     }, []);
 
     useEffect(() => {

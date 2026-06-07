@@ -591,6 +591,8 @@ def stream_ai_answer(context: str, question: str, provider: str,
 
             full_prompt = f"{system_prompt}\n\n{user_content}"
 
+            # Collect tokens while holding the lock, then yield outside so the
+            # lock is not held across suspension points.
             with _local_llm_lock:
                 stream = llm.create_completion(
                     full_prompt,
@@ -599,12 +601,12 @@ def stream_ai_answer(context: str, question: str, provider: str,
                     echo=False,
                     temperature=0.2,
                     repeat_penalty=1.1,
-                    stream=True  # ENABLE STREAMING
+                    stream=True,
                 )
+                tokens = [output['choices'][0]['text'] for output in stream]
 
-                for output in stream:
-                    token = output['choices'][0]['text']
-                    yield token
+            for token in tokens:
+                yield token
 
         # Handle LangChain Clients (Cloud)
         else:

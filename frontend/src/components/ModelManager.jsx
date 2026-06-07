@@ -11,11 +11,12 @@ export default function ModelManager({ activeModelPath, onSelectModel }) {
     const [filter, setFilter] = useState('all');
     const [query, setQuery] = useState('');
     const prevDownloadingRef = useRef(false);
+    const pollStatusRef = useRef(null);
     const toast = useToast();
 
     useEffect(() => {
         load();
-        const t = setInterval(pollStatus, 2000);
+        const t = setInterval(() => pollStatusRef.current?.(), 2000);
         return () => clearInterval(t);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -41,6 +42,7 @@ export default function ModelManager({ activeModelPath, onSelectModel }) {
             // silent
         }
     };
+    pollStatusRef.current = pollStatus;
 
     const download = async (id) => {
         try {
