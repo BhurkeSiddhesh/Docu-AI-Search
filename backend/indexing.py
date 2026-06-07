@@ -47,10 +47,18 @@ def _clear_checkpoint():
 
 def _embed_batch_with_retry(model, batch, retries: int = 3):
     """Embed a single batch, retrying up to `retries` times with exponential back-off."""
+    if model is None:
+        raise ValueError("Embedding model is not initialized.")
     for attempt in range(retries):
         try:
             return model.embed_documents(batch)
+        except (AttributeError, TypeError, ValueError):
+            raise
         except Exception as e:
+            logger.warning(
+                "Embedding attempt %d/%d failed: %s. Retrying in %ds...",
+                attempt + 1, retries, e, 2 ** attempt,
+            )
             if attempt == retries - 1:
                 raise
             time.sleep(2 ** attempt)
