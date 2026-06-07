@@ -184,6 +184,7 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
             await persistFolders(next);
         } catch {
             setConfig((c) => ({ ...c, folders: prev }));
+            setPathInput(p);
         }
     };
 
