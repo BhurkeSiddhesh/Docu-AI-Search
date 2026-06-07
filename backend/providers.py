@@ -218,7 +218,7 @@ class OllamaProvider(LLMProvider):
 
     def health_check(self) -> Dict[str, Any]:
         try:
-            resp = requests.get(f"{self.base_url}/api/tags", timeout=5)
+            resp = requests.get(f"{self.base_url}/api/tags", headers=self._headers(), timeout=5)
             resp.raise_for_status()
             model_count = len(resp.json().get("models", []))
             return {"status": "ok", "provider": "ollama", "models_available": model_count}

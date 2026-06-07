@@ -6,7 +6,7 @@ import re
 import threading
 import multiprocessing
 from backend import database
-from typing import Any, List, Dict, Optional, Tuple, Union
+from typing import Any, Iterator, List, Dict, Optional, Tuple, Union
 
 
 try:
@@ -534,7 +534,7 @@ def generate_ai_answer(context: str, question: str, provider: str,
 def stream_ai_answer(context: str, question: str, provider: str,
                      api_key: str = None, model_path: str = None,
                      tensor_split: List[float] = None,
-                     system_instruction: str = None, base_url: str = None) -> Any:
+                     system_instruction: str = None, base_url: str = None) -> Iterator[str]:
     """
     Generator that yields tokens for the AI answer.
 

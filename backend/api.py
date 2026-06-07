@@ -1133,9 +1133,22 @@ async def search_files(search_data: SearchRequest, request: Request, background_
             if search_data.sort_by == "filename":
                 processed_results.sort(key=lambda r: (r.file_name or "").lower())
             elif search_data.sort_by == "file_size":
-                processed_results.sort(key=lambda r: os.path.getsize(r.file_path) if r.file_path and os.path.exists(r.file_path) else 0, reverse=True)
+                # Pre-fetch sizes in a thread to avoid blocking the event loop
+                def _get_size(r):
+                    try:
+                        return os.path.getsize(r.file_path) if r.file_path and os.path.exists(r.file_path) else 0
+                    except OSError:
+                        return 0
+                sizes = await asyncio.to_thread(lambda: [_get_size(r) for r in processed_results])
+                processed_results = [r for _, r in sorted(zip(sizes, processed_results), key=lambda x: x[0], reverse=True)]
             elif search_data.sort_by == "date":
-                processed_results.sort(key=lambda r: os.path.getmtime(r.file_path) if r.file_path and os.path.exists(r.file_path) else 0, reverse=True)
+                def _get_mtime(r):
+                    try:
+                        return os.path.getmtime(r.file_path) if r.file_path and os.path.exists(r.file_path) else 0
+                    except OSError:
+                        return 0
+                mtimes = await asyncio.to_thread(lambda: [_get_mtime(r) for r in processed_results])
+                processed_results = [r for _, r in sorted(zip(mtimes, processed_results), key=lambda x: x[0], reverse=True)]
 
         # Return results immediately - AI Answer will be streamed via separate endpoint
         active_model_name = provider.capitalize()
@@ -1567,10 +1580,10 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
             logger.info("[DEBUG-OPEN] os.startfile completed successfully")
         elif platform.system() == 'Darwin':  # macOS
             logger.info("[DEBUG-OPEN] Calling open via subprocess...")
-            subprocess.run(['open', file_path])
+            subprocess.run(['open', file_path], timeout=30)
         else:  # Linux
             logger.info("[DEBUG-OPEN] Calling xdg-open via subprocess...")
-            subprocess.run(['xdg-open', file_path])
+            subprocess.run(['xdg-open', file_path], timeout=30)
         
         return {"status": "success", "message": f"Opened {os.path.basename(file_path)}"}
     except Exception as e:
@@ -1761,16 +1774,20 @@ async def validate_path(body: dict, request: Request):
         return {"valid": False, "error": "Path is not a directory"}
 
     path = normalized
-    
-    # Count supported files
+
+    # Count supported files — run in thread to avoid blocking the event loop
     supported_extensions = {'.txt', '.pdf', '.docx', '.xlsx', '.pptx'}
-    file_count = 0
-    for dirpath, _, filenames in os.walk(path):
-        for filename in filenames:
-            ext = os.path.splitext(filename)[1].lower()
-            if ext in supported_extensions:
-                file_count += 1
-    
+
+    def _count_files(folder: str) -> int:
+        count = 0
+        for _, _, filenames in os.walk(folder):
+            for filename in filenames:
+                if os.path.splitext(filename)[1].lower() in supported_extensions:
+                    count += 1
+        return count
+
+    file_count = await asyncio.to_thread(_count_files, path)
+
     return {"valid": True, "file_count": file_count}
 
 @app.get("/api/index/status")
@@ -1874,8 +1891,11 @@ def indexing_progress_callback(current, total, message=None):
     except Exception:
         pass
 
-@app.get("/api/agent/chat")
-async def agent_chat(query: str, request: Request, _auth=Depends(require_auth)):
+class AgentChatRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=5000)
+
+@app.post("/api/agent/chat")
+async def agent_chat(body: AgentChatRequest, request: Request, _auth=Depends(require_auth)):
     """
     Stream AI agent's internal thoughts and final grounded answer.
 
@@ -1890,9 +1910,19 @@ async def agent_chat(query: str, request: Request, _auth=Depends(require_auth)):
         StreamingResponse: A stream of JSON events (type: 'thought' or 'answer').
     """
     global index, docs, tags, index_summaries, cluster_summaries, cluster_map
-    
+
+    # Snapshot index globals under the lock to prevent races during re-indexing
+    with _index_lock:
+        _index_snap = index
+        _docs_snap = docs
+        _tags_snap = tags
+        _isumm_snap = index_summaries
+        _csumm_snap = cluster_summaries
+        _cmap_snap = cluster_map
+        _bm25_snap = bm25
+
     # Check index
-    if not index:
+    if not _index_snap:
         # We can't use HTTPException in streaming response easily, yield error
         async def yield_error():
              """Inner helper to yield an error event."""
@@ -1902,13 +1932,13 @@ async def agent_chat(query: str, request: Request, _auth=Depends(require_auth)):
     # Construct global state for the agent
     config = load_config()
     global_state = {
-        'index': index,
-        'docs': docs,
-        'tags': tags,
-        'index_summaries': index_summaries,
-        'cluster_summaries': cluster_summaries,
-        'cluster_map': cluster_map,
-        'bm25': bm25,
+        'index': _index_snap,
+        'docs': _docs_snap,
+        'tags': _tags_snap,
+        'index_summaries': _isumm_snap,
+        'cluster_summaries': _csumm_snap,
+        'cluster_map': _cmap_snap,
+        'bm25': _bm25_snap,
         'config': config
     }
     
@@ -1918,7 +1948,7 @@ async def agent_chat(query: str, request: Request, _auth=Depends(require_auth)):
     async def event_generator():
         """Inner helper to generate and yield agent events."""
         try:
-            async for event in agent.stream_chat(query):
+            async for event in agent.stream_chat(body.query):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
             logger.error("[Agent] Stream error: %s", e)
@@ -1943,9 +1973,17 @@ def run_indexing(config, folders):
     global index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25, indexing_status
     
     provider = config.get('LocalLLM', 'provider', fallback='openai')
-    api_key = config.get('APIKeys', 'openai_api_key', fallback=None)
     model_path = config.get('LocalLLM', 'model_path', fallback=None)
-    
+    api_key = config.get('APIKeys', 'openai_api_key', fallback=None)
+    if provider == 'gemini':
+        api_key = config.get('APIKeys', 'gemini_api_key', fallback=api_key)
+    elif provider == 'anthropic':
+        api_key = config.get('APIKeys', 'anthropic_api_key', fallback=api_key)
+    elif provider == 'grok':
+        api_key = config.get('APIKeys', 'grok_api_key', fallback=api_key)
+    elif provider in ('ollama', 'lmstudio'):
+        api_key = config.get('ExternalProviders', 'external_api_key', fallback=api_key)
+
     try:
         logger.info(f"Starting indexing for folders: {folders}")
 
@@ -1972,8 +2010,9 @@ def run_indexing(config, folders):
                 index, docs, tags = new_index, new_docs, new_tags
                 index_summaries, cluster_summaries, cluster_map = new_summ_index, new_summ_docs, new_cluster_map
                 bm25 = new_bm25
-                indexing_progress_callback(100, 100, "Complete")
                 indexing_status["running"] = False
+                indexing_status["progress"] = 100
+                indexing_status["current_file"] = "Complete"
 
             logger.info("Indexing completed successfully.")
             

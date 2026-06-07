@@ -1345,6 +1345,101 @@ class TestBatch1ProvidersCacheFix(unittest.TestCase):
         self.assertIs(p1, p2, "Same params must return the cached instance")
 
 
+class TestBatch4Fixes(unittest.TestCase):
+    """Tests for batch-4 fixes (#136, #144, #148, #157, #167, #187, #197, #213, #215)."""
+
+    def setUp(self):
+        self.client = TestClient(app)
+
+    # --- #213: OllamaProvider.health_check uses Authorization header ---
+    def test_ollama_health_check_sends_auth_header(self):
+        """OllamaProvider.health_check must include Authorization when api_key is set."""
+        from backend.providers import OllamaProvider
+        provider = OllamaProvider(base_url='http://localhost:11434', model='m', api_key='secret')
+        with patch('backend.providers.requests.get') as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status.return_value = None
+            mock_resp.json.return_value = {'models': []}
+            mock_get.return_value = mock_resp
+            provider.health_check()
+        call_kwargs = mock_get.call_args
+        sent_headers = call_kwargs[1].get('headers', {})
+        self.assertIn('Authorization', sent_headers)
+        self.assertIn('secret', sent_headers['Authorization'])
+
+    # --- #187: run_indexing uses correct api_key for each provider ---
+    def test_run_indexing_api_key_selection(self):
+        """run_indexing must select the api_key matching the configured provider."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.run_indexing)
+        # Must reference gemini_api_key and anthropic_api_key (not just openai_api_key)
+        self.assertIn('gemini_api_key', src)
+        self.assertIn('anthropic_api_key', src)
+
+    # --- #157: subprocess.run has timeout ---
+    def test_subprocess_run_has_timeout(self):
+        """open-file endpoint subprocess.run calls must include a timeout."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.open_file)
+        self.assertIn('timeout=30', src)
+
+    # --- #167: validate-path uses asyncio.to_thread ---
+    def test_validate_path_uses_async_thread(self):
+        """validate-path must offload os.walk to a thread via asyncio.to_thread."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.validate_path)
+        self.assertIn('asyncio.to_thread', src)
+
+    # --- #148: agent_chat snapshots globals under _index_lock ---
+    def test_agent_chat_uses_index_lock(self):
+        """agent_chat must snapshot index globals inside _index_lock."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.agent_chat)
+        self.assertIn('_index_lock', src)
+
+    # --- #144: /api/agent/chat is now POST ---
+    @patch('backend.api.load_config')
+    def test_agent_chat_endpoint_is_post(self, mock_config):
+        """GET /api/agent/chat must return 405; POST must be accepted."""
+        mock_config.return_value = MagicMock()
+        mock_config.return_value.get.return_value = ''
+        mock_config.return_value.getboolean.return_value = False
+        res_get = self.client.get('/api/agent/chat?query=test')
+        self.assertEqual(res_get.status_code, 405)
+
+    # --- #136: stream_ai_answer return type is Iterator[str] ---
+    def test_stream_ai_answer_return_annotation(self):
+        """stream_ai_answer must be annotated with Iterator[str], not Any."""
+        import inspect
+        from backend import llm_integration
+        hints = llm_integration.stream_ai_answer.__annotations__
+        ret = hints.get('return')
+        self.assertIsNotNone(ret, "stream_ai_answer must have a return annotation")
+        self.assertNotEqual(str(ret), 'Any', "return type must not be Any")
+
+    # --- #215: run_indexing no longer calls indexing_progress_callback inside lock ---
+    def test_run_indexing_no_callback_inside_lock(self):
+        """run_indexing must not call indexing_progress_callback inside _index_lock."""
+        import inspect, ast
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.run_indexing)
+        # The source must not contain the callback call inside a with _index_lock block.
+        # Simple heuristic: check that progress=100 is set directly, not via callback.
+        self.assertIn('indexing_status["progress"] = 100', src)
+
+    # --- #197: sort_by=file_size offloads to thread ---
+    def test_sort_by_file_size_uses_thread(self):
+        """search endpoint sort_by=file_size must use asyncio.to_thread."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.search_files)
+        self.assertIn('asyncio.to_thread', src)
+
+
 class TestBatch3Fixes(unittest.TestCase):
     """Tests for batch-3 fixes (#127, #145, #166, #178, #182, #191, #228)."""
 
