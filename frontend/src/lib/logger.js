@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8000/api/logs';
+const API_URL = '/api/logs';
 
 const logger = {
     log: async (level, message, stack = null) => {

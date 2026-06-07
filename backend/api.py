@@ -8,6 +8,7 @@ from slowapi.middleware import SlowAPIASGIMiddleware
 from fastapi.responses import StreamingResponse
 import json
 import asyncio
+import re
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Tuple
@@ -599,13 +600,13 @@ async def download_status_endpoint(request: Request):
     return get_download_status()
 
 @app.delete("/api/models/delete")
-async def delete_model(request: dict, req: Request):
+async def delete_model(body: dict, request: Request, _=Depends(verify_local_request)):
     """
     Delete a downloaded model file from disk.
 
     Args:
-        request (dict): Body containing 'path' of the model to delete.
-        req (Request): The incoming request.
+        body (dict): Body containing 'path' of the model to delete.
+        request (Request): The incoming request.
 
     Returns:
         dict: Success status and message.
@@ -613,7 +614,7 @@ async def delete_model(request: dict, req: Request):
     Raises:
         HTTPException: 400 if path is missing, 404 if file missing, 500 on error.
     """
-    model_path = request.get('path', '')
+    model_path = body.get('path', '')
     if not model_path:
         raise HTTPException(status_code=400, detail="Model path required")
     
@@ -640,7 +641,7 @@ def cache_stats_endpoint():
     return database.get_cache_stats()
 
 @app.post("/api/cache/clear")
-def clear_cache_endpoint():
+def clear_cache_endpoint(_auth=Depends(require_auth)):
     """
     Clear all entries from the AI response cache.
 
@@ -896,12 +897,12 @@ async def get_config(request: Request):
         "ollama_base_url": config.get('ExternalProviders', 'ollama_base_url', fallback='http://localhost:11434'),
         "lmstudio_base_url": config.get('ExternalProviders', 'lmstudio_base_url', fallback='http://localhost:1234/v1'),
         "external_model_name": config.get('ExternalProviders', 'external_model_name', fallback=''),
-        "external_api_key": config.get('ExternalProviders', 'external_api_key', fallback=''),
+        "external_api_key_set": bool(config.get('ExternalProviders', 'external_api_key', fallback='')),
     }
 
 @app.post("/api/config")
 @limiter.limit("10/minute")
-async def update_config(config_data: ConfigModel, request: Request):
+async def update_config(config_data: ConfigModel, request: Request, _=Depends(verify_local_request)):
     """
     Update the application configuration.
 
@@ -942,7 +943,7 @@ async def update_config(config_data: ConfigModel, request: Request):
         'ollama_base_url': config_data.ollama_base_url or 'http://localhost:11434',
         'lmstudio_base_url': config_data.lmstudio_base_url or 'http://localhost:1234/v1',
         'external_model_name': config_data.external_model_name or '',
-        'external_api_key': config_data.external_api_key or '',
+        'external_api_key': _key(config_data.external_api_key, 'ExternalProviders', 'external_api_key'),
     }
     save_config_file(config)
     
@@ -1016,7 +1017,16 @@ async def search_files(search_data: SearchRequest, request: Request, background_
                 'index_summaries': isumm_snap, 'cluster_summaries': csumm_snap,
                 'cluster_map': cmap_snap, 'bm25': bm25_snap
             })
-            return StreamingResponse(agent.stream_chat(search_data.query), media_type="text/event-stream")
+
+            async def _agentic_sse():
+                try:
+                    async for event in agent.stream_chat(search_data.query):
+                        yield f"data: {json.dumps(event)}\n\n"
+                except Exception as e:
+                    logger.error("[Agent/search] Stream error: %s", e)
+                    yield f"data: {json.dumps({'type': 'error', 'content': 'Agent error'})}\n\n"
+
+            return StreamingResponse(_agentic_sse(), media_type="text/event-stream")
 
         model_path = config.get('LocalLLM', 'model_path', fallback=None)
         tensor_split_str = config.get('LocalLLM', 'tensor_split', fallback=None)
@@ -1302,9 +1312,21 @@ class ProviderQueryRequest(BaseModel):
     base_url: Optional[str] = None
     api_key: Optional[str] = ""
 
+def _validate_local_provider_url(base_url: Optional[str]) -> None:
+    """Reject non-localhost or non-HTTP(S) base_url values to prevent SSRF."""
+    if not base_url:
+        return
+    from urllib.parse import urlparse
+    parsed = urlparse(base_url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="base_url must use http or https scheme")
+    if parsed.hostname not in ("localhost", "127.0.0.1", "::1"):
+        raise HTTPException(status_code=400, detail="base_url must point to localhost")
+
 @app.post("/api/providers/health")
-async def provider_health_check(body: ProviderQueryRequest, request: Request):
+async def provider_health_check(body: ProviderQueryRequest, request: Request, _=Depends(verify_local_request)):
     """Check if an external LLM provider (Ollama / LM Studio) is reachable."""
+    _validate_local_provider_url(body.base_url)
     from backend.providers import get_provider
     try:
         provider = get_provider(body.provider_type, {
@@ -1318,8 +1340,9 @@ async def provider_health_check(body: ProviderQueryRequest, request: Request):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/providers/models")
-async def provider_list_models(body: ProviderQueryRequest, request: Request):
+async def provider_list_models(body: ProviderQueryRequest, request: Request, _=Depends(verify_local_request)):
     """Fetch available models from an external LLM provider."""
+    _validate_local_provider_url(body.base_url)
     from backend.providers import get_provider
     try:
         provider = get_provider(body.provider_type, {
@@ -1366,14 +1389,14 @@ async def list_system_prompts(request: Request, category: Optional[str] = None):
     return get_system_prompts(category=category)
 
 @app.post("/api/system-prompts")
-async def create_system_prompt(body: SystemPromptRequest, request: Request):
+async def create_system_prompt(body: SystemPromptRequest, request: Request, _auth=Depends(require_auth)):
     """Create a new system prompt."""
     from backend.system_prompts import add_system_prompt
     prompt_id = add_system_prompt(body.name, body.content, body.category)
     return {"status": "success", "id": prompt_id}
 
 @app.delete("/api/system-prompts/{prompt_id}")
-async def delete_system_prompt_endpoint(prompt_id: int, request: Request):
+async def delete_system_prompt_endpoint(prompt_id: int, request: Request, _auth=Depends(require_auth)):
     """Delete a system prompt by ID."""
     from backend.system_prompts import delete_system_prompt
     if delete_system_prompt(prompt_id):
@@ -1381,7 +1404,7 @@ async def delete_system_prompt_endpoint(prompt_id: int, request: Request):
     raise HTTPException(status_code=404, detail="System prompt not found")
 
 @app.get("/api/search/history")
-async def get_search_history(request: Request):
+async def get_search_history(request: Request, _auth=Depends(require_auth)):
     """
     Retrieve recent search history from the database.
 
@@ -1398,10 +1421,11 @@ async def get_search_history(request: Request):
         history = await asyncio.to_thread(database.get_search_history, limit=50)
         return history
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("[API] Failed to retrieve search history: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to retrieve search history")
 
 @app.delete("/api/search/history/{history_id}")
-async def delete_search_history_item(history_id: int, request: Request):
+async def delete_search_history_item(history_id: int, request: Request, _auth=Depends(require_auth)):
     """
     Delete a specific search history entry.
 
@@ -1417,14 +1441,16 @@ async def delete_search_history_item(history_id: int, request: Request):
     """
     try:
         success = database.delete_search_history_item(history_id)
-        if success:
-            return {"status": "success", "message": "History item deleted"}
-        raise HTTPException(status_code=404, detail="History item not found")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("[API] Failed to delete history item %s: %s", history_id, e)
+        raise HTTPException(status_code=500, detail="Failed to delete history item")
+
+    if success:
+        return {"status": "success", "message": "History item deleted"}
+    raise HTTPException(status_code=404, detail="History item not found")
 
 @app.delete("/api/search/history")
-async def delete_all_search_history(request: Request):
+async def delete_all_search_history(request: Request, _auth=Depends(require_auth)):
     """
     Clear all search history from the database.
 
@@ -1441,8 +1467,8 @@ async def delete_all_search_history(request: Request):
         count = database.delete_all_search_history()
         return {"status": "success", "message": f"Deleted {count} history items", "deleted_count": count}
     except Exception as e:
-        logger.error(f"Error clearing history: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("[API] Failed to clear search history: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to clear search history")
 
 class LogRequest(BaseModel):
     """
@@ -1459,8 +1485,14 @@ class LogRequest(BaseModel):
     source: Optional[str] = "Frontend"
     stack: Optional[str] = None
 
+def _sanitize_log_field(value: str) -> str:
+    if not value:
+        return value
+    return value.replace('\x1b', '').replace('\r', '\\r').replace('\n', '\\n')
+
 @app.post("/api/logs")
-async def receive_log(log: LogRequest, request: Request):
+@limiter.limit("20/minute")
+async def receive_log(log: LogRequest, request: Request, _=Depends(verify_local_request)):
     """
     Receive logs from the frontend and pipe them to the backend logger.
 
@@ -1471,9 +1503,12 @@ async def receive_log(log: LogRequest, request: Request):
     Returns:
         dict: Status 'logged'.
     """
-    log_msg = f"[{log.source}] {log.message}"
-    if log.stack:
-        log_msg += f"\nStack: {log.stack}"
+    message = _sanitize_log_field(log.message)
+    source = _sanitize_log_field(log.source or "Frontend")
+    stack = _sanitize_log_field(log.stack) if log.stack else None
+    log_msg = f"[{source}] {message}"
+    if stack:
+        log_msg += f"\nStack: {stack}"
     
     if log.level.lower() == 'error':
         logger.error(log_msg)
@@ -1565,7 +1600,7 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
         raise HTTPException(status_code=500, detail="Failed to open file")
 
 @app.get("/api/files")
-async def list_indexed_files(request: Request, limit: int = 100, offset: int = 0):
+async def list_indexed_files(request: Request, limit: int = 100, offset: int = 0, _auth=Depends(require_auth)):
     """
     List indexed documents with pagination.
 
@@ -1589,10 +1624,11 @@ async def list_indexed_files(request: Request, limit: int = 100, offset: int = 0
         total = await asyncio.to_thread(database.count_files)
         return {"files": files, "total": total, "limit": limit, "offset": offset}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("[API] Failed to list indexed files: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to retrieve indexed files")
 
 @app.get("/api/files/preview")
-async def preview_file(path: str, request: Request, chars: int = 2000):
+async def preview_file(path: str, request: Request, chars: int = 2000, _auth=Depends(require_auth)):
     """
     Return a text preview of an indexed file (path traversal protected).
 
@@ -1833,9 +1869,9 @@ def indexing_progress_callback(current, total, message=None):
     indexing_status["processed_files"] = current
     indexing_status["total_files"] = total
     # If 0-100 scale is passed directly as current, respect it
-    if total == 100 and current > 1: 
+    if total == 100 and current > 1:
         indexing_status["progress"] = current
-    else:
+    elif total > 0:
         indexing_status["progress"] = int((current / total) * 100)
     
     # Debug log
@@ -1857,7 +1893,7 @@ def indexing_progress_callback(current, total, message=None):
         pass
 
 @app.get("/api/agent/chat")
-async def agent_chat(query: str, request: Request):
+async def agent_chat(query: str, request: Request, _auth=Depends(require_auth)):
     """
     Stream AI agent's internal thoughts and final grounded answer.
 

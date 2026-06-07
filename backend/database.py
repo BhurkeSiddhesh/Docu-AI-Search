@@ -291,6 +291,23 @@ def get_file_by_path(path: str) -> Optional[Dict]:
     conn.close()
     return dict(row) if row else None
 
+def get_file_by_name(filename: str) -> Optional[Dict]:
+    """
+    Retrieve metadata for a file by its basename.
+
+    Args:
+        filename (str): The bare filename (e.g. 'resume.pdf').
+
+    Returns:
+        Optional[Dict]: The first matching file record, or None.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM files WHERE filename = ? LIMIT 1', (filename,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
 def get_file_by_faiss_index(idx: int) -> Optional[Dict]:
     """
     Find the file associated with a specific embedding index.
@@ -808,52 +825,47 @@ def cleanup_test_data() -> Dict[str, int]:
     return counts
 
 # N+1 Optimization for Search Metadata
-MAX_INDICES = 900  # SQLite limit is usually 999 vars, keeping safe margin
+MAX_INDICES = 499  # each index expands to 2 bind params (faiss_start_idx <= ? AND faiss_end_idx >= ?); 499*2=998 < SQLite's 999-variable limit
 
 def get_files_by_faiss_indices(indices: list[int]) -> dict[int, dict]:
     """
-    Batch retrieve file metadata for multiple FAISS indices in a single query.
+    Batch retrieve file metadata for multiple FAISS indices.
 
-    Optimization to prevent N+1 query problems when fetching metadata for search results.
+    Indices are chunked into batches of MAX_INDICES to stay within SQLite's
+    bind-parameter limit (each index expands to 2 params in the WHERE clause).
 
     Args:
         indices (list[int]): List of vector indices from FAISS.
 
     Returns:
         dict[int, dict]: Mapping of faiss_idx to file metadata dictionary.
-
-    Raises:
-        ValueError: If too many indices are provided for a single SQLite query.
     """
     if not indices:
         return {}
 
-    # Deduplicate and validate
     unique_indices = sorted(list(set(indices)))
-
-    if len(unique_indices) > MAX_INDICES:
-        raise ValueError(f"Too many indices for single query (max {MAX_INDICES}). Provided: {len(unique_indices)}")
-
     conn = get_connection()
+    result = {}
+
     try:
-        # Build query: SELECT * FROM files WHERE (faiss_start_idx <= ? AND faiss_end_idx >= ?) OR ...
-        query_parts = []
-        params = []
-        for idx in unique_indices:
-            query_parts.append("(faiss_start_idx <= ? AND faiss_end_idx >= ?)")
-            params.extend([idx, idx])
+        for chunk_start in range(0, len(unique_indices), MAX_INDICES):
+            batch = unique_indices[chunk_start:chunk_start + MAX_INDICES]
 
-        sql = f"SELECT * FROM files WHERE {' OR '.join(query_parts)}"
+            query_parts = []
+            params = []
+            for idx in batch:
+                query_parts.append("(faiss_start_idx <= ? AND faiss_end_idx >= ?)")
+                params.extend([idx, idx])
 
-        cursor = conn.execute(sql, params)
-        files = [dict(row) for row in cursor.fetchall()]
+            sql = f"SELECT * FROM files WHERE {' OR '.join(query_parts)}"
+            cursor = conn.execute(sql, params)
+            files = [dict(row) for row in cursor.fetchall()]
 
-        result = {}
-        for idx in unique_indices:
-            for file in files:
-                if file['faiss_start_idx'] <= idx <= file['faiss_end_idx']:
-                    result[idx] = file
-                    break
+            for idx in batch:
+                for file in files:
+                    if file['faiss_start_idx'] <= idx <= file['faiss_end_idx']:
+                        result[idx] = file
+                        break
 
         return result
     except Exception as e:

@@ -560,8 +560,9 @@ def get_provider(provider_type: str, config: Optional[Dict[str, Any]] = None) ->
         if cache_key not in _provider_cache:
             _provider_cache[cache_key] = OllamaProvider(base_url=url, model=model, api_key=api_key)
         else:
-            # Update model if changed
             _provider_cache[cache_key].model = model
+            if "api_key" in (config or {}):
+                _provider_cache[cache_key].api_key = config["api_key"]
         return _provider_cache[cache_key]
 
     if provider_type in (PROVIDER_LMSTUDIO, PROVIDER_OPENAI_COMPAT):
@@ -571,6 +572,8 @@ def get_provider(provider_type: str, config: Optional[Dict[str, Any]] = None) ->
             _provider_cache[cache_key] = OpenAICompatibleProvider(base_url=url, model=model, api_key=api_key)
         else:
             _provider_cache[cache_key].model = model
+            if "api_key" in (config or {}):
+                _provider_cache[cache_key].api_key = config["api_key"] or "lm-studio"
         return _provider_cache[cache_key]
 
     raise ValueError(

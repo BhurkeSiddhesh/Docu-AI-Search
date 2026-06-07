@@ -21,12 +21,24 @@ def tool_search_knowledge_base(query: str, global_state: dict) -> str:
     if not global_state.get('index'):
         return "Error: No knowledge base indexed."
         
+    config = global_state.get('config')
+    if not config:
+        return "Error: Configuration not found in global state."
+    provider = config.get('LocalLLM', 'provider', fallback='openai')
+    _key_map = {
+        'openai': ('APIKeys', 'openai_api_key'),
+        'gemini': ('APIKeys', 'gemini_api_key'),
+        'anthropic': ('APIKeys', 'anthropic_api_key'),
+        'grok': ('APIKeys', 'grok_api_key'),
+    }
+    _section_key = _key_map.get(provider)
+    api_key = config.get(_section_key[0], _section_key[1], fallback=None) if _section_key else None
     results, _ = search.search(
-        query, 
-        global_state['index'], 
-        global_state['docs'], 
-        global_state['tags'], 
-        llm_integration.get_embeddings(global_state['config'].get('LocalLLM', 'provider', fallback='openai')),
+        query,
+        global_state['index'],
+        global_state['docs'],
+        global_state['tags'],
+        llm_integration.get_embeddings(provider, api_key),
         global_state.get('index_summaries'),
         global_state.get('cluster_summaries'),
         global_state.get('cluster_map'),
