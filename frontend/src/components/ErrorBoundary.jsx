@@ -13,10 +13,9 @@ export default class ErrorBoundary extends React.Component {
     }
 
     componentDidCatch(error, info) {
-        logger.error(
-            `ErrorBoundary caught: ${error.message}`,
-            error.stack || info.componentStack
-        );
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorStack = (error && error.stack) || (info && info.componentStack);
+        logger.error(`ErrorBoundary caught: ${errorMessage}`, errorStack);
     }
 
     render() {
