@@ -334,8 +334,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.rstrip("/") for o in ALLOWED_ORIGINS],
     allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # Global state
