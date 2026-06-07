@@ -65,7 +65,7 @@ All remaining open fix-branch PRs carry P1 disposition (no auto-merge ever).
 | #205 | Critical Bug | CORS wildcard used instead of configured ALLOWED_ORIGINS | PR #329 | Opened — awaits human review (P1) |
 | #327 | Logic Enhancement | Single failed embedding batch aborts entire re-index — no per-batch retry | PR #330 | Opened — awaits human review (P2 MEDIUM) |
 | #326 | Logic Enhancement | Optimistic folder add/remove not rolled back on persistence failure | PR #331 | Opened — awaits human review (P2 MEDIUM) |
-| #328 | Developer Experience | ErrorBoundary crashes only logged to console — not forwarded via logger.js | PR #332 | Opened — auto-merge pending CI (P3 HIGH) |
+| #328 | Developer Experience | ErrorBoundary crashes only logged to console — not forwarded via logger.js | PR #332 | **Merged** — auto-merged after CI passed (P3 HIGH) |
 
 #### Review Activity Applied
 
@@ -83,5 +83,5 @@ All remaining open fix-branch PRs carry P1 disposition (no auto-merge ever).
 
 ### Summary
 Phase A: 0 merged · 3 skipped (wrong branch prefix)
-Phase B: 4 PRs opened · 0 auto-merged (CI pending) · 3 awaiting human review · 0 escalated · 0 auto-closed
+Phase B: 4 PRs opened · 1 auto-merged · 3 awaiting human review · 0 escalated · 0 auto-closed
 CodeRabbit: 4 rate-limit bypasses · 1 full review (all checks passed, no blocking issues)
