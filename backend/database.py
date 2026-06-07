@@ -825,7 +825,7 @@ def cleanup_test_data() -> Dict[str, int]:
     return counts
 
 # N+1 Optimization for Search Metadata
-MAX_INDICES = 900  # SQLite limit is usually 999 vars, keeping safe margin
+MAX_INDICES = 499  # SQLite SQLITE_MAX_VARIABLE_NUMBER is 999; each index uses 2 params → max 499
 
 def get_files_by_faiss_indices(indices: list[int]) -> dict[int, dict]:
     """

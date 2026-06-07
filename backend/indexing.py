@@ -114,11 +114,7 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
     logger.info(f"Starting RAPTOR Indexing of folders: {folder_paths}")
     start_time = time.time()
     
-    # 1. Clear Database
-    database.clear_files()
-    database.clear_clusters()
-    
-    # 2. Collect Files
+    # 1. Collect Files  (DB clear deferred to after successful index build — #165)
     all_files = []
     for folder_path in folder_paths:
         if os.path.exists(folder_path):
@@ -198,11 +194,7 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
             'tags': '[]' # Default empty tags
         }
         
-        # Add to DB immediately
         files_to_add.append(file_info)
-        if len(files_to_add) >= 500:
-            database.add_files_batch(files_to_add)
-            files_to_add = []
         
         for chunk in chunks:
             all_chunks.append({
@@ -214,8 +206,6 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
             chunk_strings.append(chunk)
             current_faiss_idx += 1
             
-    if files_to_add:
-        database.add_files_batch(files_to_add)
     logger.info(f"Generated {len(chunk_strings)} total chunks.")
 
     if not chunk_strings:
@@ -360,10 +350,6 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
                 percent = 75 + int((processed_clusters / total_clusters) * 20)
                 progress_callback(percent, 100, f"Summarizing cluster {processed_clusters}/{total_clusters}")
 
-        # Batch insert clusters
-        if clusters_batch_data:
-            database.add_clusters_batch(clusters_batch_data)
-    
     # 8. Create FAISS Indices - 95% to 99%
     if progress_callback: progress_callback(97, 100, "Finalizing Indices...")
     logger.info("Finalizing Indices...")
@@ -397,6 +383,14 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
         'model_name': _model_name,
         'embedding_dim': _embedding_dim,
     }
+    # Atomically commit metadata: only clear old data after a successful build (#165)
+    database.clear_files()
+    if files_to_add:
+        database.add_files_batch(files_to_add)
+    database.clear_clusters()
+    if clusters_batch_data:
+        database.add_clusters_batch(clusters_batch_data)
+
     _clear_checkpoint()
     return index_chunks, all_chunks, tags, index_summaries, cluster_summaries, final_cluster_map, bm25, meta
 

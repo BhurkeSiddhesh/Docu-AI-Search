@@ -332,7 +332,7 @@ _default_origins = "http://localhost:5173,http://localhost:3000,http://localhost
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -599,7 +599,7 @@ async def download_status_endpoint(request: Request):
     return get_download_status()
 
 @app.delete("/api/models/delete")
-async def delete_model(request: dict, req: Request):
+async def delete_model(request: dict, req: Request, _=Depends(verify_local_request)):
     """
     Delete a downloaded model file from disk.
 
@@ -901,7 +901,7 @@ async def get_config(request: Request):
 
 @app.post("/api/config")
 @limiter.limit("10/minute")
-async def update_config(config_data: ConfigModel, request: Request):
+async def update_config(config_data: ConfigModel, request: Request, _=Depends(verify_local_request)):
     """
     Update the application configuration.
 
@@ -1306,7 +1306,7 @@ class ProviderQueryRequest(BaseModel):
     api_key: Optional[str] = ""
 
 @app.post("/api/providers/health")
-async def provider_health_check(body: ProviderQueryRequest, request: Request):
+async def provider_health_check(body: ProviderQueryRequest, request: Request, _=Depends(verify_local_request)):
     """Check if an external LLM provider (Ollama / LM Studio) is reachable."""
     from backend.providers import get_provider
     try:
@@ -1321,7 +1321,7 @@ async def provider_health_check(body: ProviderQueryRequest, request: Request):
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/providers/models")
-async def provider_list_models(body: ProviderQueryRequest, request: Request):
+async def provider_list_models(body: ProviderQueryRequest, request: Request, _=Depends(verify_local_request)):
     """Fetch available models from an external LLM provider."""
     from backend.providers import get_provider
     try:
@@ -1469,7 +1469,7 @@ class LogRequest(BaseModel):
     stack: Optional[str] = Field(default=None, max_length=8192)
 
 @app.post("/api/logs")
-async def receive_log(log: LogRequest, request: Request):
+async def receive_log(log: LogRequest, request: Request, _=Depends(verify_local_request)):
     """
     Receive logs from the frontend and pipe them to the backend logger.
 
@@ -1845,7 +1845,7 @@ def indexing_progress_callback(current, total, message=None):
     if total == 100 and current > 1:
         progress = current
     else:
-        progress = int((current / total) * 100)
+        progress = int((current / (total or 1)) * 100)
 
     with _index_lock:
         if message:
