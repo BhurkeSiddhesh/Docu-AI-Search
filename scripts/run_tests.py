@@ -157,7 +157,11 @@ def run_quick_tests():
         'backend.tests.test_benchmarks',
         'backend.tests.test_config_and_edge_cases',
         'backend.tests.test_security',
-        'backend.tests.test_rate_limit', # Added test_rate_limit
+        'backend.tests.test_rate_limit',
+        # New coverage additions
+        'backend.tests.test_agent',
+        'backend.tests.test_extraction',
+        'backend.tests.test_rag_pipeline',
     ]
     
     for module in quick_modules:
