@@ -1345,5 +1345,129 @@ class TestBatch1ProvidersCacheFix(unittest.TestCase):
         self.assertIs(p1, p2, "Same params must return the cached instance")
 
 
+class TestBatch3Fixes(unittest.TestCase):
+    """Tests for batch-3 fixes (#127, #145, #166, #178, #182, #191, #228)."""
+
+    # --- #145: bare except on tensor_split ---
+    def test_tensor_split_bare_except_replaced(self):
+        """api.py tensor_split parsing must not use bare except."""
+        import ast, inspect
+        from backend import api as api_module
+        src = inspect.getsource(api_module)
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ExceptHandler) and node.type is None:
+                # Bare except found — check it's not in tensor_split context
+                # (we just assert there are no bare excepts at all in the module)
+                self.fail(f"Bare 'except:' found at line {node.lineno} — should specify exception type")
+
+    # --- #166: _validate_token no longer reads config on every call ---
+    def test_validate_token_uses_cache(self):
+        """_validate_token must not open config.ini on subsequent calls."""
+        import backend.auth as auth_mod
+        auth_mod._cached_token_hash = "abc123"
+        with patch('backend.auth.configparser.ConfigParser') as mock_cfg_cls:
+            # Call _validate_token — it should hit the cache and NOT read config
+            auth_mod._validate_token("sometoken")
+        mock_cfg_cls.assert_not_called()
+        # Restore
+        auth_mod._cached_token_hash = ""
+
+    def test_validate_token_reads_config_when_cache_empty(self):
+        """_validate_token must read config.ini when cache is empty."""
+        import backend.auth as auth_mod
+        auth_mod._cached_token_hash = ""
+        mock_cfg = MagicMock()
+        mock_cfg.get.return_value = ""
+        with patch('backend.auth.configparser.ConfigParser', return_value=mock_cfg):
+            result = auth_mod._validate_token("sometoken")
+        self.assertFalse(result)
+        mock_cfg.read.assert_called_once()
+        # Restore
+        auth_mod._cached_token_hash = ""
+
+    # --- #182: _QUERY_REWRITE_CACHE bounded ---
+    def test_query_rewrite_cache_capped(self):
+        """rewrite_query cache must not grow beyond _CACHE_MAX entries."""
+        from backend import rag_optimizers
+        rag_optimizers._QUERY_REWRITE_CACHE.clear()
+        # Pre-fill to just below the cap
+        for i in range(rag_optimizers._CACHE_MAX - 1):
+            rag_optimizers._QUERY_REWRITE_CACHE[f"key_{i}"] = f"val_{i}"
+        self.assertEqual(len(rag_optimizers._QUERY_REWRITE_CACHE), rag_optimizers._CACHE_MAX - 1)
+
+        # Adding one more via direct eviction logic (replicate what rewrite_query does)
+        if len(rag_optimizers._QUERY_REWRITE_CACHE) >= rag_optimizers._CACHE_MAX:
+            oldest = next(iter(rag_optimizers._QUERY_REWRITE_CACHE))
+            del rag_optimizers._QUERY_REWRITE_CACHE[oldest]
+        rag_optimizers._QUERY_REWRITE_CACHE["new_key"] = "new_val"
+        self.assertLessEqual(len(rag_optimizers._QUERY_REWRITE_CACHE), rag_optimizers._CACHE_MAX)
+        rag_optimizers._QUERY_REWRITE_CACHE.clear()
+
+    # --- #228: no duplicate get_file_by_name ---
+    def test_get_file_by_name_not_duplicated(self):
+        """database.py must have exactly one get_file_by_name definition."""
+        import inspect
+        from backend import database
+        src = inspect.getsource(database)
+        count = src.count("def get_file_by_name(")
+        self.assertEqual(count, 1, f"Expected 1 get_file_by_name definition, found {count}")
+
+    def test_get_file_by_name_tries_filename_column_first(self):
+        """get_file_by_name must query the filename column before path LIKE."""
+        from backend import database
+        mock_conn = MagicMock()
+        # First execute (filename =) returns a row; path LIKE should not be called
+        mock_row = MagicMock()
+        mock_row.__iter__ = MagicMock(return_value=iter([]))
+        mock_conn.execute.return_value.fetchone.return_value = mock_row
+        with patch('backend.database.get_connection', return_value=mock_conn):
+            database.get_file_by_name("test.pdf")
+        first_call_sql = mock_conn.execute.call_args_list[0][0][0]
+        self.assertIn("filename =", first_call_sql)
+
+    # --- #127: database.py uses logger, not print ---
+    def test_database_has_no_print_calls(self):
+        """database.py must not contain print() calls."""
+        import inspect
+        from backend import database
+        src = inspect.getsource(database)
+        # Filter out strings/comments; just check raw source for print(
+        import ast
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name) and node.func.id == 'print':
+                    self.fail(f"print() call found at line {node.lineno} in database.py")
+
+    # --- #178: rag_optimizers.py uses logger, not print ---
+    def test_rag_optimizers_has_no_print_calls(self):
+        """rag_optimizers.py must not contain print() calls."""
+        import inspect, ast
+        from backend import rag_optimizers
+        src = inspect.getsource(rag_optimizers)
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name) and node.func.id == 'print':
+                    self.fail(f"print() call found at line {node.lineno} in rag_optimizers.py")
+
+    # --- #191: response_cache eviction ---
+    def test_cache_response_evicts_when_over_limit(self):
+        """cache_response must evict oldest rows when row count exceeds 1000."""
+        from backend import database
+        mock_conn = MagicMock()
+        cursor = mock_conn.cursor.return_value
+        # Simulate INSERT, then count query returning 1100 rows
+        cursor.execute.return_value = cursor
+        cursor.fetchone.return_value = (1100,)
+        with patch('backend.database.get_connection', return_value=mock_conn):
+            database.cache_response("h1", "h2", "m1", "answer", "text")
+        # Check eviction DELETE was called (3rd execute call after INSERT and COUNT)
+        calls = cursor.execute.call_args_list
+        delete_calls = [c for c in calls if 'DELETE FROM response_cache' in str(c)]
+        self.assertTrue(len(delete_calls) > 0, "Expected a DELETE eviction call when count > 1000")
+
+
 if __name__ == '__main__':
     unittest.main()

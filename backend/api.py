@@ -1027,8 +1027,8 @@ async def search_files(search_data: SearchRequest, request: Request, background_
         if tensor_split_str:
             try:
                 tensor_split = [float(x) for x in tensor_split_str.split(',')]
-            except:
-                pass
+            except (ValueError, TypeError):
+                logger.warning("Invalid tensor_split value '%s'; ignoring.", tensor_split_str)
 
         # Run Search — use the active embedding client from settings state
         from backend.search import EmbeddingDimensionMismatchError
@@ -1200,8 +1200,8 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
     if tensor_split_str:
         try:
             tensor_split = [float(x) for x in tensor_split_str.split(',')]
-        except:
-            pass
+        except (ValueError, TypeError):
+            logger.warning("Invalid tensor_split value '%s'; ignoring.", tensor_split_str)
 
 
     final_context_snippets = []

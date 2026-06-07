@@ -37,6 +37,7 @@ export default function SearchView({ pendingQuery }) {
     });
 
     const inputRef = useRef(null);
+    const streamAbortRef = useRef(null);
     const toast = useToast();
 
     useEffect(() => {
@@ -94,6 +95,11 @@ export default function SearchView({ pendingQuery }) {
             setIsSearching(false);
 
             if ((res.data.results || []).length > 0) {
+                // Abort any previous stream before starting a new one
+                streamAbortRef.current?.abort();
+                const controller = new AbortController();
+                streamAbortRef.current = controller;
+
                 // Stream the AI answer
                 setIsStreaming(true);
                 let acc = '';
@@ -102,10 +108,12 @@ export default function SearchView({ pendingQuery }) {
                     await api.streamAnswer(q, context, selectedPromptId, (chunk) => {
                         acc += chunk;
                         setAiAnswer(acc);
-                    });
+                    }, controller.signal);
                 } catch (e) {
-                    console.error('Stream error:', e);
-                    toast.error('AI answer stream failed. Search results are still available.');
+                    if (e.name !== 'AbortError') {
+                        console.error('Stream error:', e);
+                        toast.error('AI answer stream failed. Search results are still available.');
+                    }
                 } finally {
                     setIsStreaming(false);
                 }

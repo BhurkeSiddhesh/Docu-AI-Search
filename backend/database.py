@@ -2,8 +2,11 @@ import sqlite3
 import threading
 import os
 import json
+import logging
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple, Any
+
+logger = logging.getLogger(__name__)
 
 # Path configuration
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -214,7 +217,7 @@ def add_file(path: str, filename: str, file_type: str, size: int, last_modified:
         ''', (path, filename, file_type, size, last_modified, faiss_start_idx, faiss_end_idx, tags_json))
         conn.commit()
     except Exception as e:
-        print(f"Error adding file to DB: {e}")
+        logger.error("Error adding file to DB: %s", e)
     finally:
         conn.close()
 
@@ -237,7 +240,7 @@ def add_files_batch(files_data: List[Dict]):
         ''', files_data)
         conn.commit()
     except Exception as e:
-        print(f"Error adding batch files to DB: {e}")
+        logger.error("Error adding batch files to DB: %s", e)
     finally:
         conn.close()
 
@@ -295,6 +298,10 @@ def get_file_by_name(filename: str) -> Optional[Dict]:
     """
     Retrieve metadata for a specific file by its filename (basename).
 
+    Tries an exact match on the filename column first; if not found, falls
+    back to a path suffix match for files that may lack a populated filename
+    column.
+
     Args:
         filename (str): The basename of the file (e.g. 'resume.pdf').
 
@@ -302,11 +309,19 @@ def get_file_by_name(filename: str) -> Optional[Dict]:
         Optional[Dict]: The file details if found, else None.
     """
     conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM files WHERE filename = ? LIMIT 1', (filename,))
-    row = cursor.fetchone()
-    conn.close()
-    return dict(row) if row else None
+    try:
+        row = conn.execute(
+            'SELECT * FROM files WHERE filename = ? LIMIT 1', (filename,)
+        ).fetchone()
+        if row:
+            return dict(row)
+        # Fallback: match by path suffix
+        row = conn.execute(
+            "SELECT * FROM files WHERE path LIKE ? LIMIT 1", (f"%/{filename}",)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
 
 def get_file_by_faiss_index(idx: int) -> Optional[Dict]:
     """
@@ -328,26 +343,6 @@ def get_file_by_faiss_index(idx: int) -> Optional[Dict]:
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
-
-def get_file_by_name(filename: str) -> Optional[Dict]:
-    """
-    Return the first file record whose basename matches filename.
-    
-    Args:
-        filename (str): The name of the file to search for.
-        
-    Returns:
-        Optional[Dict]: The file metadata dictionary if found, else None.
-    """
-    conn = get_connection()
-    try:
-        row = conn.execute(
-            "SELECT * FROM files WHERE path LIKE ? LIMIT 1",
-            (f"%/{filename}",)
-        ).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
 
 def clear_files():
     """
@@ -381,7 +376,7 @@ def add_search_history(query: str, result_count: int, execution_time_ms: int):
         ''', (query, result_count, execution_time_ms))
         conn.commit()
     except Exception as e:
-        print(f"Error adding search history: {e}")
+        logger.error("Error adding search history: %s", e)
     finally:
         conn.close()
 
@@ -457,7 +452,7 @@ def add_folder_to_history(path: str):
         ''', (path,))
         conn.commit()
     except Exception as e:
-        print(f"Error adding folder history: {e}")
+        logger.error("Error adding folder history: %s", e)
     finally:
         conn.close()
 
@@ -478,7 +473,7 @@ def mark_folder_indexed(path: str):
         ''', (path,))
         conn.commit()
     except Exception as e:
-        print(f"Error marking folder indexed: {e}")
+        logger.error("Error marking folder indexed: %s", e)
     finally:
         conn.close()
 
@@ -614,7 +609,7 @@ def get_cached_response(query_hash: str, context_hash: str, model_id: str, respo
             return response_text
         return None
     except Exception as e:
-        print(f"Cache lookup failed: {e}")
+        logger.error("Cache lookup failed: %s", e)
         return None
     finally:
         conn.close()
@@ -634,13 +629,27 @@ def cache_response(query_hash: str, context_hash: str, model_id: str, response_t
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            INSERT OR REPLACE INTO response_cache 
+            INSERT OR REPLACE INTO response_cache
             (query_hash, context_hash, model_id, response_type, response_text, hit_count, last_accessed_at)
             VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
         """, (query_hash, context_hash, model_id, response_type, response_text))
         conn.commit()
+        # Evict least-recently-accessed entries when cache exceeds 1000 rows
+        cursor.execute("SELECT COUNT(*) FROM response_cache")
+        count = cursor.fetchone()[0]
+        if count > 1000:
+            cursor.execute("""
+                DELETE FROM response_cache
+                WHERE (query_hash, context_hash, model_id, response_type) IN (
+                    SELECT query_hash, context_hash, model_id, response_type
+                    FROM response_cache
+                    ORDER BY last_accessed_at ASC
+                    LIMIT ?
+                )
+            """, (count - 1000,))
+            conn.commit()
     except Exception as e:
-        print(f"Cache storage failed: {e}")
+        logger.error("Cache storage failed: %s", e)
     finally:
         conn.close()
 
@@ -659,7 +668,7 @@ def clear_response_cache() -> int:
         conn.commit()
         return count
     except Exception as e:
-        print(f"Cache clear failed: {e}")
+        logger.error("Cache clear failed: %s", e)
         return 0
     finally:
         conn.close()
@@ -681,7 +690,7 @@ def get_cache_stats() -> Dict[str, int]:
             "total_hits": total_hits or 0
         }
     except Exception as e:
-        print(f"Cache stats failed: {e}")
+        logger.error("Cache stats failed: %s", e)
         return {"total_entries": 0, "total_hits": 0}
     finally:
         conn.close()
@@ -706,7 +715,7 @@ def add_clusters_batch(clusters_data: List[Tuple[str, int]]):
         ''', clusters_data)
         conn.commit()
     except Exception as e:
-        print(f"Error adding batch clusters to DB: {e}")
+        logger.error("Error adding batch clusters to DB: %s", e)
     finally:
         conn.close()
 
@@ -820,7 +829,7 @@ def cleanup_test_data() -> Dict[str, int]:
     
     total = sum(counts.values())
     if total > 0:
-        print(f"[CLEANUP] Removed {counts['files']} test files, {counts['folders']} test folders, {counts['search_history']} test searches")
+        logger.debug("[CLEANUP] Removed %s test files, %s test folders, %s test searches", counts["files"], counts["folders"], counts["search_history"])
     
     return counts
 
@@ -874,7 +883,7 @@ def get_files_by_faiss_indices(indices: list[int]) -> dict[int, dict]:
 
         return result
     except Exception as e:
-        print(f"Error getting files by faiss indices: {e}")
+        logger.error("Error getting files by faiss indices: %s", e)
         return {}
     finally:
         conn.close()

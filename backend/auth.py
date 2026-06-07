@@ -24,9 +24,25 @@ AUTH_ENABLED = os.getenv("AUTH_ENABLED", "false").lower() == "true"
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _CONFIG_PATH = os.path.join(_BASE_DIR, "config.ini")
 
+# Module-level cache for the stored token hash — avoids a config.ini read on
+# every authenticated request; refreshed whenever a new token is generated.
+_cached_token_hash: str = ""
+
+
+def _load_token_hash() -> str:
+    """Read and cache the stored token hash from config.ini."""
+    global _cached_token_hash
+    if _cached_token_hash:
+        return _cached_token_hash
+    config = configparser.ConfigParser()
+    config.read(_CONFIG_PATH)
+    _cached_token_hash = config.get("Auth", "token_hash", fallback="")
+    return _cached_token_hash
+
 
 def _get_or_create_token() -> str:
     """Return the plaintext token, creating it if it doesn't exist yet."""
+    global _cached_token_hash
     config = configparser.ConfigParser()
     config.read(_CONFIG_PATH)
     if not config.has_section("Auth"):
@@ -34,24 +50,24 @@ def _get_or_create_token() -> str:
     token_hash = config.get("Auth", "token_hash", fallback="")
     if not token_hash:
         token = secrets.token_hex(32)
-        config.set("Auth", "token_hash", hashlib.sha256(token.encode()).hexdigest())
+        new_hash = hashlib.sha256(token.encode()).hexdigest()
+        config.set("Auth", "token_hash", new_hash)
         import tempfile, os as _os
         _dir = _os.path.dirname(_CONFIG_PATH)
         with tempfile.NamedTemporaryFile("w", dir=_dir, delete=False, suffix=".tmp") as _tmp:
             config.write(_tmp)
             _tmp_path = _tmp.name
         _os.replace(_tmp_path, _CONFIG_PATH)
+        _cached_token_hash = new_hash
         logger.info("Generated new API auth token. Retrieve it via GET /api/auth/token (localhost only).")
         return token
-    # Token was already created; can't recover plaintext from hash.
-    # Return sentinel so callers know a token exists but we can't echo it.
+    # Token was already created; cache the hash and return sentinel.
+    _cached_token_hash = token_hash
     return ""
 
 
 def _validate_token(token: str) -> bool:
-    config = configparser.ConfigParser()
-    config.read(_CONFIG_PATH)
-    stored_hash = config.get("Auth", "token_hash", fallback="")
+    stored_hash = _load_token_hash()
     if not stored_hash:
         return False
     candidate_hash = hashlib.sha256(token.encode()).hexdigest()
