@@ -1103,8 +1103,12 @@ async def search_files(search_data: SearchRequest, request: Request, background_
                 if ext not in _file_type_filter:
                     continue
             
-            # OPTIMIZATION: Use fast summary for all results to avoid blocking
-            summary = cached_smart_summary(text=result['document'], query=search_data.query, provider=provider, api_key=api_key, model_path=model_path)
+            # Run summary in a thread to avoid blocking the async event loop
+            summary = await asyncio.to_thread(
+                cached_smart_summary,
+                text=result['document'], query=search_data.query,
+                provider=provider, api_key=api_key, model_path=model_path,
+            )
             
             # Add file context to snippets for AI answer
             file_prefix = f"[From: {file_name}] " if file_name else ""
@@ -1266,8 +1270,12 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
 
         # Prepare context
         for result in results:
-             # Use fast fallback summary for streaming context (no new LLM calls)
-             summary = cached_smart_summary(text=result['document'], query=search_data.query, provider=provider, api_key=api_key, model_path=model_path)
+             # Run summary in a thread to avoid blocking the async event loop
+             summary = await asyncio.to_thread(
+                 cached_smart_summary,
+                 text=result['document'], query=search_data.query,
+                 provider=provider, api_key=api_key, model_path=model_path,
+             )
 
              faiss_idx = result.get('faiss_idx')
              file_name = result.get('file_name')

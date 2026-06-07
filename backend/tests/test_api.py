@@ -1638,5 +1638,126 @@ class TestBatch3Fixes(unittest.TestCase):
         self.assertTrue(len(delete_calls) > 0, "Expected a DELETE eviction call when count > 1000")
 
 
+class TestBatch6Fixes(unittest.TestCase):
+    """Tests for batch-6 fixes (#123, #126, #192, #196, #214, #218, #265)."""
+
+    # --- #123: embedding cache key must not contain the raw API key ---
+    def test_embedding_cache_key_hashes_api_key(self):
+        """get_embeddings must not store the raw API key in the cache key."""
+        import inspect
+        from backend import llm_integration
+        src = inspect.getsource(llm_integration.get_embeddings)
+        # The cache key must use a hash of the api_key, not f"{provider}:{api_key}"
+        self.assertNotIn('f"{provider}:{api_key', src,
+                         "Cache key must not include raw api_key")
+        self.assertIn('hashlib.sha256', src,
+                      "Cache key must hash the api_key with sha256")
+
+    # --- #126: watchdog handler must debounce rapid filesystem events ---
+    def test_watchdog_handler_has_debounce(self):
+        """IndexingEventHandler must not call update_index directly from on_modified."""
+        import inspect
+        from backend import background
+        src = inspect.getsource(background.IndexingEventHandler)
+        # on_modified/on_created/on_deleted must call a debounce helper, not update_index directly
+        self.assertIn('_schedule_update', src,
+                      "Event handlers must delegate to a debounce scheduler")
+        self.assertIn('threading.Timer', src,
+                      "Debounce must use threading.Timer")
+
+    def test_watchdog_debounce_cancels_previous_timer(self):
+        """Multiple rapid events must cancel the previous timer and start a new one."""
+        from backend.background import IndexingEventHandler
+        handler = IndexingEventHandler('/tmp', 'local', None, None)
+        # Call _schedule_update twice quickly — the first timer must be cancelled
+        first_timer_cancelled = []
+        real_cancel = None
+
+        import threading
+        original_timer = threading.Timer
+
+        def fake_timer(delay, fn):
+            t = original_timer(delay, fn)
+            real_cancel_fn = t.cancel
+            def tracked_cancel():
+                first_timer_cancelled.append(True)
+                real_cancel_fn()
+            t.cancel = tracked_cancel
+            return t
+
+        with patch('backend.background.threading.Timer', side_effect=fake_timer):
+            handler._schedule_update()
+            handler._schedule_update()
+
+        self.assertTrue(len(first_timer_cancelled) >= 1,
+                        "First timer must be cancelled when a second event fires")
+        # Cleanup
+        if handler._debounce_timer:
+            handler._debounce_timer.cancel()
+
+    # --- #192: checkpoint must not save after every file ---
+    def test_checkpoint_saves_every_10_files_not_every_file(self):
+        """_save_checkpoint must not be called for every file extracted."""
+        import inspect
+        from backend import indexing
+        src = inspect.getsource(indexing.create_index)
+        # The code must contain 'extracted_since_save' (the batching counter)
+        self.assertIn('extracted_since_save', src,
+                      "Indexing must batch checkpoint saves rather than saving after every file")
+
+    # --- #214: checkpoint must not store full document text ---
+    def test_checkpoint_stores_empty_string_not_text(self):
+        """Checkpoint entry for each file must store '' (not the extracted text)."""
+        import inspect
+        from backend import indexing
+        src = inspect.getsource(indexing.create_index)
+        # Must store empty string per path
+        self.assertIn('checkpoint[filepath] = ""', src,
+                      "Checkpoint must store empty string, not full document text")
+
+    # --- #196: cached_smart_summary must be called via asyncio.to_thread in search ---
+    def test_search_uses_asyncio_to_thread_for_smart_summary(self):
+        """search_files must wrap cached_smart_summary in asyncio.to_thread."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.search_files)
+        self.assertIn('asyncio.to_thread', src,
+                      "search_files must call cached_smart_summary via asyncio.to_thread")
+        self.assertIn('cached_smart_summary', src)
+
+    # --- #218: IndexingBanner must use WebSocket, not only HTTP polling ---
+    def test_indexing_banner_uses_websocket(self):
+        """IndexingBanner.jsx must open a WebSocket connection to /ws/progress."""
+        import os as _os
+        banner_path = _os.path.join(
+            _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))),
+            'frontend', 'src', 'components', 'IndexingBanner.jsx',
+        )
+        with open(banner_path) as f:
+            src = f.read()
+        self.assertIn('WebSocket', src,
+                      "IndexingBanner must use WebSocket for live updates")
+        self.assertIn('/ws/progress', src,
+                      "IndexingBanner must connect to /ws/progress")
+
+    # --- #265: AgentView must be wrapped in an ErrorBoundary ---
+    def test_agent_view_wrapped_in_error_boundary(self):
+        """SearchView.jsx must wrap AgentView inside an ErrorBoundary."""
+        import os as _os
+        search_view_path = _os.path.join(
+            _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))),
+            'frontend', 'src', 'components', 'SearchView.jsx',
+        )
+        with open(search_view_path) as f:
+            src = f.read()
+        self.assertIn('ErrorBoundary', src,
+                      "SearchView must import ErrorBoundary")
+        # Verify AgentView is rendered inside ErrorBoundary tags
+        boundary_idx = src.find('<ErrorBoundary>')
+        agent_idx = src.find('<AgentView')
+        self.assertGreater(agent_idx, boundary_idx,
+                           "AgentView must appear after <ErrorBoundary> opening tag")
+
+
 if __name__ == '__main__':
     unittest.main()

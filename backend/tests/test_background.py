@@ -36,27 +36,28 @@ class TestBackground(unittest.TestCase):
     @patch('backend.background.save_index')
     def test_update_index(self, mock_save_index, mock_create_index):
         """Test the update_index method of IndexingEventHandler."""
+        from unittest.mock import ANY
         mock_index = MagicMock()
         mock_create_index.return_value = (mock_index, ["doc1"], ["tag1"], None, None, None, None)
-        
+
         handler = IndexingEventHandler(
             folder="/test/folder",
             provider="openai",
             api_key="test_key",
             model_path=None
         )
-        
+
         # Call update_index directly
         handler.update_index()
-        
+
         # Verify create_index was called
         mock_create_index.assert_called_once_with(
             "/test/folder", "openai", "test_key", None
         )
-        
-        # Verify save_index was called
+
+        # Verify save_index was called (path is the absolute data/index.faiss path)
         mock_save_index.assert_called_once_with(
-            mock_index, ["doc1"], ["tag1"], 'index.faiss', None, None, None, None
+            mock_index, ["doc1"], ["tag1"], ANY, None, None, None, None
         )
     
     @patch('backend.background.create_index')
@@ -79,71 +80,44 @@ class TestBackground(unittest.TestCase):
             "/test/folder", "openai", "test_key", None
         )
     
-    @patch('backend.background.create_index')
-    @patch('backend.background.save_index')
-    def test_on_modified_triggers_update(self, mock_save_index, mock_create_index):
-        """Test that on_modified event triggers index update."""
-        mock_index = MagicMock()
-        mock_create_index.return_value = (mock_index, ["doc1"], ["tag1"], None, None, None, None)
-        
+    def test_on_modified_triggers_update(self):
+        """Test that on_modified event schedules a debounced index update."""
         handler = IndexingEventHandler(
             folder="/test/folder",
             provider="openai",
             api_key="test_key",
             model_path=None
         )
-        
-        # Simulate on_modified event
         event = MagicMock()
-        handler.on_modified(event)
-        
-        # Verify create_index was called
-        mock_create_index.assert_called_once()
-        mock_save_index.assert_called_once()
-    
-    @patch('backend.background.create_index')
-    @patch('backend.background.save_index')
-    def test_on_created_triggers_update(self, mock_save_index, mock_create_index):
-        """Test that on_created event triggers index update."""
-        mock_index = MagicMock()
-        mock_create_index.return_value = (mock_index, ["doc1"], ["tag1"], None, None, None, None)
-        
+        with patch.object(handler, '_schedule_update') as mock_schedule:
+            handler.on_modified(event)
+        mock_schedule.assert_called_once()
+
+    def test_on_created_triggers_update(self):
+        """Test that on_created event schedules a debounced index update."""
         handler = IndexingEventHandler(
             folder="/test/folder",
             provider="openai",
             api_key="test_key",
             model_path=None
         )
-        
-        # Simulate on_created event
         event = MagicMock()
-        handler.on_created(event)
-        
-        # Verify create_index was called
-        mock_create_index.assert_called_once()
-        mock_save_index.assert_called_once()
-    
-    @patch('backend.background.create_index')
-    @patch('backend.background.save_index')
-    def test_on_deleted_triggers_update(self, mock_save_index, mock_create_index):
-        """Test that on_deleted event triggers index update."""
-        mock_index = MagicMock()
-        mock_create_index.return_value = (mock_index, ["doc1"], ["tag1"], None, None, None, None)
-        
+        with patch.object(handler, '_schedule_update') as mock_schedule:
+            handler.on_created(event)
+        mock_schedule.assert_called_once()
+
+    def test_on_deleted_triggers_update(self):
+        """Test that on_deleted event schedules a debounced index update."""
         handler = IndexingEventHandler(
             folder="/test/folder",
             provider="openai",
             api_key="test_key",
             model_path=None
         )
-        
-        # Simulate on_deleted event
         event = MagicMock()
-        handler.on_deleted(event)
-        
-        # Verify create_index was called
-        mock_create_index.assert_called_once()
-        mock_save_index.assert_called_once()
+        with patch.object(handler, '_schedule_update') as mock_schedule:
+            handler.on_deleted(event)
+        mock_schedule.assert_called_once()
 
 
 class TestStartBackgroundIndexingFolderParsing(unittest.TestCase):

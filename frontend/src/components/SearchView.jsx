@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Search, Sparkles, Loader2, Bot, ChevronDown, Filter } from 'lucide-react';
 import ResultCard from './ResultCard';
 import AgentView from './AgentView';
+import ErrorBoundary from './ErrorBoundary';
 import api from '../lib/api';
 import { useToast } from './Toast';
 
@@ -350,7 +351,9 @@ export default function SearchView({ pendingQuery }) {
             )}
 
             {hasSearched && agentMode && (
-                <AgentView query={agentQuery} />
+                <ErrorBoundary>
+                    <AgentView query={agentQuery} />
+                </ErrorBoundary>
             )}
         </div>
     );

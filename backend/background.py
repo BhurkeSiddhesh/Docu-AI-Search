@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -11,6 +12,9 @@ logger = logging.getLogger(__name__)
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _INDEX_PATH = os.path.join(_BASE_DIR, 'data', 'index.faiss')
 _CONFIG_PATH = os.path.join(_BASE_DIR, 'config.ini')
+
+_DEBOUNCE_SECONDS = 5
+
 
 class IndexingEventHandler(FileSystemEventHandler):
     """
@@ -33,18 +37,29 @@ class IndexingEventHandler(FileSystemEventHandler):
         self.provider = provider
         self.api_key = api_key
         self.model_path = model_path
+        self._debounce_timer: threading.Timer = None
+        self._lock = threading.Lock()
 
     def on_modified(self, event):
         """Called when a file or directory is modified."""
-        self.update_index()
+        self._schedule_update()
 
     def on_created(self, event):
         """Called when a file or directory is created."""
-        self.update_index()
+        self._schedule_update()
 
     def on_deleted(self, event):
         """Called when a file or directory is deleted."""
-        self.update_index()
+        self._schedule_update()
+
+    def _schedule_update(self):
+        """Debounce rapid filesystem events before triggering a full re-index."""
+        with self._lock:
+            if self._debounce_timer is not None:
+                self._debounce_timer.cancel()
+            self._debounce_timer = threading.Timer(_DEBOUNCE_SECONDS, self.update_index)
+            self._debounce_timer.daemon = True
+            self._debounce_timer.start()
 
     def update_index(self):
         """

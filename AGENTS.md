@@ -305,6 +305,21 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-06-07 (Batch-6 Issue Fixes)
+- **fix #123**: `get_embeddings` now hashes the API key with SHA-256 before using it as a cache key, so raw API keys are never stored in memory keys.
+- **fix #126**: `IndexingEventHandler` in `background.py` now debounces rapid filesystem events using a 5-second `threading.Timer`; only the final event in a burst triggers a re-index.
+- **fix #192**: Checkpoint in `indexing.py` is now flushed every 10 files instead of after every single file, reducing disk I/O from O(n²) to O(n).
+- **fix #214**: Checkpoint entries now store `""` (path marker only) instead of the full extracted text, eliminating large memory/disk usage for the checkpoint file.
+- **fix #196**: `cached_smart_summary` calls in `search_files` and `stream_answer` are now wrapped in `asyncio.to_thread` so they don't block the FastAPI event loop.
+- **fix #218**: `IndexingBanner` now connects to the existing `/ws/progress` WebSocket for live progress updates instead of polling `/api/index/status` every 1.5 s via HTTP; falls back to one-shot HTTP poll + reconnect on WebSocket failure.
+- **fix #265**: `AgentView` inside `SearchView` is now wrapped in a per-component `ErrorBoundary` so agent crashes don't unmount the entire search page.
+- **test**: Added `TestBatch6Fixes` (8 tests) covering all 7 issue fixes.
+- **fix (pre-existing)**: Fixed stale model names in `test_llm_integration.py` (`gemini-2.0-flash`, `claude-haiku-4-5-20251001`).
+- **fix (pre-existing)**: Fixed `TestConnectionManagerDisconnect` to use `IsolatedAsyncioTestCase` since `disconnect()` is async.
+- **fix (pre-existing)**: Fixed cross-test cache pollution in `test_auth.py` by adding `setUp`/`tearDown` to `TestValidateToken` and `TestGetOrCreateToken` to reset `_cached_token_hash`.
+- **fix (pre-existing)**: Fixed `test_background.py` event-handler tests to verify `_schedule_update` is called (not `update_index` directly), and fixed `test_update_index` path assertion to use `ANY`.
+- **Files**: `backend/llm_integration.py`, `backend/background.py`, `backend/indexing.py`, `backend/api.py`, `frontend/src/components/IndexingBanner.jsx`, `frontend/src/components/SearchView.jsx`, `backend/tests/test_api.py`, `backend/tests/test_background.py`, `backend/tests/test_auth.py`, `backend/tests/test_llm_integration.py`, `backend/tests/test_websocket_manager.py`, `AGENTS.md`
+
 ### 2026-05-28 (Daily Audit Log Consolidation)
 - **feat**: Consolidated 28 unique daily automated code audit log entries spanning early May to late May 2026 into a single, unified, reverse-chronologically sorted `internal_audit_log.md` file.
 - **verification**: Validated layout and verified project compliance via structure check.

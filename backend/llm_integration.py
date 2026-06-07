@@ -100,8 +100,9 @@ def get_embeddings(provider: str, api_key: str = None, model_path: str = None) -
     Returns:
         Any: An instance of the requested embeddings model (e.g., OpenAIEmbeddings).
     """
-    cache_key = f"{provider}:{api_key or ''}"
-    
+    key_digest = hashlib.sha256((api_key or '').encode()).hexdigest()[:16]
+    cache_key = f"{provider}:{key_digest}"
+
     if cache_key in _embeddings_cache:
         return _embeddings_cache[cache_key]
     

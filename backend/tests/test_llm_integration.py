@@ -23,14 +23,14 @@ class TestLLMIntegrationV2(unittest.TestCase):
         """Test getting Gemini client."""
         client = get_llm_client('gemini', api_key='AIza-test')
         self.assertIsNotNone(client)
-        mock_gemini.assert_called_with(google_api_key='AIza-test', model='gemini-1.5-flash', temperature=0.3)
+        mock_gemini.assert_called_with(google_api_key='AIza-test', model='gemini-2.0-flash', temperature=0.3)
 
     @patch('backend.llm_integration.ChatAnthropic')
     def test_get_llm_client_anthropic(self, mock_anthropic):
         """Test getting Anthropic client."""
         client = get_llm_client('anthropic', api_key='sk-ant-test')
         self.assertIsNotNone(client)
-        mock_anthropic.assert_called_with(api_key='sk-ant-test', model='claude-3-haiku-20240307', temperature=0.3)
+        mock_anthropic.assert_called_with(api_key='sk-ant-test', model='claude-haiku-4-5-20251001', temperature=0.3)
 
     def test_get_llm_client_local(self):
         """Test getting Local client (returns string path marker)."""

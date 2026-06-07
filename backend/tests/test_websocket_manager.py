@@ -47,32 +47,32 @@ class TestConnectionManagerConnect(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(manager.active_connections), 2)
 
 
-class TestConnectionManagerDisconnect(unittest.TestCase):
+class TestConnectionManagerDisconnect(unittest.IsolatedAsyncioTestCase):
     """Tests for ConnectionManager.disconnect()."""
 
-    def test_disconnect_removes_known_socket(self):
+    async def test_disconnect_removes_known_socket(self):
         """disconnect() removes a connected socket."""
         manager = ConnectionManager()
         ws = _mock_websocket()
         manager.active_connections.append(ws)
-        manager.disconnect(ws)
+        await manager.disconnect(ws)
         self.assertNotIn(ws, manager.active_connections)
 
-    def test_disconnect_unknown_socket_is_noop(self):
+    async def test_disconnect_unknown_socket_is_noop(self):
         """disconnect() on a socket that was never connected raises no error."""
         manager = ConnectionManager()
         ws = _mock_websocket()
         try:
-            manager.disconnect(ws)
+            await manager.disconnect(ws)
         except Exception as e:
             self.fail(f"disconnect() raised unexpectedly: {e}")
 
-    def test_disconnect_leaves_other_clients_intact(self):
+    async def test_disconnect_leaves_other_clients_intact(self):
         """Only the target socket is removed; others remain."""
         manager = ConnectionManager()
         ws1, ws2 = _mock_websocket(), _mock_websocket()
         manager.active_connections.extend([ws1, ws2])
-        manager.disconnect(ws1)
+        await manager.disconnect(ws1)
         self.assertIn(ws2, manager.active_connections)
         self.assertNotIn(ws1, manager.active_connections)
 
