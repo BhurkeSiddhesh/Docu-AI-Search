@@ -45,6 +45,17 @@ def _clear_checkpoint():
     if os.path.exists(_CHECKPOINT_PATH):
         os.remove(_CHECKPOINT_PATH)
 
+def _embed_batch_with_retry(model, batch, retries: int = 3):
+    """Embed a single batch, retrying up to `retries` times with exponential back-off."""
+    for attempt in range(retries):
+        try:
+            return model.embed_documents(batch)
+        except Exception as e:
+            if attempt == retries - 1:
+                raise
+            time.sleep(2 ** attempt)
+
+
 def tokenize(text: str) -> List[str]:
     """
     Simple tokenization for BM25 keyword matching.
@@ -241,7 +252,7 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         # submit returns a future object
-        future_map = {executor.submit(embeddings_model.embed_documents, batch): i for i, batch in enumerate(batches)}
+        future_map = {executor.submit(_embed_batch_with_retry, embeddings_model, batch): i for i, batch in enumerate(batches)}
         
         completed = 0
         total_batches = len(batches)
