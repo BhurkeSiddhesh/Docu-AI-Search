@@ -27,8 +27,29 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Generator, List, Optional
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
+
+
+def _build_retry_session() -> requests.Session:
+    """Session with exponential backoff on connection errors and 5xx responses."""
+    session = requests.Session()
+    retry = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[500, 502, 503, 504],
+        allowed_methods=["GET", "POST"],
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
+
+_SESSION = _build_retry_session()
 
 # ---------------------------------------------------------------------------
 # Abstract base
@@ -119,7 +140,7 @@ class OllamaProvider(LLMProvider):
             payload["options"]["stop"] = stop
 
         try:
-            resp = requests.post(
+            resp = _SESSION.post(
                 f"{self.base_url}/api/generate",
                 json=payload,
                 headers=self._headers(),
@@ -161,7 +182,7 @@ class OllamaProvider(LLMProvider):
             payload["options"]["stop"] = stop
 
         try:
-            resp = requests.post(
+            resp = _SESSION.post(
                 f"{self.base_url}/api/generate",
                 json=payload,
                 headers=self._headers(),
@@ -188,7 +209,7 @@ class OllamaProvider(LLMProvider):
 
     def list_models(self) -> List[Dict[str, Any]]:
         try:
-            resp = requests.get(
+            resp = _SESSION.get(
                 f"{self.base_url}/api/tags",
                 headers=self._headers(),
                 timeout=10,
@@ -218,7 +239,7 @@ class OllamaProvider(LLMProvider):
 
     def health_check(self) -> Dict[str, Any]:
         try:
-            resp = requests.get(f"{self.base_url}/api/tags", timeout=5)
+            resp = _SESSION.get(f"{self.base_url}/api/tags", timeout=5)
             resp.raise_for_status()
             model_count = len(resp.json().get("models", []))
             return {"status": "ok", "provider": "ollama", "models_available": model_count}
@@ -304,7 +325,7 @@ class OpenAICompatibleProvider(LLMProvider):
             payload["system_prompt"] = system_prompt
 
         try:
-            resp = requests.post(
+            resp = _SESSION.post(
                 f"{self.base_url}/api/v1/chat",
                 json=payload,
                 headers=self._headers(),
@@ -339,7 +360,7 @@ class OpenAICompatibleProvider(LLMProvider):
             payload["stop"] = stop
 
         try:
-            resp = requests.post(
+            resp = _SESSION.post(
                 f"{self.base_url}/chat/completions",
                 json=payload,
                 headers=self._headers(),
@@ -387,7 +408,7 @@ class OpenAICompatibleProvider(LLMProvider):
             payload["system_prompt"] = system_prompt
 
         try:
-            resp = requests.post(
+            resp = _SESSION.post(
                 f"{self.base_url}/api/v1/chat",
                 json=payload,
                 headers=self._headers(),
@@ -426,7 +447,7 @@ class OpenAICompatibleProvider(LLMProvider):
             payload["stop"] = stop
 
         try:
-            resp = requests.post(
+            resp = _SESSION.post(
                 f"{self.base_url}/chat/completions",
                 json=payload,
                 headers=self._headers(),
@@ -462,7 +483,7 @@ class OpenAICompatibleProvider(LLMProvider):
             url = f"{self.base_url}/api/v1/models"
 
         try:
-            resp = requests.get(url, headers=self._headers(), timeout=10)
+            resp = _SESSION.get(url, headers=self._headers(), timeout=10)
             resp.raise_for_status()
             data = resp.json()
             # LM Studio native uses "models" key; OpenAI uses "data" key
@@ -500,7 +521,7 @@ class OpenAICompatibleProvider(LLMProvider):
             url = f"{self.base_url}/api/v1/models"
 
         try:
-            resp = requests.get(url, headers=self._headers(), timeout=5)
+            resp = _SESSION.get(url, headers=self._headers(), timeout=5)
             resp.raise_for_status()
             data = resp.json()
             models_list = data.get("data") or data.get("models", [])
