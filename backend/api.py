@@ -641,7 +641,7 @@ def cache_stats_endpoint(_auth=Depends(require_auth)):
     return database.get_cache_stats()
 
 @app.post("/api/cache/clear")
-def clear_cache_endpoint():
+def clear_cache_endpoint(_auth=Depends(require_auth)):
     """
     Clear all entries from the AI response cache.
 
@@ -1192,10 +1192,21 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
     Returns:
         StreamingResponse: A server-sent event stream of AI response tokens.
     """
-    global index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25
+    # Snapshot mutable globals under lock to prevent race with concurrent re-index (#143)
+    with _index_lock:
+        _index = index
+        _docs = docs
+        _tags = tags
+        _index_summaries = index_summaries
+        _cluster_summaries = cluster_summaries
+        _cluster_map = cluster_map
+        _bm25 = bm25
 
-    if not index:
-         return StreamingResponse(iter(["Error: Index not loaded."]), media_type="text/event-stream")
+    if not _index:
+        # Return a proper SSE error event rather than a plain string (#168)
+        async def _err():
+            yield 'data: {"type":"error","message":"Index not loaded."}\n\n'
+        return StreamingResponse(_err(), media_type="text/event-stream")
 
     config = load_config()
     provider = search_data.provider_override or config.get('LocalLLM', 'provider', fallback='openai')
@@ -1234,9 +1245,9 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
             results, context_snippets = await asyncio.wait_for(
                 asyncio.to_thread(
                     search,
-                    search_data.query, index, docs, tags,
+                    search_data.query, _index, _docs, _tags,
                     get_active_embedding_client(request.app),
-                    index_summaries, cluster_summaries, cluster_map, bm25,
+                    _index_summaries, _cluster_summaries, _cluster_map, _bm25,
                 ),
                 timeout=_search_timeout,
             )
@@ -1430,7 +1441,7 @@ async def get_search_history(request: Request, _auth=Depends(require_auth)):
         raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
 @app.delete("/api/search/history/{history_id}")
-async def delete_search_history_item(history_id: int, request: Request):
+async def delete_search_history_item(history_id: int, request: Request, _auth=Depends(require_auth)):
     """
     Delete a specific search history entry.
 
@@ -1456,7 +1467,7 @@ async def delete_search_history_item(history_id: int, request: Request):
         raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
 @app.delete("/api/search/history")
-async def delete_all_search_history(request: Request):
+async def delete_all_search_history(request: Request, _auth=Depends(require_auth)):
     """
     Clear all search history from the database.
 

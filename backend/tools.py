@@ -23,8 +23,16 @@ def tool_search_knowledge_base(query: str, global_state: dict) -> str:
         
     cfg = global_state['config']
     provider = cfg.get('LocalLLM', 'provider', fallback='openai')
-    api_key = cfg.get('APIKeys', 'openai_api_key', fallback=None)
     model_path = cfg.get('LocalLLM', 'model_path', fallback=None)
+    api_key = cfg.get('APIKeys', 'openai_api_key', fallback=None)
+    if provider == 'gemini':
+        api_key = cfg.get('APIKeys', 'gemini_api_key', fallback=api_key)
+    elif provider == 'anthropic':
+        api_key = cfg.get('APIKeys', 'anthropic_api_key', fallback=api_key)
+    elif provider == 'grok':
+        api_key = cfg.get('APIKeys', 'grok_api_key', fallback=api_key)
+    elif provider in ('ollama', 'lmstudio'):
+        api_key = cfg.get('ExternalProviders', 'external_api_key', fallback=api_key)
     results, _ = search.search(
         query,
         global_state['index'],

@@ -1,6 +1,6 @@
 import re
 import asyncio
-from typing import List, Dict, Any, Generator
+from typing import List, Dict, Any, AsyncGenerator
 from backend import tools, llm_integration
 
 # Patterns that indicate a direct natural-language answer.
@@ -177,7 +177,7 @@ class ReActAgent:
             cleaned = user_query
         return "search_knowledge_base", cleaned
 
-    async def stream_chat(self, user_query: str) -> Generator[Dict[str, str], None, None]:
+    async def stream_chat(self, user_query: str) -> AsyncGenerator[Dict[str, str], None]:
         """
         Execute the iterative ReAct loop and stream status/answer events to the client.
 

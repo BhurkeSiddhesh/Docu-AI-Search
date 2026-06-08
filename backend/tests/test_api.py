@@ -335,14 +335,16 @@ class TestAPIFileOperations(unittest.TestCase):
 
     @patch('backend.database.get_file_by_path')
     @patch('os.startfile', create=True)
-    def test_open_file(self, mock_startfile, mock_get_file):
+    @patch('subprocess.run')
+    def test_open_file(self, mock_subprocess, mock_startfile, mock_get_file):
         """Test opening a file."""
         mock_get_file.return_value = {'path': '/test/document.pdf'}
+        mock_subprocess.return_value = MagicMock(returncode=0)
         with patch('os.path.exists', return_value=True):
             response = self.client.post("/api/open-file", json={
                 "path": "/test/document.pdf"
             })
-            
+
             self.assertEqual(response.status_code, 200)
 
 
@@ -415,9 +417,9 @@ class TestAPIStreamingEndpoint(unittest.TestCase):
             })
 
             self.assertEqual(response.status_code, 200)
-            # Should return error message
+            # Should return an SSE error event
             content = response.read().decode('utf-8')
-            self.assertIn("Error", content)
+            self.assertIn('"type":"error"', content)
 
 
 class TestAPIRateLimiting(unittest.TestCase):
@@ -876,6 +878,11 @@ class TestAPIEmbeddingSettings(unittest.TestCase):
         self.assertIn(response.status_code, [400, 422])
 
 
+import sys as _sys
+_tkinter_available = 'tkinter' in _sys.modules or __import__('importlib.util', fromlist=['find_spec']).find_spec('tkinter') is not None
+
+
+@unittest.skipUnless(_tkinter_available, "tkinter not available in this environment")
 class TestAPIBrowseFolder(unittest.TestCase):
     """Test cases for folder browse endpoint."""
 
@@ -1757,6 +1764,95 @@ class TestBatch6Fixes(unittest.TestCase):
         agent_idx = src.find('<AgentView')
         self.assertGreater(agent_idx, boundary_idx,
                            "AgentView must appear after <ErrorBoundary> opening tag")
+
+
+class TestBatch7Fixes(unittest.TestCase):
+    """Tests for batch-7 fixes (#136, #139, #143, #168, #211, #212)."""
+
+    def setUp(self):
+        self.client = TestClient(app)
+
+    # --- #212: cache/clear and search/history must require auth ---
+    def test_cache_clear_requires_auth(self):
+        """POST /api/cache/clear must have require_auth dependency."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.clear_cache_endpoint)
+        self.assertIn('require_auth', src,
+                      "clear_cache_endpoint must use require_auth")
+
+    def test_delete_search_history_requires_auth(self):
+        """DELETE /api/search/history must have require_auth dependency."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.delete_all_search_history)
+        self.assertIn('require_auth', src,
+                      "delete_all_search_history must use require_auth")
+
+    def test_delete_search_history_item_requires_auth(self):
+        """DELETE /api/search/history/{id} must have require_auth dependency."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.delete_search_history_item)
+        self.assertIn('require_auth', src,
+                      "delete_search_history_item must use require_auth")
+
+    # --- #143: stream_answer_endpoint snapshots globals under lock ---
+    def test_stream_answer_uses_index_lock(self):
+        """stream_answer_endpoint must snapshot index globals under _index_lock."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.stream_answer_endpoint)
+        self.assertIn('_index_lock', src,
+                      "stream_answer_endpoint must use _index_lock to snapshot globals")
+
+    # --- #168: stream error must be SSE format, not plain string ---
+    def test_stream_answer_error_is_sse_format(self):
+        """stream_answer_endpoint 'not loaded' error must be proper SSE, not plain text."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.stream_answer_endpoint)
+        self.assertNotIn('"Error: Index not loaded."', src,
+                         "Error must not be returned as plain text token")
+        self.assertIn('"type":"error"', src,
+                      "Error must be returned as SSE event with type:error")
+
+    # --- #136: stream_chat must be annotated AsyncGenerator not Generator ---
+    def test_stream_chat_annotation_is_async_generator(self):
+        """agent.stream_chat must return AsyncGenerator, not Generator."""
+        import inspect
+        from backend import agent as agent_mod
+        src = inspect.getsource(agent_mod.ReActAgent.stream_chat)
+        self.assertIn('AsyncGenerator', src,
+                      "stream_chat must annotate return as AsyncGenerator")
+        import re
+        self.assertIsNone(re.search(r'(?<!Async)Generator\[', src),
+                          "stream_chat must not use bare Generator annotation")
+
+    # --- #139: tools.py must select api_key by provider ---
+    def test_tools_api_key_is_provider_aware(self):
+        """tool_search_knowledge_base must select api_key based on provider."""
+        import inspect
+        from backend import tools as tools_mod
+        src = inspect.getsource(tools_mod.tool_search_knowledge_base)
+        self.assertIn('gemini_api_key', src,
+                      "tools must select gemini_api_key for gemini provider")
+        self.assertIn('anthropic_api_key', src,
+                      "tools must select anthropic_api_key for anthropic provider")
+
+    # --- #211: .dockerignore must exclude config.ini and .env ---
+    def test_dockerignore_excludes_secrets(self):
+        """dockerignore must exclude config.ini and .env."""
+        import os as _os
+        path = _os.path.join(
+            _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))),
+            '.dockerignore',
+        )
+        self.assertTrue(_os.path.exists(path), ".dockerignore must exist")
+        with open(path) as f:
+            content = f.read()
+        self.assertIn('config.ini', content, ".dockerignore must exclude config.ini")
+        self.assertIn('.env', content, ".dockerignore must exclude .env")
 
 
 if __name__ == '__main__':
