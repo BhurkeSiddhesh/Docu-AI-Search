@@ -33,9 +33,12 @@ export default function ModelManager({ activeModelPath, onSelectModel }) {
     const pollStatus = async () => {
         try {
             const r = await api.modelDownloadStatus();
-            const wasDownloading = downloadStatus.downloading;
-            setDownloadStatus(r.data);
-            if (wasDownloading && !r.data.downloading) load();
+            setDownloadStatus((prev) => {
+                if (prev.downloading && !r.data.downloading) {
+                    setTimeout(load, 0);
+                }
+                return r.data;
+            });
         } catch (e) {
             console.warn('ModelManager poll error:', e);
         }
