@@ -4,6 +4,35 @@ Automated daily code audit results for [BhurkeSiddhesh/Docu-AI-Search](https://g
 
 ---
 
+## Audit: 2026-06-08
+
+- Issues filed: 6
+- Categories: 2 Critical Bug, 3 Logic Enhancement, 1 Developer Experience
+- Auto-merge eligible: 2
+- Needs human review: 2
+- Status: Issues Filed
+
+### Issues Created This Run
+
+| # | Category | Title | Labels |
+|---|----------|-------|--------|
+| [#344](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/344) | Critical Bug | Hardcoded `localhost:8000` in `logger.js` breaks all non-local deployments | needs-human-review |
+| [#345](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/345) | Critical Bug | TOCTOU race in search sort-by-size/date can crash the /search endpoint | needs-human-review |
+| [#346](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/346) | Logic Enhancement | `streamAnswer()` has no AbortSignal — stream leaks when user navigates away | — |
+| [#347](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/347) | Logic Enhancement | AgentView silently discards SSE parse errors — UI hangs indefinitely | auto-merge-ok |
+| [#348](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/348) | Logic Enhancement | No retry/backoff on external HTTP calls in `providers.py` — transient failures are fatal | — |
+| [#349](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/349) | Developer Experience | Bare `except:` in `test_database.py` suppresses KeyboardInterrupt during test runs | auto-merge-ok |
+
+### Scope Covered
+- `backend/api.py`, `backend/providers.py`, `backend/llm_integration.py`, `backend/model_manager.py`
+- `backend/database.py`, `backend/agent.py`, `backend/indexing.py`, `backend/search.py`
+- `backend/tests/test_database.py`
+- `frontend/src/components/AgentView.jsx`, `SearchView.jsx`, `ModelManager.jsx`, `BenchmarkView.jsx`
+- `frontend/src/lib/api.js`, `frontend/src/lib/logger.js`
+- 0 existing open issues (clean slate — all prior issues closed)
+
+---
+
 ## Audit: 2026-05-28
 
 - Issues filed: 6
