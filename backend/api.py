@@ -1019,13 +1019,6 @@ async def search_files(search_data: SearchRequest, request: Request, background_
             return StreamingResponse(agent.stream_chat(search_data.query), media_type="text/event-stream")
 
         model_path = config.get('LocalLLM', 'model_path', fallback=None)
-        tensor_split_str = config.get('LocalLLM', 'tensor_split', fallback=None)
-        tensor_split = None
-        if tensor_split_str:
-            try:
-                tensor_split = [float(x) for x in tensor_split_str.split(',')]
-            except:
-                pass
 
         # Run Search — use the active embedding client from settings state
         from backend.search import EmbeddingDimensionMismatchError
@@ -1197,8 +1190,8 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
     if tensor_split_str:
         try:
             tensor_split = [float(x) for x in tensor_split_str.split(',')]
-        except:
-            pass
+        except ValueError:
+            logger.warning("Invalid tensor_split value %r — ignoring", tensor_split_str)
 
 
     final_context_snippets = []
