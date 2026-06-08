@@ -24,8 +24,9 @@ export default function ModelManager({ activeModelPath, onSelectModel }) {
             const [a, l] = await Promise.all([api.listAvailableModels(), api.listLocalModels()]);
             setAvailable(a.data || []);
             setLocal(l.data || []);
-        } catch {
-            // silent
+        } catch (e) {
+            toast.error('Could not load model list — is the backend running?');
+            console.error('ModelManager load error:', e);
         }
     };
 
@@ -35,8 +36,8 @@ export default function ModelManager({ activeModelPath, onSelectModel }) {
             const wasDownloading = downloadStatus.downloading;
             setDownloadStatus(r.data);
             if (wasDownloading && !r.data.downloading) load();
-        } catch {
-            // silent
+        } catch (e) {
+            console.warn('ModelManager poll error:', e);
         }
     };
 
