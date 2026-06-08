@@ -4,6 +4,35 @@ Automated daily code audit results for [BhurkeSiddhesh/Docu-AI-Search](https://g
 
 ---
 
+## Audit: 2026-06-08
+
+- Issues filed: 5
+- Categories: 0 Critical Bug, 3 Logic Enhancement, 2 Developer Experience
+- Auto-merge eligible: 4
+- Needs human review: 0
+- Status: Issues Filed
+
+### Issues Created This Run
+
+| # | Category | Confidence | Auto-merge | Title |
+|---|----------|------------|------------|-------|
+| [#335](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/335) | Logic Enhancement | HIGH | yes | Bare `except:` in api.py tensor_split parsing swallows BaseException and hides invalid config |
+| [#336](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/336) | Developer Experience | HIGH | yes | database.py has no logger — all DB errors silently printed to stdout, invisible in production |
+| [#337](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/337) | Developer Experience | HIGH | yes | agent.py ReAct loop uses print() for debug tracing — invisible in production logs |
+| [#338](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/338) | Logic Enhancement | HIGH | yes | ModelManager.jsx load() silently swallows API errors — users see empty model list with no feedback |
+| [#339](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/339) | Logic Enhancement | MEDIUM | no | docker-compose.yml has no healthcheck — Docker cannot detect an unresponsive backend container |
+
+### Scope Covered
+- `backend/api.py` (bare except clauses, tensor_split parsing)
+- `backend/database.py` (logging practices across all 11 error handlers)
+- `backend/agent.py` (ReAct loop tracing, stream_chat)
+- `backend/agent.py`, `backend/tools.py`, `backend/llm_integration.py` (agentic workflow)
+- `frontend/src/components/ModelManager.jsx`, `SearchView.jsx`, `App.jsx`
+- `docker-compose.yml`
+- Pre-existing open issues cross-referenced: 29 open issues checked; no duplicates filed
+
+---
+
 ## Audit: 2026-05-28
 
 - Issues filed: 6
