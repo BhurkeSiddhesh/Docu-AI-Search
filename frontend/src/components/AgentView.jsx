@@ -44,7 +44,12 @@ export default function AgentView({ query }) {
                     setIsRunning(false);
                 }
             } catch {
-                // ignore parse errors
+                src.close();
+                setIsRunning(false);
+                setEvents((prev) => [
+                    ...prev,
+                    { type: 'error', message: 'Received malformed response from server.' },
+                ]);
             }
         };
 
