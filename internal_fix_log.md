@@ -45,3 +45,37 @@ All remaining open fix-branch PRs carry P1 disposition (no auto-merge ever).
 - **CodeRabbit**: Rate-limited on all four PRs throughout the run — treated as neutral per protocol.
 
 **Summary:** 1 PR merged (Phase A) · 3 PRs opened auto-merge-pending-CI · 1 PR opened awaiting human review (P1) · 0 escalated · 0 skipped
+
+---
+
+## Fix Pass: 2026-06-08
+
+### Phase A — Existing PRs
+
+| PR | Branch | Label | Description | Action |
+|----|--------|-------|-------------|--------|
+| #329 | fix/issue-205-cors-wildcard | Critical Bug | CORS wildcard instead of configured ALLOWED_ORIGINS | Left for human review (P1 — never auto-merged) |
+| #330 | fix/issue-327-embedding-retry | Logic Enhancement | Retry failed embedding batches before aborting index job | Left for human review (awaits human review disposition) |
+| #331 | fix/issue-326-optimistic-rollback | Logic Enhancement | Rollback optimistic folder state on persistFolders failure | Left for human review (awaits human review disposition) |
+
+All other open PRs skipped: branch names do not start with `fix/` or `p3-batch/`.
+
+### Phase B — New PRs
+
+| Issue | Priority | Description | PR | Disposition |
+|-------|----------|-------------|-----|-------------|
+| #338 | P2 Logic Enhancement | ModelManager.jsx load() and pollStatus() silently swallow API errors | #340 | Auto-merge pending CI |
+| #335 | P2 Logic Enhancement | Bare except: in api.py tensor_split parsing catches BaseException | #341 | Auto-merge pending CI; CodeRabbit rate-limited (bypassed) |
+| #337 | P3 Developer Experience | agent.py ReAct loop uses print() — invisible in production logs | #342 | Auto-merge pending CI (P3 batch); CodeRabbit rate-limited (bypassed) |
+| #336 | P3 Developer Experience | database.py has no logger — all DB errors silently printed to stdout | #342 | Auto-merge pending CI (P3 batch); CodeRabbit rate-limited (bypassed) |
+
+**Skipped issues (existing open PRs cover them):**
+- All P1 Critical Bugs: covered by PR #323 or PR #333 or PR #329
+- P2/P3 issues covered by PR #333: #221, #222, #226, #231, #236, #245, #246, #316, #326, #327
+
+**CodeRabbit:** PR #340 reviewed (in progress at log time) · PRs #341 and #342 rate-limited (bypassed per protocol)
+
+### Summary
+Phase A: 0 merged · 3 left for human review · 0 CI failing
+Phase B: 3 PRs opened · 0 auto-merged (CI pending) · 0 awaiting review · 0 escalated · 0 auto-closed
+CodeRabbit: 2 rate-limit bypasses · 0 review blocks
