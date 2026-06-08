@@ -1,7 +1,10 @@
 import re
 import asyncio
+import logging
 from typing import List, Dict, Any, Generator
 from backend import tools, llm_integration
+
+logger = logging.getLogger(__name__)
 
 # Patterns that indicate a direct natural-language answer.
 # Only used AFTER at least one search has been performed.
@@ -220,7 +223,7 @@ class ReActAgent:
                 yield {"type": "error", "content": f"LLM Error: {e}"}
                 return
 
-            print(f"\n[AGENT STEP {step+1}] {response_text[:300]}\n")
+            logger.debug("[AGENT STEP %d] %s", step + 1, response_text[:300])
 
             current_step_log = f"Thought: {response_text}"
             history.append(current_step_log)
@@ -229,12 +232,12 @@ class ReActAgent:
             final_ans = self._extract_final_answer(response_text)
             if final_ans:
                 if has_searched:
-                    print(f"[AGENT FINAL ANSWER] {final_ans[:200]}")
+                    logger.debug("[AGENT FINAL ANSWER] %s", final_ans[:200])
                     yield {"type": "answer", "content": final_ans}
                     return
                 else:
                     # Model is trying to answer without searching — force a search
-                    print(f"[AGENT BLOCK] Model tried to answer before searching. Forcing search...")
+                    logger.warning("[AGENT BLOCK] Model tried to answer before searching. Forcing search.")
                     yield {"type": "thought", "content": "I need to search the index before answering."}
                     action, action_input = self._force_search_action(user_query)
                     # Fall through to execute the forced action below
@@ -270,20 +273,20 @@ class ReActAgent:
 
                         # If we have NOT searched yet, FORCE a search regardless
                         if not has_searched:
-                            print(f"[AGENT FORCE SEARCH step={step}] No action on first step, forcing search")
+                            logger.debug("[AGENT FORCE SEARCH step=%d] No action on first step, forcing search", step)
                             yield {"type": "thought", "content": "Searching the index for relevant information..."}
                             action_match_str, action_input_str = self._force_search_action(user_query)
                             # Fall through to tool execution below
 
                         # If we HAVE searched and response is document-grounded, accept it
                         elif self._is_grounded_direct_answer(thought_text):
-                            print(f"[AGENT GROUNDED ANSWER step={step}] {thought_text[:200]}")
+                            logger.debug("[AGENT GROUNDED ANSWER step=%d] %s", step, thought_text[:200])
                             yield {"type": "answer", "content": thought_text}
                             return
 
                         # If we've searched and it's a longish response, take it as answer
                         elif len(thought_text) > 100 and step >= 2:
-                            print(f"[AGENT AUTO-ANSWER step={step}] {thought_text[:200]}")
+                            logger.debug("[AGENT AUTO-ANSWER step=%d] %s", step, thought_text[:200])
                             yield {"type": "answer", "content": thought_text}
                             return
 
@@ -305,7 +308,7 @@ class ReActAgent:
             action = action_match_str
             action_input = action_input_str
 
-            print(f"[AGENT ACTION] {action}('{action_input}')")
+            logger.debug("[AGENT ACTION] %s('%s')", action, action_input)
             yield {"type": "thought", "content": f"Searching for: {action_input!r}" if action == "search_knowledge_base" else f"Using tool: {action}"}
             yield {"type": "action", "content": f"Executing {action}..."}
 
@@ -327,9 +330,9 @@ class ReActAgent:
                 observation = f"Error: Tool '{action}' not found. Available: {list(tools.AVAILABLE_TOOLS.keys())}"
 
             obs_preview = observation[:self.obs_window]
-            print(f"[AGENT OBSERVATION] {obs_preview[:200]}...")
+            logger.debug("[AGENT OBSERVATION] %s", obs_preview[:200])
             history.append(f"Observation: {obs_preview}")
             yield {"type": "observation", "content": obs_preview + ("..." if len(observation) > self.obs_window else "")}
 
-        print("[AGENT ERROR] Max steps reached.")
+        logger.error("[AGENT ERROR] Max steps reached.")
         yield {"type": "error", "content": "The agent was unable to find a definitive answer within the allotted steps."}
