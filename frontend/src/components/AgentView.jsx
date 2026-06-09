@@ -43,14 +43,26 @@ export default function AgentView({ query }) {
                     src.close();
                     setIsRunning(false);
                 }
-            } catch {
-                // ignore parse errors
+            } catch (err) {
+                console.error('Failed to parse SSE message:', err, e.data);
+                // Malformed frame — treat as a fatal stream error so the UI
+                // always reaches a terminal state rather than spinning forever.
+                src.close();
+                setIsRunning(false);
+                setEvents((prev) => [
+                    ...prev,
+                    { type: 'error', content: 'Received malformed response from server.' },
+                ]);
             }
         };
 
         src.onerror = () => {
             src.close();
             setIsRunning(false);
+            setEvents((prev) => [
+                ...prev,
+                { type: 'error', content: 'Connection to server lost.' },
+            ]);
         };
 
         return () => src.close();
