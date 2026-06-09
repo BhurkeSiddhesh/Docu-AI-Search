@@ -61,8 +61,8 @@ class TestCommandInjection(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
 
         # Verify SOMETHING was called (platform dependent)
-        import platform
-        if platform.system() == 'Windows':
+        import sys
+        if sys.platform == 'win32':
             mock_startfile.assert_called_once()
         else:
             mock_subprocess.assert_called_once()

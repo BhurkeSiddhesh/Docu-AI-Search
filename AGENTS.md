@@ -305,13 +305,22 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-06-09 (Auto-Indexer Hardening & Debouncing)
+- **fix**: Resolved relative path configurations and relative index saving path in `backend/background.py` (`#130`).
+- **feat**: Added support for monitoring multiple configured folders instead of just a single folder.
+- **feat**: Implemented a thread-safe watchdog event debouncer using `threading.Timer` with a 2.0-second delay to consolidate rapid filesystem change events.
+- **Files**: `backend/background.py`, `AGENTS.md`
+
 ### 2026-06-01 (Daily Issue Resolution)
 - **fix**: Resolved race condition in `/api/search` by using snapshot variables instead of rewriting globals (`#140`).
 - **fix**: Implemented `get_file_by_name` in `database.py` to support agentic mode file reading fallback (`#133`).
 - **fix**: Fixed Watchdog auto-indexer writing to a relative path instead of `DATA_DIR` (`#130`).
 - **fix**: Fixed stale closure in `ModelManager.jsx` by using `useRef` for download status tracking (`#264`).
 - **fix**: Offloaded blocking CPU/IO operations in `stream_answer_endpoint` and `browse_folder` to `asyncio.to_thread` (`#206`, `#158`).
-- **Files**: `backend/api.py`, `backend/database.py`, `backend/background.py`, `frontend/src/components/ModelManager.jsx`
+- **fix**: Hashed API keys in cache keys to prevent plaintext secrets from persisting in memory (`#123`).
+- **fix**: Resolved thread-safety issues with `asyncio.get_event_loop` in indexing background callback (`#120`).
+- **security**: Restricted CORS allowed origins and methods from wildcard to explicitly validated configs (`#118`).
+- **Files**: `backend/api.py`, `backend/database.py`, `backend/background.py`, `frontend/src/components/ModelManager.jsx`, `backend/llm_integration.py`
 
 ### 2026-05-30 (Hanging Test Fixes & Project Structure Alignment)
 - **fix**: Resolved backend test suite hangs by replacing `platform.system()` with the built-in, non-blocking `sys.platform` in `backend/api.py` and `backend/tests/test_security_command_injection.py`.
