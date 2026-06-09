@@ -37,6 +37,7 @@ export default function SearchView({ pendingQuery }) {
     });
 
     const inputRef = useRef(null);
+    const streamAbortRef = useRef(null);
     const toast = useToast();
 
     useEffect(() => {
@@ -67,6 +68,10 @@ export default function SearchView({ pendingQuery }) {
         return () => window.removeEventListener('keydown', handler);
     }, []);
 
+    useEffect(() => {
+        return () => streamAbortRef.current?.abort();
+    }, []);
+
     const runSearch = async (q) => {
         if (!q.trim()) return;
         setError(null);
@@ -94,7 +99,11 @@ export default function SearchView({ pendingQuery }) {
             setIsSearching(false);
 
             if ((res.data.results || []).length > 0) {
-                // Stream the AI answer
+                // Cancel any in-flight stream from a previous query before starting a new one.
+                streamAbortRef.current?.abort();
+                const controller = new AbortController();
+                streamAbortRef.current = controller;
+
                 setIsStreaming(true);
                 let acc = '';
                 try {
@@ -102,12 +111,16 @@ export default function SearchView({ pendingQuery }) {
                     await api.streamAnswer(q, context, selectedPromptId, (chunk) => {
                         acc += chunk;
                         setAiAnswer(acc);
-                    });
+                    }, controller.signal);
                 } catch (e) {
-                    console.error('Stream error:', e);
-                    toast.error('AI answer stream failed. Search results are still available.');
+                    if (e.name !== 'AbortError') {
+                        console.error('Stream error:', e);
+                        toast.error('AI answer stream failed. Search results are still available.');
+                    }
                 } finally {
-                    setIsStreaming(false);
+                    if (streamAbortRef.current === controller) {
+                        setIsStreaming(false);
+                    }
                 }
             }
         } catch (e) {
