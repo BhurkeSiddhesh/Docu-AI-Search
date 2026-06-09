@@ -68,6 +68,10 @@ export default function SearchView({ pendingQuery }) {
         return () => window.removeEventListener('keydown', handler);
     }, []);
 
+    useEffect(() => {
+        return () => streamAbortRef.current?.abort();
+    }, []);
+
     const runSearch = async (q) => {
         if (!q.trim()) return;
         setError(null);
@@ -114,7 +118,9 @@ export default function SearchView({ pendingQuery }) {
                         toast.error('AI answer stream failed. Search results are still available.');
                     }
                 } finally {
-                    setIsStreaming(false);
+                    if (streamAbortRef.current === controller) {
+                        setIsStreaming(false);
+                    }
                 }
             }
         } catch (e) {
