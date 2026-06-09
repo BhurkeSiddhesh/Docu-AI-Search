@@ -44,11 +44,13 @@ export default function AgentView({ query }) {
                     setIsRunning(false);
                 }
             } catch {
+                // Malformed frame — treat as a fatal stream error so the UI
+                // always reaches a terminal state rather than spinning forever.
                 src.close();
                 setIsRunning(false);
                 setEvents((prev) => [
                     ...prev,
-                    { type: 'error', message: 'Received malformed response from server.' },
+                    { type: 'error', content: 'Received malformed response from server.' },
                 ]);
             }
         };
