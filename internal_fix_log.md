@@ -45,3 +45,43 @@ All remaining open fix-branch PRs carry P1 disposition (no auto-merge ever).
 - **CodeRabbit**: Rate-limited on all four PRs throughout the run — treated as neutral per protocol.
 
 **Summary:** 1 PR merged (Phase A) · 3 PRs opened auto-merge-pending-CI · 1 PR opened awaiting human review (P1) · 0 escalated · 0 skipped
+
+---
+
+## Fix Pass: 2026-06-09
+
+### Phase A — Existing PR Triage
+
+Scanned open `fix/` and `p3-batch/` PRs:
+
+| PR | Branch | Issues | CI | CodeRabbit | Disposition | Action |
+|----|--------|--------|----|------------|-------------|--------|
+| #329 | fix/* | — | — | — | P1 Critical Bug — never auto-merge | Left for human review |
+| #330 | fix/* | — | — | — | awaits human review | Left open |
+| #331 | fix/* | — | — | — | awaits human review | Left open |
+| #343 | fix/* | — | — | — | No Merge Disposition line | Skipped |
+| #350 | fix/issue-347-agentview-sse-error | #347 | ✅ all green | Rate-limited → bypassed | auto-merge | **Merged ✓** (squash) |
+| #351 | fix/issue-346-stream-abort-signal | #346 | ✅ all green | Rate-limited → bypassed | awaits human review | Left open |
+
+### Phase B — New Issue Fixes
+
+| Issue | Priority | Description | PR | Reviewer Feedback Applied | Disposition |
+|-------|----------|-------------|-----|---------------------------|-------------|
+| #347 | P2 | `AgentView.jsx` SSE `onmessage` catch block silently dropped malformed frames, leaving UI frozen | #350 | Gemini: `catch (err)` + `console.error`; CodeRabbit: add error event in `onerror` handler — all applied | **Auto-merged ✓** |
+| #346 | P2 | `streamAnswer()` had no cancellation mechanism; stale streams updated state after new query started | #351 | Gemini: race condition in `finally`, unmount `useEffect` cleanup, `decoder.decode({stream:true})` — all applied | Awaiting human review |
+| #348 | P2 | `OllamaProvider` and `OpenAICompatibleProvider` used bare `requests.get/post` with no retry on transient errors | #352 | — | Awaiting human review |
+| #349 | P3 | `test_database.py` `tearDownModule`: bare `except:` swallowed `KeyboardInterrupt`/`SystemExit` | #353 | — | **Auto-merged ✓** |
+
+### Reviewer Notes
+
+- **PR #350**: CodeRabbit completed full review before rate-limiting — LGTM on catch block, nitpick on `onerror` (applied). Gemini `catch (err)` + `console.error` applied. All reviewer feedback incorporated before merge.
+- **PR #351**: CodeRabbit rate-limited throughout. Gemini found 3 valid bugs (HIGH race condition in `finally`, MEDIUM unmount cleanup, MEDIUM `{stream: true}` decoder) — all applied. PR left open per P2/MEDIUM disposition.
+- **PR #352**: `_make_retry_session()` uses `urllib3.util.retry.Retry` + `requests.adapters.HTTPAdapter` — no new pip dependency. Retries 3× with 0.5 s backoff on 502/503/504.
+- **PR #353**: P3 batch (issue #349 only this run). `except OSError:` replaces bare `except:` in `tearDownModule`. All CI green, CodeRabbit rate-limited → bypassed → auto-merged.
+- **CodeRabbit**: Rate-limited on PRs #350 (after initial review), #351, #352, #353. Initial review on #350 was substantive (applied); all subsequent rate-limits treated as bypass per protocol.
+
+### Summary
+
+Phase A: 1 merged · 5 left for human review or skipped
+Phase B: 4 PRs opened · 2 auto-merged · 2 awaiting human review
+CodeRabbit: 4+ rate-limit bypasses · 0 review blocks
