@@ -59,6 +59,10 @@ export default function AgentView({ query }) {
         src.onerror = () => {
             src.close();
             setIsRunning(false);
+            setEvents((prev) => [
+                ...prev,
+                { type: 'error', content: 'Connection to server lost.' },
+            ]);
         };
 
         return () => src.close();
