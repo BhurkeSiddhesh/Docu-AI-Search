@@ -43,7 +43,8 @@ export default function AgentView({ query }) {
                     src.close();
                     setIsRunning(false);
                 }
-            } catch {
+            } catch (err) {
+                console.error('Failed to parse SSE message:', err, e.data);
                 // Malformed frame — treat as a fatal stream error so the UI
                 // always reaches a terminal state rather than spinning forever.
                 src.close();
