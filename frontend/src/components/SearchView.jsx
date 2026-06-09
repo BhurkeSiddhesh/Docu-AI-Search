@@ -137,7 +137,9 @@ export default function SearchView({ pendingQuery }) {
     };
 
     return (
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 lg:py-10">
+        <div className="h-full min-h-0 flex flex-col max-w-5xl w-full mx-auto px-4 sm:px-6 pt-6 lg:pt-10 pb-6">
+            {/* Fixed zone: hero, search bar, filters. Never scrolls. */}
+            <div className="shrink-0">
             {/* Hero (only before first search) */}
             {!hasSearched && (
                 <div className="text-center mb-10 mt-6 animate-fade-in">
@@ -281,10 +283,11 @@ export default function SearchView({ pendingQuery }) {
                     {error}
                 </div>
             )}
+            </div>
 
-            {/* Results */}
+            {/* Results — fills the remaining viewport height and only scrolls when content overflows */}
             {hasSearched && !agentMode && (
-                <div className="mt-8">
+                <div className="mt-8 flex-1 min-h-0 overflow-y-auto -mx-1 px-1">
                     {/* AI Synthesis */}
                     {(aiAnswer || isStreaming) && (
                         <section className="card p-5 mb-6 animate-slide-up">
@@ -340,7 +343,9 @@ export default function SearchView({ pendingQuery }) {
             )}
 
             {hasSearched && agentMode && (
-                <AgentView query={agentQuery} />
+                <div className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1">
+                    <AgentView query={agentQuery} />
+                </div>
             )}
         </div>
     );
