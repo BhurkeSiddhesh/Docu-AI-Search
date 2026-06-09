@@ -137,7 +137,14 @@ export default function SearchView({ pendingQuery }) {
     };
 
     return (
-        <div className="h-full min-h-0 flex flex-col max-w-5xl w-full mx-auto px-4 sm:px-6 pt-6 lg:pt-10 pb-6">
+        <div
+            className={`h-full min-h-0 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-6 lg:pt-10 pb-6 ${
+                // Before the first search there is no results pane, so let the whole
+                // view scroll — on short viewports (mobile landscape) the hero and
+                // search bar would otherwise be clipped with no way to reach them.
+                hasSearched ? 'flex flex-col' : 'overflow-y-auto'
+            }`}
+        >
             {/* Fixed zone: hero, search bar, filters. Never scrolls. */}
             <div className="shrink-0">
             {/* Hero (only before first search) */}

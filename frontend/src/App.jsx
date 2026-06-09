@@ -41,7 +41,7 @@ export default function App() {
     };
 
     return (
-        <div className="h-screen overflow-hidden bg-slate-50 dark:bg-slate-950">
+        <div className="h-screen supports-[height:100dvh]:h-dvh overflow-hidden bg-slate-50 dark:bg-slate-950">
             <Sidebar
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
