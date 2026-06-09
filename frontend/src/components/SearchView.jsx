@@ -68,10 +68,6 @@ export default function SearchView({ pendingQuery }) {
         return () => window.removeEventListener('keydown', handler);
     }, []);
 
-    useEffect(() => {
-        return () => streamAbortRef.current?.abort();
-    }, []);
-
     const runSearch = async (q) => {
         if (!q.trim()) return;
         setError(null);
@@ -99,9 +95,11 @@ export default function SearchView({ pendingQuery }) {
             setIsSearching(false);
 
             if ((res.data.results || []).length > 0) {
+                // Cancel any in-flight stream from a previous query before starting a new one.
                 streamAbortRef.current?.abort();
                 const controller = new AbortController();
                 streamAbortRef.current = controller;
+
                 setIsStreaming(true);
                 let acc = '';
                 try {
