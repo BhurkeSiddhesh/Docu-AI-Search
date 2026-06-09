@@ -41,7 +41,7 @@ export default function App() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+        <div className="h-screen supports-[height:100dvh]:h-dvh overflow-hidden bg-slate-50 dark:bg-slate-950">
             <Sidebar
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
@@ -54,7 +54,7 @@ export default function App() {
                 onToggleDark={() => setDarkMode((v) => !v)}
             />
 
-            <div className="lg:ml-64 min-h-screen flex flex-col">
+            <div className="lg:ml-64 h-full flex flex-col">
                 {/* Top bar */}
                 <header className="lg:hidden flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-30">
                     <button
@@ -78,7 +78,7 @@ export default function App() {
                     </div>
                 </div>
 
-                <main className="flex-1 min-w-0">
+                <main className={`flex-1 min-w-0 min-h-0 ${activeTab === 'search' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
                     <ErrorBoundary>
                         {activeTab === 'search' && (
                             <SearchView

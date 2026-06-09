@@ -305,6 +305,13 @@ python scripts/verify_golden_set.py
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-06-09 (Single-view layout: scroll only inside the results list)
+- **feat**: The app now fits the viewport instead of scrolling the whole page. `App.jsx` locks the layout to `h-screen overflow-hidden`; `<main>` scrolls internally for Library/Benchmark views and is `overflow-hidden` for Search.
+- **feat**: `SearchView.jsx` split into a fixed zone (hero, search bar, filter row/panel, error) and a results zone (`flex-1 min-h-0 overflow-y-auto`) so the search bar stays in view and only the result cards (and AI synthesis / agent chat) scroll, and only when they overflow the screen.
+- **fix** (PR #356 review): Use `h-dvh` (with `h-screen` fallback via `supports-[height:100dvh]`) so mobile browser toolbars don't clip the shell; before the first search `SearchView` scrolls as a whole instead of locking to a flex column, keeping the hero/search bar reachable on short viewports (mobile landscape).
+- **verification**: `vite build` succeeds; all Vitest tests pass (23 passed, 1 skipped).
+- **Files**: `frontend/src/App.jsx`, `frontend/src/components/SearchView.jsx`, `AGENTS.md`
+
 ### 2026-05-28 (Daily Audit Log Consolidation)
 - **feat**: Consolidated 28 unique daily automated code audit log entries spanning early May to late May 2026 into a single, unified, reverse-chronologically sorted `internal_audit_log.md` file.
 - **verification**: Validated layout and verified project compliance via structure check.
