@@ -164,6 +164,7 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
             });
         } catch (e) {
             toast.error(e.response?.data?.detail || 'Could not save folder');
+            throw e;
         }
     };
 
@@ -174,17 +175,28 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
             toast.info('Folder already added');
             return;
         }
-        const next = [...config.folders, p];
+        const prev = config.folders;
+        const next = [...prev, p];
         setConfig((c) => ({ ...c, folders: next }));
         setPathInput('');
         setPathInfo(null);
-        await persistFolders(next);
+        try {
+            await persistFolders(next);
+        } catch {
+            setConfig((c) => ({ ...c, folders: prev }));
+            setPathInput(p);
+        }
     };
 
     const removeFolder = async (p) => {
+        const prev = config.folders;
         const next = config.folders.filter((x) => x !== p);
         setConfig((c) => ({ ...c, folders: next }));
-        await persistFolders(next);
+        try {
+            await persistFolders(next);
+        } catch {
+            setConfig((c) => ({ ...c, folders: prev }));
+        }
     };
 
     const browseFolder = async () => {
