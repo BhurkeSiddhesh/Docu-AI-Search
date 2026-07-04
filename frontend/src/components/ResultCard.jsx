@@ -55,37 +55,37 @@ export default function ResultCard({ result }) {
     };
 
     return (
-        <div className="card p-4 hover:border-slate-300 dark:hover:border-slate-700 transition group">
+        <div className="card p-4 hover:border-hairline-strong dark:hover:border-[rgba(255,255,255,0.2)] transition group">
             <div className="flex items-start gap-3">
-                <div className="w-9 h-9 flex-shrink-0 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                <div className="w-9 h-9 flex-shrink-0 rounded-v-sm bg-canvas-soft dark:bg-[rgba(255,255,255,0.06)] text-ink dark:text-[#ededed] flex items-center justify-center border border-hairline dark:border-[rgba(255,255,255,0.1)]">
                     <Icon className="w-4 h-4" />
                 </div>
                 <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-3 mb-1">
                         <button
                             onClick={openFile}
-                            className="font-semibold text-sm text-slate-900 dark:text-slate-50 hover:text-primary text-left truncate"
+                            className="font-semibold text-sm text-ink dark:text-[#ededed] hover:text-link text-left truncate tracking-[-0.28px]"
                             title={result.file_path}
                         >
                             {result.file_name || 'Unknown document'}
                         </button>
                         <div className="flex items-center gap-1 flex-shrink-0">
                             {ext && (
-                                <span className="chip uppercase text-[10px] tracking-wider">{ext}</span>
+                                <span className="chip text-[10px] font-mono uppercase tracking-[0.05em]">{ext}</span>
                             )}
                             {result.file_path && (
                                 <>
                                     <button
                                         onClick={togglePreview}
                                         title="Preview"
-                                        className="opacity-0 group-hover:opacity-100 transition p-1.5 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                        className="opacity-0 group-hover:opacity-100 transition p-1.5 rounded-v-sm text-mute hover:bg-canvas-soft-2 dark:hover:bg-[rgba(255,255,255,0.06)]"
                                     >
                                         <Eye className="w-3.5 h-3.5" />
                                     </button>
                                     <button
                                         onClick={openFile}
                                         title="Open in system viewer"
-                                        className="opacity-0 group-hover:opacity-100 transition p-1.5 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                        className="opacity-0 group-hover:opacity-100 transition p-1.5 rounded-v-sm text-mute hover:bg-canvas-soft-2 dark:hover:bg-[rgba(255,255,255,0.06)]"
                                     >
                                         <ExternalLink className="w-3.5 h-3.5" />
                                     </button>
@@ -95,18 +95,18 @@ export default function ResultCard({ result }) {
                     </div>
 
                     {result.file_path && (
-                        <div className="text-[11px] text-slate-500 dark:text-slate-500 truncate mb-2 font-mono">
+                        <div className="text-[11px] text-mute truncate mb-2 font-mono">
                             {result.file_path}
                         </div>
                     )}
 
                     {result.summary && (
-                        <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-2">
+                        <p className="text-sm text-body dark:text-[#a1a1a1] leading-relaxed mb-2">
                             {result.summary}
                         </p>
                     )}
 
-                    <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-3 leading-relaxed">
+                    <p className="text-xs text-mute line-clamp-3 leading-relaxed">
                         {result.document}
                     </p>
 
@@ -122,7 +122,7 @@ export default function ResultCard({ result }) {
 
                     {result.related_files?.length > 0 && (
                         <div className="flex flex-wrap items-center gap-1.5 mt-3">
-                            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                            <span className="font-mono text-[10px] uppercase tracking-[0.05em] text-mute">
                                 Related
                             </span>
                             {result.related_files.slice(0, 3).map((rf, i) => (
@@ -131,7 +131,7 @@ export default function ResultCard({ result }) {
                                     type="button"
                                     onClick={() => api.openFile(rf.path).catch(() => toast.error('Could not open file'))}
                                     title={`${rf.path}\nSimilarity: ${Math.round((rf.similarity || 0) * 100)}%`}
-                                    className="chip text-[10px] inline-flex items-center gap-1 hover:text-primary hover:border-primary/40 transition"
+                                    className="chip text-[10px] inline-flex items-center gap-1 hover:text-link hover:border-link/40 transition"
                                 >
                                     <Link2 className="w-3 h-3" />
                                     <span className="max-w-[160px] truncate">{rf.filename}</span>
@@ -141,18 +141,18 @@ export default function ResultCard({ result }) {
                     )}
 
                     {showPreview && (
-                        <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-800 animate-fade-in">
+                        <div className="mt-3 pt-3 border-t border-hairline dark:border-[rgba(255,255,255,0.08)] animate-fade-in">
                             <div className="flex items-center justify-between mb-2">
-                                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Preview</div>
+                                <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-mute">Preview</div>
                                 <button
                                     onClick={() => setShowPreview(false)}
-                                    className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                    className="text-mute hover:text-ink dark:hover:text-[#ededed]"
                                 >
                                     <X className="w-3.5 h-3.5" />
                                 </button>
                             </div>
-                            <div className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap max-h-64 overflow-y-auto bg-slate-50 dark:bg-slate-950 p-3 rounded-lg font-mono leading-relaxed">
-                                {loadingPreview ? 'Loading preview…' : previewText || 'No preview available.'}
+                            <div className="text-xs text-body dark:text-[#888] whitespace-pre-wrap max-h-64 overflow-y-auto bg-canvas-soft-2 dark:bg-[rgba(255,255,255,0.03)] p-3 rounded-v-sm font-mono leading-relaxed">
+                                {loadingPreview ? 'Loading preview...' : previewText || 'No preview available.'}
                             </div>
                         </div>
                     )}

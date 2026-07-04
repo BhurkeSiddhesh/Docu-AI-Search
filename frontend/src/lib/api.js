@@ -83,6 +83,16 @@ export const api = {
     modelDownloadStatus: () => client.get('/models/status'),
     deleteModel: (path) => client.delete('/models/delete', { data: { path } }),
 
+    // Helpers
+    quickSetModel: async (provider, local_model_path = '') => {
+        const current = await client.get('/config');
+        return client.post('/config', {
+            ...current.data,
+            provider,
+            local_model_path,
+        });
+    },
+
     // Cache
     getCacheStats: () => client.get('/cache/stats'),
     clearCache: () => client.post('/cache/clear'),

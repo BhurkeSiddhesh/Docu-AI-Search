@@ -69,8 +69,8 @@ export default function LibraryView({ onOpenSettings }) {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 lg:py-10">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50 mb-1">Library</h1>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                    <h1 className="text-display-lg text-ink dark:text-[#ededed] mb-1">Library</h1>
+                    <p className="text-body dark:text-[#888]">
                         {total === 0 ? 'No documents indexed yet.' : `${total} indexed document${total === 1 ? '' : 's'}`}
                     </p>
                 </div>
@@ -87,22 +87,22 @@ export default function LibraryView({ onOpenSettings }) {
             </div>
 
             {loading ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
                     {[1, 2, 3, 4, 5].map((i) => (
                         <div key={i} className="card p-4">
-                            <div className="h-4 bg-slate-100 dark:bg-slate-800 rounded w-1/3 mb-2" />
-                            <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded w-2/3" />
+                            <div className="h-4 bg-canvas-soft-2 dark:bg-[rgba(255,255,255,0.06)] rounded w-1/3 mb-2 shimmer" />
+                            <div className="h-3 bg-canvas-soft-2 dark:bg-[rgba(255,255,255,0.06)] rounded w-2/3 shimmer" />
                         </div>
                     ))}
                 </div>
             ) : files.length === 0 ? (
-                <div className="card p-10 text-center">
-                    <Database className="w-10 h-10 mx-auto mb-3 text-slate-300 dark:text-slate-700" />
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">No indexed documents</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                <div className="card p-12 text-center">
+                    <Database className="w-10 h-10 mx-auto mb-4 text-hairline dark:text-[rgba(255,255,255,0.1)]" />
+                    <p className="text-sm font-medium text-ink dark:text-[#ededed] mb-1">No indexed documents</p>
+                    <p className="text-sm text-body dark:text-[#888] mb-5">
                         Open Settings to add a folder and run an index.
                     </p>
-                    <button onClick={onOpenSettings} className="btn-primary">
+                    <button onClick={onOpenSettings} className="btn-primary mx-auto">
                         <SettingsIcon className="w-4 h-4" />
                         Open Settings
                     </button>
@@ -110,42 +110,52 @@ export default function LibraryView({ onOpenSettings }) {
             ) : (
                 <>
                     <div className="card overflow-hidden">
-                        <div className="divide-y divide-slate-200 dark:divide-slate-800">
+                        {/* Table Header pseudo */}
+                        <div className="hidden sm:flex items-center px-4 py-2 border-b border-hairline dark:border-[rgba(255,255,255,0.08)] bg-canvas-soft dark:bg-[#0a0a0a]">
+                            <div className="w-9 mr-3"></div>
+                            <div className="flex-1 font-mono text-[10px] uppercase tracking-[0.05em] text-mute">Name</div>
+                            <div className="w-24 font-mono text-[10px] uppercase tracking-[0.05em] text-mute text-right mr-3">Type</div>
+                            <div className="w-24 font-mono text-[10px] uppercase tracking-[0.05em] text-mute text-right mr-3">Size</div>
+                            <div className="w-9"></div>
+                        </div>
+                        <div className="divide-y divide-hairline dark:divide-[rgba(255,255,255,0.08)]">
                             {files.map((f) => {
                                 const ext = fileExt(f.filename).toLowerCase();
                                 const Icon = iconFor(ext);
                                 return (
                                     <div
                                         key={f.id || f.path}
-                                        className="p-4 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition group"
+                                        className="p-3 sm:p-4 flex items-center gap-3 hover:bg-canvas-soft dark:hover:bg-[rgba(255,255,255,0.02)] transition group"
                                     >
-                                        <div className="w-9 h-9 flex-shrink-0 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                                        <div className="w-9 h-9 flex-shrink-0 rounded-v-sm bg-canvas-soft-2 dark:bg-[rgba(255,255,255,0.06)] text-ink dark:text-[#ededed] border border-hairline dark:border-[rgba(255,255,255,0.1)] flex items-center justify-center">
                                             <Icon className="w-4 h-4" />
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <button
                                                 onClick={() => f.path && handleOpen(f.path)}
-                                                className="font-semibold text-sm text-slate-900 dark:text-slate-50 hover:text-primary text-left truncate block w-full"
+                                                className="font-medium text-sm text-ink dark:text-[#ededed] hover:text-link text-left truncate block w-full tracking-[-0.28px]"
                                                 title={f.path}
                                             >
                                                 {f.filename}
                                             </button>
-                                            <div className="text-xs text-slate-500 dark:text-slate-500 truncate font-mono">
+                                            <div className="text-[11px] font-mono text-mute truncate mt-0.5">
                                                 {f.path}
                                             </div>
                                         </div>
-                                        <div className="hidden sm:flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">
-                                            {ext && (
-                                                <span className="chip uppercase text-[10px] tracking-wider">{ext}</span>
-                                            )}
-                                            {f.size != null && <span>{formatBytes(f.size)}</span>}
+                                        <div className="hidden sm:flex items-center text-[13px] font-mono text-mute flex-shrink-0">
+                                            <div className="w-24 text-right pr-3 uppercase">
+                                                {ext}
+                                            </div>
+                                            <div className="w-24 text-right pr-3">
+                                                {f.size != null ? formatBytes(f.size) : '—'}
+                                            </div>
                                         </div>
                                         <button
                                             onClick={() => f.path && handleOpen(f.path)}
-                                            className="opacity-0 group-hover:opacity-100 transition p-1.5 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+                                            className="opacity-0 group-hover:opacity-100 transition p-1.5 rounded-v-sm text-mute hover:bg-canvas-soft-2 dark:hover:bg-[rgba(255,255,255,0.06)]"
                                             title="Open"
                                         >
-                                            <ExternalLink className="w-3.5 h-3.5" />
+                                            <ExternalLink className="w-4 h-4" />
                                         </button>
                                     </div>
                                 );
@@ -154,15 +164,15 @@ export default function LibraryView({ onOpenSettings }) {
                     </div>
 
                     {totalPages > 1 && (
-                        <div className="mt-4 flex items-center justify-between">
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                        <div className="mt-4 flex items-center justify-between px-2">
+                            <div className="font-mono text-[11px] uppercase tracking-[0.05em] text-mute">
                                 Page {currentPage} of {totalPages}
                             </div>
                             <div className="flex items-center gap-2">
                                 <button
                                     onClick={() => load(Math.max(0, offset - PAGE_SIZE))}
                                     disabled={offset === 0 || loading}
-                                    className="btn-ghost disabled:opacity-40"
+                                    className="btn-ghost"
                                 >
                                     <ChevronLeft className="w-4 h-4" />
                                     Prev
@@ -170,7 +180,7 @@ export default function LibraryView({ onOpenSettings }) {
                                 <button
                                     onClick={() => load(offset + PAGE_SIZE)}
                                     disabled={offset + PAGE_SIZE >= total || loading}
-                                    className="btn-ghost disabled:opacity-40"
+                                    className="btn-ghost"
                                 >
                                     Next
                                     <ChevronRight className="w-4 h-4" />
