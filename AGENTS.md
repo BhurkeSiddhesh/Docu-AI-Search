@@ -321,6 +321,13 @@ python scripts/verify_golden_set.py
 - **fix**: Redirected `scripts/debug_retrieval.py` output from the root to the `data/` directory to prevent root directory pollution.
 - **Files**: `backend/api.py`, `backend/indexing.py`, `backend/database.py`, `backend/llm_integration.py`, `backend/background.py`, `backend/tests/test_incremental_indexing.py` (new), `backend/tests/test_indexing.py`, `scripts/run_tests.py`, `scripts/debug_retrieval.py`, `frontend/src/components/SearchView.jsx`, `frontend/src/components/ResultCard.jsx`, `frontend/src/lib/api.js`, `frontend/src/lib/logger.js`, `AGENTS.md`
 
+### 2026-06-09 (Single-view layout: scroll only inside the results list)
+- **feat**: The app now fits the viewport instead of scrolling the whole page. `App.jsx` locks the layout to `h-screen overflow-hidden`; `<main>` scrolls internally for Library/Benchmark views and is `overflow-hidden` for Search.
+- **feat**: `SearchView.jsx` split into a fixed zone (hero, search bar, filter row/panel, error) and a results zone (`flex-1 min-h-0 overflow-y-auto`) so the search bar stays in view and only the result cards (and AI synthesis / agent chat) scroll, and only when they overflow the screen.
+- **fix** (PR #356 review): Use `h-dvh` (with `h-screen` fallback via `supports-[height:100dvh]`) so mobile browser toolbars don't clip the shell; before the first search `SearchView` scrolls as a whole instead of locking to a flex column, keeping the hero/search bar reachable on short viewports (mobile landscape).
+- **verification**: `vite build` succeeds; all Vitest tests pass (23 passed, 1 skipped).
+- **Files**: `frontend/src/App.jsx`, `frontend/src/components/SearchView.jsx`, `AGENTS.md`
+
 ### 2026-06-12 (Round 2: Open-File Fix, History Timestamps, LLM Speed, UI Cleanup)
 - **fix (critical)**: `files` table schema migration — legacy databases used `size_bytes`/`modified_date` columns while the code inserts `size`/`last_modified`; `CREATE TABLE IF NOT EXISTS` never upgraded them, so every `add_files_batch` failed silently (error only `print`ed). Result: empty Library and **"Access denied" on open-file for every result**. `init_database` now rebuilds the table when required columns are missing (safe: repopulated on each re-index).
 - **fix**: History appeared "not saved" because SQLite stores UTC timestamps without a timezone marker and the frontend parsed them as local time — every new search instantly showed "5h ago" (IST offset). `formatRelative` now parses SQLite timestamps as UTC; new searches show "just now".

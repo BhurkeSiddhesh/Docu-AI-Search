@@ -42,7 +42,8 @@ export default function App() {
     };
 
     return (
-        <div className={`min-h-screen ${darkMode ? 'bg-[#0a0a0a]' : 'bg-[#fafafa]'}`}>
+    return (
+        <div className={`h-screen supports-[height:100dvh]:h-dvh overflow-hidden ${darkMode ? 'bg-[#0a0a0a]' : 'bg-[#fafafa]'}`}>
             <Sidebar
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
@@ -55,7 +56,7 @@ export default function App() {
                 onToggleDark={() => setDarkMode((v) => !v)}
             />
 
-            <div className="lg:ml-64 min-h-screen flex flex-col">
+            <div className="lg:ml-64 h-full flex flex-col">
                 {/* Top bar — mobile */}
                 <header className="lg:hidden flex items-center justify-between gap-3 px-4 h-16 border-b border-hairline dark:border-[rgba(255,255,255,0.1)] bg-canvas dark:bg-[#171717] sticky top-0 z-30">
                     <button
@@ -79,7 +80,7 @@ export default function App() {
                     </div>
                 </div>
 
-                <main className="flex-1 min-w-0">
+                <main className={`flex-1 min-w-0 min-h-0 ${activeTab === 'search' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
                     <ErrorBoundary>
                         {activeTab === 'search' && (
                             <SearchView

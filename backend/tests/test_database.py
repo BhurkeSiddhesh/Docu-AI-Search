@@ -44,7 +44,7 @@ def tearDownModule():
     if _temp_db_file and os.path.exists(_temp_db_file.name):
         try:
             os.unlink(_temp_db_file.name)
-        except:
+        except OSError:
             pass
 
 

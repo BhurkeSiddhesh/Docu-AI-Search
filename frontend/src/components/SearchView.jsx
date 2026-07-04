@@ -212,7 +212,7 @@ export default function SearchView({ pendingQuery }) {
                 } catch (e) {
                     if (e?.name !== 'AbortError') {
                         console.error('Stream error:', e);
-                        toast.error('AI answer stream failed');
+                        toast.error('AI answer stream failed. Search results are still available.');
                     }
                 } finally {
                     // Only clear the spinner if a newer search hasn't taken over
@@ -248,7 +248,16 @@ export default function SearchView({ pendingQuery }) {
     };
 
     return (
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 lg:py-10">
+        <div
+            className={`h-full min-h-0 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-6 lg:pt-10 pb-6 ${
+                // Before the first search there is no results pane, so let the whole
+                // view scroll — on short viewports (mobile landscape) the hero and
+                // search bar would otherwise be clipped with no way to reach them.
+                hasSearched ? 'flex flex-col' : 'overflow-y-auto'
+            }`}
+        >
+            {/* Fixed zone: hero, search bar, filters. Never scrolls. */}
+            <div className="shrink-0">
             {/* Hero (only before first search) */}
             {!hasSearched && (
                 <div className="text-center mb-12 mt-4 animate-fade-in">
@@ -476,10 +485,11 @@ export default function SearchView({ pendingQuery }) {
                     {error}
                 </div>
             )}
+            </div>
 
-            {/* Results */}
+            {/* Results — fills the remaining viewport height and only scrolls when content overflows */}
             {hasSearched && !agentMode && (
-                <div className="mt-8">
+                <div className="mt-8 flex-1 min-h-0 overflow-y-auto -mx-1 px-1">
                     {/* AI Synthesis */}
                     {(aiAnswer || isStreaming) && (
                         <section className="card-elevated p-5 mb-6 animate-slide-up">
@@ -535,7 +545,9 @@ export default function SearchView({ pendingQuery }) {
             )}
 
             {hasSearched && agentMode && (
-                <AgentView query={agentQuery} />
+                <div className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1">
+                    <AgentView query={agentQuery} />
+                </div>
             )}
         </div>
     );
