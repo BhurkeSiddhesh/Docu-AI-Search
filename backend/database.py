@@ -102,18 +102,38 @@ def init_database():
         )
     ''')
 
+    # Migration: legacy databases used different column names (size_bytes,
+    # modified_date, ...). Inserts then fail silently and the library/open-file
+    # features break, so rebuild the table when the schema doesn't match.
+    # Safe: the files table is repopulated from scratch on every re-index.
+    cursor.execute("PRAGMA table_info(files)")
+    existing_columns = {col[1] for col in cursor.fetchall()}
+    required_columns = {'path', 'filename', 'file_type', 'size', 'last_modified',
+                        'faiss_start_idx', 'faiss_end_idx', 'tags'}
+    if not required_columns.issubset(existing_columns):
+        missing = sorted(required_columns - existing_columns)
+        print(f"[DB] files table schema outdated (missing {missing}); rebuilding. "
+              f"Re-index to repopulate file metadata.")
+        cursor.execute('DROP TABLE files')
+        cursor.execute('''
+            CREATE TABLE files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT UNIQUE NOT NULL,
+                filename TEXT NOT NULL,
+                file_type TEXT,
+                size INTEGER,
+                last_modified FLOAT,
+                faiss_start_idx INTEGER,
+                faiss_end_idx INTEGER,
+                tags TEXT
+            )
+        ''')
+
     # Indices for faster lookup
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_faiss_start ON files(faiss_start_idx)')
 
-    # Migration: Add missing columns if they don't exist in older databases
-    cursor.execute("PRAGMA table_info(files)")
-    existing_columns = [col[1] for col in cursor.fetchall()]
-    if 'file_type' not in existing_columns:
-        cursor.execute("ALTER TABLE files ADD COLUMN file_type TEXT")
-    if 'tags' not in existing_columns:
-        cursor.execute("ALTER TABLE files ADD COLUMN tags TEXT")
-    
+
     # Search history table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS search_history (
@@ -165,6 +185,26 @@ def init_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             summary TEXT,
             level INTEGER
+        )
+    ''')
+
+    # Knowledge Graph Tables
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS graph_nodes (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            label TEXT NOT NULL,
+            metadata TEXT
+        )
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS graph_edges (
+            source_id TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            weight FLOAT DEFAULT 1.0,
+            relation_type TEXT NOT NULL,
+            PRIMARY KEY (source_id, target_id, relation_type)
         )
     ''')
 
@@ -321,6 +361,24 @@ def clear_files():
     cursor.execute('DELETE FROM files')
     conn.commit()
     conn.close()
+
+def get_file_fingerprints() -> Dict[str, Tuple[int, float]]:
+    """
+    Return {path: (size, last_modified)} for every indexed file.
+
+    Used by incremental re-indexing to decide which files are unchanged
+    since the previous index build.
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('SELECT path, size, last_modified FROM files')
+        return {row['path']: (row['size'], row['last_modified']) for row in cursor.fetchall()}
+    except Exception as e:
+        print(f"Error reading file fingerprints: {e}")
+        return {}
+    finally:
+        conn.close()
 
 # -----------------------------------------------------------------------------
 # Search History Operations
@@ -831,6 +889,114 @@ def get_files_by_faiss_indices(indices: list[int]) -> dict[int, dict]:
         return result
     except Exception as e:
         print(f"Error getting files by faiss indices: {e}")
+        return {}
+    finally:
+        conn.close()
+
+# -----------------------------------------------------------------------------
+# Knowledge Graph Operations
+# -----------------------------------------------------------------------------
+
+def clear_graph():
+    """
+    Delete all nodes and edges from the Knowledge Graph.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM graph_nodes")
+    cursor.execute("DELETE FROM graph_edges")
+    conn.commit()
+    conn.close()
+
+def add_graph_data(nodes: List[Dict], edges: List[Dict]):
+    """
+    Insert nodes and edges into the Knowledge Graph database.
+
+    Args:
+        nodes (List[Dict]): Each node dict has 'id', 'type', 'label', 'metadata'.
+        edges (List[Dict]): Each edge dict has 'source_id', 'target_id', 'weight', 'relation_type'.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.executemany('''
+            INSERT OR REPLACE INTO graph_nodes (id, type, label, metadata)
+            VALUES (:id, :type, :label, :metadata)
+        ''', nodes)
+
+        cursor.executemany('''
+            INSERT OR REPLACE INTO graph_edges (source_id, target_id, weight, relation_type)
+            VALUES (:source_id, :target_id, :weight, :relation_type)
+        ''', edges)
+        conn.commit()
+    except Exception as e:
+        print(f"Error adding graph data to DB: {e}")
+    finally:
+        conn.close()
+
+def get_graph() -> Dict:
+    """
+    Retrieve the entire knowledge graph (nodes and edges).
+
+    Returns:
+        Dict: {'nodes': [...], 'edges': [...]}
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM graph_nodes")
+    nodes = [dict(row) for row in cursor.fetchall()]
+
+    cursor.execute("SELECT * FROM graph_edges")
+    edges = [dict(row) for row in cursor.fetchall()]
+
+    conn.close()
+    return {"nodes": nodes, "edges": edges}
+
+def get_related_files(paths: List[str], limit_per_file: int = 3) -> Dict[str, List[Dict]]:
+    """
+    For each document path, return its most similar documents from the
+    knowledge graph ('similar_to' edges), ordered by similarity.
+
+    Args:
+        paths (List[str]): Document paths to look up (search result files).
+        limit_per_file (int): Max neighbours returned per document.
+
+    Returns:
+        Dict[str, List[Dict]]: {path: [{'path', 'filename', 'similarity'}, ...]}
+        Paths without neighbours are omitted.
+    """
+    if not paths:
+        return {}
+    unique_paths = list(dict.fromkeys(p for p in paths if p))[:100]
+    if not unique_paths:
+        return {}
+    placeholders = ",".join("?" for _ in unique_paths)
+
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            SELECT source_id, target_id, weight FROM graph_edges
+            WHERE relation_type = 'similar_to'
+              AND (source_id IN ({placeholders}) OR target_id IN ({placeholders}))
+            ORDER BY weight DESC
+        ''', unique_paths + unique_paths)
+
+        result: Dict[str, List[Dict]] = {p: [] for p in unique_paths}
+        for row in cursor.fetchall():
+            src, tgt, weight = row['source_id'], row['target_id'], row['weight']
+            # similar_to edges are undirected — attach to whichever side matched
+            for me, other in ((src, tgt), (tgt, src)):
+                if me in result and len(result[me]) < limit_per_file and other != me:
+                    result[me].append({
+                        'path': other,
+                        'filename': os.path.basename(other),
+                        'similarity': round(float(weight or 0.0), 3),
+                    })
+        return {p: rels for p, rels in result.items() if rels}
+    except Exception as e:
+        print(f"Error getting related files: {e}")
         return {}
     finally:
         conn.close()

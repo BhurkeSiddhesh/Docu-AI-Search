@@ -21,14 +21,23 @@ const EMBEDDING_TYPES = [
 
 const DEFAULT_EMBEDDING = {
     provider_type: 'local',
-    model_name: 'Alibaba-NLP/gte-Qwen2-1.5B-instruct',
+    model_name: 'sentence-transformers/all-MiniLM-L6-v2',
     api_key: '',
 };
+
+// Fallback if the presets endpoint is unavailable
+const FALLBACK_PRESETS = [
+    { id: 'fast',     model_name: 'sentence-transformers/all-MiniLM-L6-v2', label: 'Fast (MiniLM-L6)',      dim: 384,  size: '~90 MB',  description: 'Best speed on CPU. Great default for most folders.' },
+    { id: 'balanced', model_name: 'BAAI/bge-small-en-v1.5',                 label: 'Balanced (BGE-small)',  dim: 384,  size: '~130 MB', description: 'Stronger semantics than MiniLM, still fast on CPU.' },
+    { id: 'quality',  model_name: 'BAAI/bge-base-en-v1.5',                  label: 'Quality (BGE-base)',    dim: 768,  size: '~440 MB', description: 'Higher accuracy; ~3x slower indexing than Fast.' },
+    { id: 'max',      model_name: 'Alibaba-NLP/gte-Qwen2-1.5B-instruct',    label: 'Max (GTE-Qwen2 1.5B)',  dim: 1536, size: '~6 GB',   description: 'Top retrieval quality but very slow without a GPU.' },
+];
 
 export default function SettingsModal({ isOpen, onClose, onSaved }) {
     const [section, setSection] = useState('folders');
     const [config, setConfig] = useState(null);
     const [embedding, setEmbedding] = useState(DEFAULT_EMBEDDING);
+    const [embeddingPresets, setEmbeddingPresets] = useState(FALLBACK_PRESETS);
     const [folderHistory, setFolderHistory] = useState([]);
     const [cacheStats, setCacheStats] = useState({ total_entries: 0, total_hits: 0 });
     const [saving, setSaving] = useState(false);
@@ -95,6 +104,12 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
             setCacheStats(cs.data || { total_entries: 0, total_hits: 0 });
         } catch (err) {
             toast.error('Failed to load settings');
+        }
+        try {
+            const p = await api.getEmbeddingPresets();
+            if (p.data?.presets?.length) setEmbeddingPresets(p.data.presets);
+        } catch {
+            // presets endpoint unavailable — keep fallback list
         }
     };
 
@@ -411,6 +426,36 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                                                 </button>
                                             ))}
                                         </div>
+
+                                        {embedding.provider_type === 'local' && (
+                                            <div>
+                                                <div className="label">Model preset</div>
+                                                <div className="grid sm:grid-cols-2 gap-2">
+                                                    {embeddingPresets.map((p) => {
+                                                        const active = embedding.model_name === p.model_name;
+                                                        return (
+                                                            <button
+                                                                key={p.id}
+                                                                onClick={() => setEmbedding((s) => ({ ...s, model_name: p.model_name }))}
+                                                                className={`p-3 rounded-lg border text-left transition ${
+                                                                    active
+                                                                        ? 'border-primary bg-primary/5'
+                                                                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                                                                }`}
+                                                            >
+                                                                <div className="flex items-center justify-between mb-1">
+                                                                    <span className={`text-sm font-medium ${active ? 'text-primary' : 'text-slate-900 dark:text-slate-100'}`}>
+                                                                        {p.label}
+                                                                    </span>
+                                                                    <span className="text-[10px] font-medium text-slate-400">{p.size}</span>
+                                                                </div>
+                                                                <div className="text-xs text-slate-500 dark:text-slate-400 leading-snug">{p.description}</div>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
 
                                         <div>
                                             <label htmlFor="embedding-model-name" className="label">Model name</label>

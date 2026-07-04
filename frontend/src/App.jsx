@@ -3,6 +3,7 @@ import { Menu, Search as SearchIcon } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import SearchView from './components/SearchView';
 import LibraryView from './components/LibraryView';
+import GraphView from './components/GraphView';
 import BenchmarkView from './components/BenchmarkView';
 import SettingsModal from './components/SettingsModal';
 import HistoryDrawer from './components/HistoryDrawer';
@@ -89,6 +90,7 @@ export default function App() {
                         {activeTab === 'library' && (
                             <LibraryView onOpenSettings={() => setSettingsOpen(true)} />
                         )}
+                        {activeTab === 'graph' && <GraphView />}
                         {activeTab === 'benchmarks' && <BenchmarkView />}
                     </ErrorBoundary>
                 </main>

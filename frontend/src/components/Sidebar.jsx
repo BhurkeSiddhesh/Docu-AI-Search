@@ -1,10 +1,11 @@
 import React from 'react';
-import { Search, Library, BarChart3, Settings, History, Plus, Sun, Moon, X } from 'lucide-react';
+import { Search, Library, Network, BarChart3, Settings, History, Plus, Sun, Moon, X } from 'lucide-react';
 import Logo from './Logo';
 
 const NAV = [
     { id: 'search', label: 'Search', icon: Search },
     { id: 'library', label: 'Library', icon: Library },
+    { id: 'graph', label: 'Graph', icon: Network },
     { id: 'benchmarks', label: 'Benchmarks', icon: BarChart3 },
 ];
 

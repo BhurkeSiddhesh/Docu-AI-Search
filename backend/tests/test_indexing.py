@@ -88,12 +88,14 @@ class TestIndexing(unittest.TestCase):
     @patch('backend.indexing.concurrent.futures.as_completed', side_effect=lambda fs: fs)
     @patch('backend.indexing.concurrent.futures.ThreadPoolExecutor', return_value=DummyExecutor())
     @patch('backend.indexing.concurrent.futures.ProcessPoolExecutor', return_value=DummyExecutor())
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     @patch('backend.indexing.perform_global_clustering')
     @patch('backend.indexing.smart_summary')
-    def test_create_index(self, mock_summary, mock_clustering, mock_extract, mock_get_embeddings, mock_splitter, mock_process_pool, mock_thread_pool, mock_as_completed):
+    @patch('backend.indexing.database.clear_graph')
+    @patch('backend.indexing.database.add_graph_data')
+    def test_create_index(self, mock_add_graph, mock_clear_graph, mock_summary, mock_clustering, mock_extract, mock_get_embeddings, mock_splitter, mock_process_pool, mock_thread_pool, mock_as_completed):
         mock_splitter.return_value.split_text.return_value = ["chunk1"]
         mock_extract.return_value = "Test content"
         mock_embeddings_model = MagicMock()
@@ -177,12 +179,14 @@ class TestIndexingMultipleFolders(unittest.TestCase):
     @patch('backend.indexing.concurrent.futures.as_completed', side_effect=lambda fs: fs)
     @patch('backend.indexing.concurrent.futures.ThreadPoolExecutor', return_value=DummyExecutor())
     @patch('backend.indexing.concurrent.futures.ProcessPoolExecutor', return_value=DummyExecutor())
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     @patch('backend.indexing.perform_global_clustering')
     @patch('backend.indexing.smart_summary')
-    def test_create_index_multiple_folders(self, mock_summary, mock_clustering, mock_extract, mock_get_embeddings, mock_splitter, mock_process_pool, mock_thread_pool, mock_as_completed):
+    @patch('backend.indexing.database.clear_graph')
+    @patch('backend.indexing.database.add_graph_data')
+    def test_create_index_multiple_folders(self, mock_add_graph, mock_clear_graph, mock_summary, mock_clustering, mock_extract, mock_get_embeddings, mock_splitter, mock_process_pool, mock_thread_pool, mock_as_completed):
         mock_splitter.return_value.split_text.return_value = ["chunk"]
         mock_extract.return_value = "content"
         # Return one vector per chunk in the batch — required since the
@@ -197,12 +201,14 @@ class TestIndexingMultipleFolders(unittest.TestCase):
     @patch('backend.indexing.concurrent.futures.as_completed', side_effect=lambda fs: fs)
     @patch('backend.indexing.concurrent.futures.ThreadPoolExecutor', return_value=DummyExecutor())
     @patch('backend.indexing.concurrent.futures.ProcessPoolExecutor', return_value=DummyExecutor())
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     @patch('backend.indexing.perform_global_clustering')
     @patch('backend.indexing.smart_summary')
-    def test_create_index_with_progress_callback(self, mock_summary, mock_clustering, mock_extract, mock_get_embeddings, mock_splitter, mock_process_pool, mock_thread_pool, mock_as_completed):
+    @patch('backend.indexing.database.clear_graph')
+    @patch('backend.indexing.database.add_graph_data')
+    def test_create_index_with_progress_callback(self, mock_add_graph, mock_clear_graph, mock_summary, mock_clustering, mock_extract, mock_get_embeddings, mock_splitter, mock_process_pool, mock_thread_pool, mock_as_completed):
         mock_splitter.return_value.split_text.return_value = ["chunk"]
         mock_extract.return_value = "content"
         mock_get_embeddings.return_value.embed_documents.return_value = [[0.1]]
@@ -221,11 +227,13 @@ class TestIndexingMultipleFolders(unittest.TestCase):
     @patch('backend.indexing.concurrent.futures.as_completed', side_effect=lambda fs: fs)
     @patch('backend.indexing.concurrent.futures.ThreadPoolExecutor', return_value=DummyExecutor())
     @patch('backend.indexing.concurrent.futures.ProcessPoolExecutor', return_value=DummyExecutor())
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     @patch('backend.indexing.perform_global_clustering')
-    def test_create_index_string_folder_path(self, mock_clustering, mock_extract, mock_get_embeddings, mock_splitter, mock_process_pool, mock_thread_pool, mock_as_completed):
+    @patch('backend.indexing.database.clear_graph')
+    @patch('backend.indexing.database.add_graph_data')
+    def test_create_index_string_folder_path(self, mock_add_graph, mock_clear_graph, mock_clustering, mock_extract, mock_get_embeddings, mock_splitter, mock_process_pool, mock_thread_pool, mock_as_completed):
         mock_splitter.return_value.split_text.return_value = ["chunk"]
         mock_extract.return_value = "content"
         mock_get_embeddings.return_value.embed_documents.return_value = [[0.1]]
@@ -342,7 +350,7 @@ class TestIndexingBoundaryCases(unittest.TestCase):
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     def test_create_index_with_very_large_file(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
@@ -366,7 +374,9 @@ class TestIndexingBoundaryCases(unittest.TestCase):
 
         with patch('backend.indexing.get_tags', return_value="large"), \
              patch('backend.indexing.perform_global_clustering', return_value={0: list(range(100))}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+             patch('backend.indexing.smart_summary', return_value="Summary"), \
+             patch('backend.indexing.database.clear_graph'), \
+             patch('backend.indexing.database.add_graph_data'):
             res = create_index(self.temp_dir, "openai", "fake_key")
             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
@@ -391,7 +401,7 @@ class TestIndexingBoundaryCases(unittest.TestCase):
         # Should return None for no indexable content
         self.assertIsNone(index)
 
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     def test_create_index_with_special_characters_in_path(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
@@ -416,13 +426,15 @@ class TestIndexingBoundaryCases(unittest.TestCase):
 
         with patch('backend.indexing.get_tags', return_value="test"), \
              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+             patch('backend.indexing.smart_summary', return_value="Summary"), \
+             patch('backend.indexing.database.clear_graph'), \
+             patch('backend.indexing.database.add_graph_data'):
             res = create_index(special_folder, "openai", "fake_key")
             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
             self.assertIsNotNone(index)
 
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     def test_create_index_with_extraction_error(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
@@ -450,7 +462,7 @@ class TestIndexingBoundaryCases(unittest.TestCase):
             # Should handle extraction errors gracefully
             self.assertIsNone(index)
 
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     def test_create_index_with_empty_files(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
@@ -477,7 +489,7 @@ class TestIndexingBoundaryCases(unittest.TestCase):
             # Empty files should be handled
             self.assertIsNone(index)
 
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     def test_create_index_with_mixed_file_types(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
@@ -505,7 +517,9 @@ class TestIndexingBoundaryCases(unittest.TestCase):
 
         with patch('backend.indexing.get_tags', return_value="test"), \
              patch('backend.indexing.perform_global_clustering', return_value={0: [0, 1]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+             patch('backend.indexing.smart_summary', return_value="Summary"), \
+             patch('backend.indexing.database.clear_graph'), \
+             patch('backend.indexing.database.add_graph_data'):
             res = create_index(self.temp_dir, "openai", "fake_key")
             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
@@ -529,7 +543,7 @@ class TestIndexingBoundaryCases(unittest.TestCase):
 
         with patch('backend.indexing.get_embeddings') as mock_embed, \
              patch('backend.indexing.extract_text', return_value="content"), \
-             patch('backend.indexing.CharacterTextSplitter') as mock_splitter_cls, \
+             patch('backend.indexing.RecursiveCharacterTextSplitter') as mock_splitter_cls, \
              patch('backend.indexing.get_tags', return_value="test"), \
              patch('backend.indexing.perform_global_clustering', return_value={0: [0, 1]}), \
              patch('backend.indexing.smart_summary', return_value="Summary"):
@@ -543,13 +557,15 @@ class TestIndexingBoundaryCases(unittest.TestCase):
             mock_embeddings_model.embed_documents.side_effect = lambda batch: [[0.1, 0.2, 0.3] for _ in batch]
             mock_embed.return_value = mock_embeddings_model
 
-            res = create_index(self.temp_dir, "openai", "fake_key")
+            with patch('backend.indexing.database.clear_graph'), \
+                 patch('backend.indexing.database.add_graph_data'):
+                res = create_index(self.temp_dir, "openai", "fake_key")
             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
             # Should handle symbolic links
             self.assertIsNotNone(index)
 
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     def test_create_index_with_nested_folders(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
@@ -574,7 +590,9 @@ class TestIndexingBoundaryCases(unittest.TestCase):
 
         with patch('backend.indexing.get_tags', return_value="test"), \
              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+             patch('backend.indexing.smart_summary', return_value="Summary"), \
+             patch('backend.indexing.database.clear_graph'), \
+             patch('backend.indexing.database.add_graph_data'):
             res = create_index(self.temp_dir, "openai", "fake_key")
             index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
 
@@ -725,7 +743,7 @@ class TestProgressCallbackBehavior(unittest.TestCase):
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     def test_progress_callback_called_multiple_times(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
@@ -758,7 +776,7 @@ class TestProgressCallbackBehavior(unittest.TestCase):
             # Should have multiple progress updates
             self.assertGreater(len(progress_calls), 0)
 
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     def test_progress_callback_error_handling(self, mock_extract_text, mock_get_embeddings, mock_splitter_cls):
@@ -828,7 +846,7 @@ class TestIndexingWithEmbeddingClient(unittest.TestCase):
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.extract_text')
     def test_create_index_with_embedding_client(self, mock_extract_text, mock_splitter_cls):
         """Test create_index with embedding_client parameter."""
@@ -845,7 +863,9 @@ class TestIndexingWithEmbeddingClient(unittest.TestCase):
 
         with patch('backend.indexing.get_tags', return_value="test"), \
              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+             patch('backend.indexing.smart_summary', return_value="Summary"), \
+             patch('backend.indexing.database.clear_graph'), \
+             patch('backend.indexing.database.add_graph_data'):
 
             res = create_index(
                 self.temp_dir,
@@ -859,7 +879,7 @@ class TestIndexingWithEmbeddingClient(unittest.TestCase):
             # Verify embedding client was used (not get_embeddings)
             mock_embedding_client.embed_documents.assert_called()
 
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.extract_text')
     @patch('backend.indexing.get_embeddings')
     def test_create_index_fallback_to_get_embeddings(self, mock_get_embeddings,
@@ -877,7 +897,9 @@ class TestIndexingWithEmbeddingClient(unittest.TestCase):
 
         with patch('backend.indexing.get_tags', return_value="test"), \
              patch('backend.indexing.perform_global_clustering', return_value={0: [0]}), \
-             patch('backend.indexing.smart_summary', return_value="Summary"):
+             patch('backend.indexing.smart_summary', return_value="Summary"), \
+             patch('backend.indexing.database.clear_graph'), \
+             patch('backend.indexing.database.add_graph_data'):
 
             res = create_index(
                 self.temp_dir,
@@ -1041,7 +1063,7 @@ class TestIndexingProgressCallback(unittest.TestCase):
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     def test_progress_callback_receives_correct_stages(self, mock_extract_text,
@@ -1128,7 +1150,7 @@ class TestIndexingErrorRecovery(unittest.TestCase):
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.extract_text')
     @patch('backend.indexing.get_embeddings')
     def test_create_index_handles_embedding_failure_gracefully(self, mock_get_embeddings, mock_extract_text, mock_splitter_cls):
@@ -1182,7 +1204,7 @@ class TestIndexingEmbeddingBatchFailures(unittest.TestCase):
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     def test_all_embedding_batches_fail_returns_empty_tuple(self, mock_extract, mock_get_embeddings, mock_splitter_cls):
@@ -1210,7 +1232,7 @@ class TestIndexingEmbeddingBatchFailures(unittest.TestCase):
         self.assertIsNone(res[0])  # index_chunks
         self.assertEqual(res[7], {})  # meta
 
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     def test_partial_embedding_failure_aborts_instead_of_corrupting(self, mock_extract, mock_get_embeddings, mock_splitter_cls):
@@ -1248,7 +1270,7 @@ class TestIndexingEmbeddingBatchFailures(unittest.TestCase):
         self.assertEqual(len(res), 8)
         self.assertIsNone(res[0])
 
-    @patch('backend.indexing.CharacterTextSplitter')
+    @patch('backend.indexing.RecursiveCharacterTextSplitter')
     @patch('backend.indexing.get_embeddings')
     @patch('backend.indexing.extract_text')
     def test_checkpoint_cleared_after_embedding_abort(self, mock_extract, mock_get_embeddings, mock_splitter_cls):

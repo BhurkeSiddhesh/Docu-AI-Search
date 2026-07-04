@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8000/api/logs';
+// Relative path so it works through the Vite dev proxy and any deployment
+// port, instead of assuming the backend is reachable at localhost:8000.
+const API_URL = '/api/logs';
 
 const logger = {
     log: async (level, message, stack = null) => {

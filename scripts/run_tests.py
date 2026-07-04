@@ -152,6 +152,8 @@ def run_quick_tests():
         'backend.tests.test_database',
         'backend.tests.test_file_processing',
         'backend.tests.test_indexing',
+        'backend.tests.test_incremental_indexing',
+        'backend.tests.test_stream_optimization',
         'backend.tests.test_search',
         'backend.tests.test_model_manager',
         'backend.tests.test_benchmarks',
@@ -207,7 +209,15 @@ def main():
     from backend import database
     original_db_path = database.DATABASE_PATH
     database.DATABASE_PATH = os.path.join(temp_dir, 'test_metadata.db')
-    
+
+    # Snapshot config.ini: several API tests exercise POST /api/config and
+    # would otherwise overwrite the developer's real configuration.
+    config_path = os.path.join(PROJECT_ROOT, 'config.ini')
+    config_backup = None
+    if os.path.exists(config_path):
+        with open(config_path, 'r', encoding='utf-8', newline='') as fh:
+            config_backup = fh.read()
+
     print(f"{Colors.CYAN}Setting up test environment...{Colors.ENDC}")
     print(f"  Using temp database: {database.DATABASE_PATH}")
     
@@ -307,6 +317,13 @@ def main():
         # Cleanup
         print(f"\n{Colors.CYAN}Cleaning up test environment...{Colors.ENDC}")
         database.DATABASE_PATH = original_db_path
+        if config_backup is not None:
+            try:
+                with open(config_path, 'w', encoding='utf-8', newline='') as fh:
+                    fh.write(config_backup)
+                print(f"  Restored config.ini (tests may modify it via /api/config)")
+            except Exception as e:
+                print(f"{Colors.YELLOW}Warning: Could not restore config.ini: {e}{Colors.ENDC}")
         if os.path.exists(temp_dir):
             try:
                 shutil.rmtree(temp_dir)

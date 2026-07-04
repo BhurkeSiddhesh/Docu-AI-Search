@@ -8,7 +8,13 @@ export function formatBytes(bytes) {
 
 export function formatRelative(timestamp) {
     if (!timestamp) return '';
-    const date = new Date(timestamp);
+    let ts = timestamp;
+    // SQLite CURRENT_TIMESTAMP is UTC but serialized without a timezone
+    // ("YYYY-MM-DD HH:MM:SS"); parse it as UTC or every entry shows hours old.
+    if (typeof ts === 'string' && /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(ts)) {
+        ts = ts.replace(' ', 'T') + 'Z';
+    }
+    const date = new Date(ts);
     const now = new Date();
     const diff = now - date;
     if (diff < 60_000) return 'just now';

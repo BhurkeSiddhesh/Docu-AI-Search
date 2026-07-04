@@ -8,11 +8,11 @@ import concurrent.futures
 import time
 from datetime import datetime
 from typing import List, Tuple, Dict, Optional, Any
-from langchain_text_splitters import CharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 logger = logging.getLogger(__name__)
 from backend.llm_integration import get_embeddings, get_tags, smart_summary, summarize
-from backend.file_processing import extract_text
+from backend.file_processing import extract_text, SUPPORTED_EXTENSIONS
 from backend import database
 from backend.clustering import perform_global_clustering
 from rank_bm25 import BM25Okapi
@@ -21,24 +21,42 @@ import string
 # Metadata sidecar filename suffix
 _META_SUFFIX = '_meta.json'
 
+# Chunking strategy identifier, persisted in the metadata sidecar. When this
+# changes (different splitter/size/overlap), cached chunks from a previous
+# index can no longer be reused and a full re-chunk/re-embed is forced.
+_CHUNKER_VERSION = 'recursive-1000-150'
+_CHUNK_SIZE = 1000
+_CHUNK_OVERLAP = 150
+
 # Checkpoint file for resume-on-failure support
 _CHECKPOINT_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'index_checkpoint.json')
 
 
-def _load_checkpoint() -> dict:
+def _load_checkpoint(fingerprint: str = None) -> dict:
+    """Load the extraction checkpoint, discarding it if it belongs to a
+    different file set (prevents stale text from a previous run leaking in)."""
     if os.path.exists(_CHECKPOINT_PATH):
         try:
             with open(_CHECKPOINT_PATH) as f:
-                return json.load(f)
+                data = json.load(f)
+            # New format: {"fingerprint": ..., "files": {...}}
+            if isinstance(data, dict) and 'files' in data:
+                if fingerprint is None or data.get('fingerprint') == fingerprint:
+                    return data['files']
+                logger.info("[Index] Checkpoint fingerprint mismatch — starting fresh.")
+                return {}
+            # Legacy flat format — only trust it if no fingerprint was requested
+            if isinstance(data, dict) and fingerprint is None:
+                return data
         except Exception:
             pass
     return {}
 
 
-def _save_checkpoint(checkpoint: dict):
+def _save_checkpoint(checkpoint: dict, fingerprint: str = ""):
     os.makedirs(os.path.dirname(_CHECKPOINT_PATH), exist_ok=True)
     with open(_CHECKPOINT_PATH, 'w') as f:
-        json.dump(checkpoint, f)
+        json.dump({'fingerprint': fingerprint, 'files': checkpoint}, f)
 
 
 def _clear_checkpoint():
@@ -82,9 +100,82 @@ def safe_extract_text(filepath: str) -> Tuple[str, Optional[str]]:
         logger.info(f"Error reading {filepath}: {e}")
         return filepath, None
 
-def create_index(folder_paths: List[str] | str, provider: str, api_key: str = None, 
-                 model_path: str = None, progress_callback: callable = None, 
-                 embedding_client: Any = None) -> Tuple:
+def _load_reusable_chunks(previous_index_path: str, current_files: List[str],
+                          current_model_name: str) -> Dict[str, List[Tuple[str, Any]]]:
+    """
+    Load chunks + embedding vectors from the previous index for files that
+    have not changed since it was built (same path, size, and mtime).
+
+    Reuse is only safe when the chunking strategy and embedding model are
+    unchanged; otherwise an empty dict is returned and the caller does a
+    full re-index.
+
+    Returns:
+        Dict[str, List[Tuple[str, np.ndarray]]]: {filepath: [(chunk_text, vector), ...]}
+    """
+    try:
+        base_path = os.path.splitext(previous_index_path)[0]
+        meta_path = base_path + _META_SUFFIX
+        docs_path = base_path + '_docs.pkl'
+        if not (os.path.exists(previous_index_path) and os.path.exists(meta_path) and os.path.exists(docs_path)):
+            return {}
+
+        with open(meta_path, 'r') as f:
+            meta = json.load(f)
+        if meta.get('chunker') != _CHUNKER_VERSION:
+            logger.info("[Index] Chunking strategy changed — full re-index required.")
+            return {}
+
+        def _norm(name: str) -> str:
+            return str(name or '').split('/')[-1].lower()
+        prev_model = meta.get('model_name') or 'unknown'
+        if prev_model == 'unknown' or _norm(prev_model) != _norm(current_model_name):
+            logger.info("[Index] Embedding model changed (%s -> %s) — full re-index required.",
+                        prev_model, current_model_name)
+            return {}
+
+        fingerprints = database.get_file_fingerprints()
+        if not fingerprints:
+            return {}
+
+        with open(docs_path, 'rb') as f:
+            prev_chunks = pickle.load(f)
+        prev_index = faiss.read_index(previous_index_path)
+        if not prev_chunks or prev_index.ntotal != len(prev_chunks):
+            return {}
+        all_vectors = prev_index.reconstruct_n(0, prev_index.ntotal)
+
+        # Group previous chunks (position, text) by source file
+        by_file: Dict[str, List[Tuple[int, str]]] = {}
+        for pos, chunk in enumerate(prev_chunks):
+            if not isinstance(chunk, dict):
+                return {}
+            by_file.setdefault(chunk.get('filepath'), []).append((pos, chunk.get('text', '')))
+
+        current_set = set(current_files)
+        reusable: Dict[str, List[Tuple[str, Any]]] = {}
+        for filepath, entries in by_file.items():
+            if filepath not in current_set or filepath not in fingerprints:
+                continue
+            try:
+                stat = os.stat(filepath)
+            except OSError:
+                continue
+            size_db, mtime_db = fingerprints[filepath]
+            if int(stat.st_size) != int(size_db or -1):
+                continue
+            if abs(float(stat.st_mtime) - float(mtime_db or -1.0)) > 1e-6:
+                continue
+            reusable[filepath] = [(text, all_vectors[pos]) for pos, text in entries]
+        return reusable
+    except Exception as e:
+        logger.warning("[Index] Incremental reuse unavailable (%s); doing a full re-index.", e)
+        return {}
+
+
+def create_index(folder_paths: List[str] | str, provider: str, api_key: str = None,
+                 model_path: str = None, progress_callback: callable = None,
+                 embedding_client: Any = None, previous_index_path: str = None) -> Tuple:
     """
     Creates a RAPTOR index (Global Clustering + Recursive Summarization).
 
@@ -103,6 +194,9 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
         model_path (str, optional): Path to GGUF file for local models.
         progress_callback (callable, optional): function(percent, total, status) for UI updates.
         embedding_client (Any, optional): A pre-resolved LangChain embedding client.
+        previous_index_path (str, optional): Path to the existing index on disk.
+            When provided, chunks + vectors of unchanged files are reused so
+            only new/modified files are re-extracted and re-embedded.
 
     Returns:
         Tuple: (index_chunks, all_chunks, tags, index_summaries, cluster_summaries, final_cluster_map, bm25, meta)
@@ -110,54 +204,90 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
     """
     if isinstance(folder_paths, str):
         folder_paths = [folder_paths]
-        
+
     logger.info(f"Starting RAPTOR Indexing of folders: {folder_paths}")
     start_time = time.time()
-    
-    # 1. Clear Database
-    database.clear_files()
-    database.clear_clusters()
-    
-    # 2. Collect Files
+
+    # 1. Collect Files — only supported types, skipping dot/junk directories so
+    # indexing a project folder doesn't churn through node_modules or .git.
+    _SKIP_DIRS = {'node_modules', '__pycache__', 'venv', 'venv_new', '.git', '.svn', '$RECYCLE.BIN', 'System Volume Information'}
     all_files = []
     for folder_path in folder_paths:
         if os.path.exists(folder_path):
-            for dirpath, _, filenames in os.walk(folder_path):
+            for dirpath, dirnames, filenames in os.walk(folder_path):
+                dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS and not d.startswith('.')]
                 for filename in filenames:
-                    all_files.append(os.path.join(dirpath, filename))
-    
-    logger.info(f"Found {len(all_files)} total files.")
+                    if os.path.splitext(filename)[1].lower() in SUPPORTED_EXTENSIONS:
+                        all_files.append(os.path.join(dirpath, filename))
+
+    logger.info(f"Found {len(all_files)} supported files.")
     if not all_files:
         return None, None, None, None, None, None, None, {}
+
+    # 2. Resolve the embedding client up front — its identity gates whether
+    # cached vectors from the previous index may be reused.
+    if embedding_client is not None:
+        embeddings_model = embedding_client
+        logger.info("[Index] Using pre-resolved embedding client from app.state.")
+    else:
+        embeddings_model = get_embeddings(provider, api_key, model_path)
+    _model_name = getattr(embeddings_model, 'model_name', None) or getattr(embeddings_model, 'model', 'unknown')
+
+    # 3. Incremental reuse — must run BEFORE the DB is cleared, because file
+    # fingerprints (size/mtime) from the previous run live in the files table.
+    reuse_map: Dict[str, List[Tuple[str, Any]]] = {}
+    if previous_index_path:
+        reuse_map = _load_reusable_chunks(previous_index_path, all_files, str(_model_name))
+        if reuse_map:
+            logger.info(f"[Index] Incremental: reusing chunks+vectors for "
+                        f"{len(reuse_map)}/{len(all_files)} unchanged files.")
+
+    # 4. Clear Database (rebuilt below from reused + fresh files)
+    database.clear_files()
+    database.clear_clusters()
 
     # Define stage weights
     # Extraction: 20%, Chunking: 5%, Embedding: 40%, Clustering: 5%, Summarization: 25%, Finalizing: 5%
     # We will accumulate progress_base to ensure monotonic increase
-    
-    # 3. Parallel Text Extraction (CPU Bound) - 0% to 20%
+
+    # 5. Parallel Text Extraction (CPU Bound) - 0% to 20%
     logger.info("Step 1/5: Extracting Text (Parallel)...")
     valid_docs = [] # List of (filepath, text)
 
-    # Load checkpoint to resume after a failure
-    checkpoint = _load_checkpoint()
-    files_to_extract = [f for f in all_files if f not in checkpoint]
-    # Restore already-extracted docs from checkpoint
+    # Load checkpoint to resume after a failure. The fingerprint ties the
+    # checkpoint to this exact file set so leftovers from other runs are ignored.
+    import hashlib
+    _fingerprint = hashlib.sha256("\n".join(sorted(all_files)).encode('utf-8', 'replace')).hexdigest()[:16]
+    checkpoint = _load_checkpoint(_fingerprint)
+    files_to_extract = [f for f in all_files if f not in checkpoint and f not in reuse_map]
+    # Restore already-extracted docs from checkpoint (reused files don't need text)
     for cached_path, cached_text in checkpoint.items():
-        if cached_path in all_files and cached_text:
+        if cached_path in all_files and cached_text and cached_path not in reuse_map:
             valid_docs.append((cached_path, cached_text))
 
-    # Use fewer workers for CPU bound tasks to keep UI responsive
-    with concurrent.futures.ProcessPoolExecutor(max_workers=4) as executor:
+    # Use fewer workers for CPU bound tasks to keep UI responsive.
+    # Process pools cost ~5s/worker to spawn on Windows (each re-imports the
+    # backend stack), so only pay that for corpora large enough to benefit.
+    if len(files_to_extract) >= 50:
+        _executor_cls = concurrent.futures.ProcessPoolExecutor
+    else:
+        _executor_cls = concurrent.futures.ThreadPoolExecutor
+    with _executor_cls(max_workers=4) as executor:
         future_to_file = {executor.submit(safe_extract_text, f): f for f in files_to_extract}
 
-        compete_count = len(checkpoint)
         total_files = len(all_files)
+        compete_count = total_files - len(files_to_extract)  # checkpointed + reused files
+        _since_save = 0
         for future in concurrent.futures.as_completed(future_to_file):
             filepath, text = future.result()
             if text:
                 valid_docs.append((filepath, text))
             checkpoint[filepath] = text or ""
-            _save_checkpoint(checkpoint)
+            # Batch checkpoint writes: rewriting the full JSON per file is O(n²) I/O
+            _since_save += 1
+            if _since_save >= 20:
+                _save_checkpoint(checkpoint, _fingerprint)
+                _since_save = 0
 
             compete_count += 1
             if progress_callback:
@@ -165,28 +295,52 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
                 percent = int((compete_count / total_files) * 20)
                 progress_callback(percent, 100, f"Extracting: {os.path.basename(filepath)}")
 
+        if _since_save:
+            _save_checkpoint(checkpoint, _fingerprint)
+
     logger.info(f"Successfully extracted text from {len(valid_docs)} files.")
 
-    # 4. Chunking - 20% to 25%
+    # 6. Chunking - 20% to 25%
     if progress_callback: progress_callback(22, 100, "Chunking text...")
     logger.info("Step 2/5: Chunking Text...")
-    text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    
-    all_chunks = [] # List of (chunk_text, filepath, file_metadata)
-    chunk_strings = [] # Just the text for embedding
-    
-    # Track file metadata to insert into DB later
-    file_metadata_map = {} 
-    
+    # Recursive splitting honours the chunk budget even for text without blank
+    # lines (PDF extractions often have none) by falling back through
+    # paragraph -> line -> sentence -> word boundaries.
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=_CHUNK_SIZE,
+        chunk_overlap=_CHUNK_OVERLAP,
+        separators=["\n\n", "\n", ". ", " ", ""],
+    )
+
+    all_chunks = []      # List of chunk dicts (text, filepath, faiss_idx)
+    chunk_strings = []   # Just the text (BM25 / KG / alignment)
+    chunk_vectors = []   # Per chunk: reused vector or None (needs embedding)
+    pending_texts = []   # Chunk texts that still need embedding
+
+    extracted_texts = dict(valid_docs)
     current_faiss_idx = 0
-    
+
     files_to_add = []
-    for filepath, text in valid_docs:
-        chunks = text_splitter.split_text(text)
-        if not chunks:
+    for filepath in all_files:
+        reused = reuse_map.get(filepath)
+        if reused is not None:
+            file_chunks = [t for t, _v in reused]
+            file_vecs = [v for _t, v in reused]
+        else:
+            text = extracted_texts.get(filepath)
+            if not text:
+                continue
+            file_chunks = text_splitter.split_text(text)
+            file_vecs = [None] * len(file_chunks)
+
+        if not file_chunks:
             continue
-            
-        file_stat = os.stat(filepath)
+
+        try:
+            file_stat = os.stat(filepath)
+        except OSError as stat_err:
+            logger.warning(f"Skipping {filepath}: {stat_err}")
+            continue
         file_info = {
             'path': filepath,
             'filename': os.path.basename(filepath),
@@ -194,17 +348,17 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
             'size': file_stat.st_size,
             'last_modified': file_stat.st_mtime, # Database expects float timestamp
             'faiss_start_idx': current_faiss_idx,
-            'faiss_end_idx': current_faiss_idx + len(chunks) - 1,
+            'faiss_end_idx': current_faiss_idx + len(file_chunks) - 1,
             'tags': '[]' # Default empty tags
         }
-        
+
         # Add to DB immediately
         files_to_add.append(file_info)
         if len(files_to_add) >= 500:
             database.add_files_batch(files_to_add)
             files_to_add = []
-        
-        for chunk in chunks:
+
+        for chunk, vec in zip(file_chunks, file_vecs):
             all_chunks.append({
                 'text': chunk,
                 'filepath': filepath,
@@ -212,81 +366,84 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
                 'file_id': None # Could fetch, but relying on path match is okay for now
             })
             chunk_strings.append(chunk)
+            chunk_vectors.append(vec)
+            if vec is None:
+                pending_texts.append(chunk)
             current_faiss_idx += 1
-            
+
     if files_to_add:
         database.add_files_batch(files_to_add)
-    logger.info(f"Generated {len(chunk_strings)} total chunks.")
+    logger.info(f"Generated {len(chunk_strings)} total chunks "
+                f"({len(chunk_strings) - len(pending_texts)} reused, {len(pending_texts)} to embed).")
 
     if not chunk_strings:
         logger.info("Warning: No text chunks found in provided files.")
         return None, None, None, None, None, None, None, {}
 
-    # 5. Parallel Embedding (I/O Bound) - 25% to 65%
+    # 7. Parallel Embedding of new/changed chunks (I/O Bound) - 25% to 65%
     if progress_callback: progress_callback(25, 100, "Starting embeddings...")
     logger.info("Step 3/5: Embedding Chunks (Parallel)...")
-    # Use the injected client when available; fall back to legacy factory
-    if embedding_client is not None:
-        embeddings_model = embedding_client
-        logger.info("[Index] Using pre-resolved embedding client from app.state.")
-    else:
-        embeddings_model = get_embeddings(provider, api_key, model_path)
-    
-    # Embed in batches to be efficient but safe
-    batch_size = int(os.getenv("EMBEDDING_BATCH_SIZE", "100"))
-    batches = [chunk_strings[i:i + batch_size] for i in range(0, len(chunk_strings), batch_size)]
-    
-    # Use ThreadPool for Network/GPU bound
-    chunk_embeddings_map = {}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        # submit returns a future object
-        future_map = {executor.submit(embeddings_model.embed_documents, batch): i for i, batch in enumerate(batches)}
-        
-        completed = 0
-        total_batches = len(batches)
+    new_embeddings = []
+    if pending_texts:
+        # Embed in batches to be efficient but safe
+        batch_size = int(os.getenv("EMBEDDING_BATCH_SIZE", "100"))
+        batches = [pending_texts[i:i + batch_size] for i in range(0, len(pending_texts), batch_size)]
 
-        for future in concurrent.futures.as_completed(future_map):
-            batch_idx = future_map[future]
-            try:
-                result = future.result()
-                chunk_embeddings_map[batch_idx] = result
-            except Exception as e:
-                logger.info(f"Error embedding batch {batch_idx}: {e}")
-                chunk_embeddings_map[batch_idx] = [] # Handle failure gracefully?
+        # Use ThreadPool for Network/GPU bound
+        chunk_embeddings_map = {}
 
-            completed += 1
-            if progress_callback:
-                # Map 0-total_batches to 25-65% (range of 40)
-                percent = 25 + int((completed / total_batches) * 40)
-                progress_callback(percent, 100, f"Embedding batch {completed}/{total_batches}")
-    # Reassemble in order
-    chunk_embeddings = []
-    for i in range(len(batches)):
-        if i in chunk_embeddings_map:
-            chunk_embeddings.extend(chunk_embeddings_map[i])
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            # submit returns a future object
+            future_map = {executor.submit(embeddings_model.embed_documents, batch): i for i, batch in enumerate(batches)}
 
-    # Fail fast on embedding failures rather than silently produce a corrupt index.
-    # If even one batch returned empty (error path at line ~256), the FAISS vectors
-    # no longer line up 1:1 with chunk_strings and downstream search returns wrong chunks.
-    if not chunk_embeddings:
-        logger.error(
-            "Indexing aborted: every embedding batch failed (0/%d). "
-            "Check the embedding provider/API key.",
-            len(batches),
-        )
-        _clear_checkpoint()
-        return None, None, None, None, None, None, None, {}
+            completed = 0
+            total_batches = len(batches)
 
-    if len(chunk_embeddings) != len(chunk_strings):
-        logger.error(
-            "Indexing aborted: embedding/chunk count mismatch (%d embeddings vs %d chunks). "
-            "Some batches failed — aborting to avoid a misaligned index.",
-            len(chunk_embeddings),
-            len(chunk_strings),
-        )
-        _clear_checkpoint()
-        return None, None, None, None, None, None, None, {}
+            for future in concurrent.futures.as_completed(future_map):
+                batch_idx = future_map[future]
+                try:
+                    result = future.result()
+                    chunk_embeddings_map[batch_idx] = result
+                except Exception as e:
+                    logger.info(f"Error embedding batch {batch_idx}: {e}")
+                    chunk_embeddings_map[batch_idx] = [] # Handle failure gracefully?
+
+                completed += 1
+                if progress_callback:
+                    # Map 0-total_batches to 25-65% (range of 40)
+                    percent = 25 + int((completed / total_batches) * 40)
+                    progress_callback(percent, 100, f"Embedding batch {completed}/{total_batches}")
+        # Reassemble in order
+        for i in range(len(batches)):
+            if i in chunk_embeddings_map:
+                new_embeddings.extend(chunk_embeddings_map[i])
+
+        # Fail fast on embedding failures rather than silently produce a corrupt index.
+        # If even one batch returned empty, the FAISS vectors no longer line up 1:1
+        # with chunk_strings and downstream search returns wrong chunks.
+        if not new_embeddings:
+            logger.error(
+                "Indexing aborted: every embedding batch failed (0/%d). "
+                "Check the embedding provider/API key.",
+                len(batches),
+            )
+            _clear_checkpoint()
+            return None, None, None, None, None, None, None, {}
+
+        if len(new_embeddings) != len(pending_texts):
+            logger.error(
+                "Indexing aborted: embedding/chunk count mismatch (%d embeddings vs %d chunks). "
+                "Some batches failed — aborting to avoid a misaligned index.",
+                len(new_embeddings),
+                len(pending_texts),
+            )
+            _clear_checkpoint()
+            return None, None, None, None, None, None, None, {}
+
+    # Merge reused vectors with fresh ones, preserving chunk order
+    _new_iter = iter(new_embeddings)
+    chunk_embeddings = [vec if vec is not None else next(_new_iter) for vec in chunk_vectors]
 
     # 5b. BM25 Indexing - 65% to 68%
     if progress_callback: progress_callback(66, 100, "Building Keyword Index...")
@@ -294,68 +451,132 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
     tokenized_corpus = [tokenize(doc) for doc in chunk_strings]
     bm25 = BM25Okapi(tokenized_corpus)
 
-    # 6. Global Clustering (RAPTOR) - 68% to 75%
-    if progress_callback: progress_callback(70, 100, "Clustering content...")
-    logger.info("Step 4/5: Performing Global Clustering...")
-    cluster_map = perform_global_clustering(chunk_embeddings, max_cluster_size=20)
-    logger.info(f"Created {len(cluster_map)} global clusters.")
+    # 6. Build Knowledge Graph (Fast) - 68% to 95%
+    if progress_callback: progress_callback(70, 100, "Building Knowledge Graph...")
+    logger.info("Step 4/5: Building Knowledge Graph...")
     
-    # 7. Summarize Clusters (Parallel) - 75% to 95%
-    if progress_callback: progress_callback(75, 100, "Summarizing clusters...")
-    logger.info("Step 5/5: Summarizing Clusters (Parallel)...")
+    database.clear_graph()
+    graph_nodes = []
+    graph_edges = []
     
-    cluster_summaries = [] # List of summary texts
-    final_cluster_map = {} # Map Summary Index ID -> List of Chunk Indices
-    
-    def process_cluster(cluster_id, indices):
-        # Join texts of chunks in this cluster
-        cluster_text = "\n\n".join([chunk_strings[i] for i in indices])
-        # Generate summary
-        # Generate summary
-        if provider == 'local':
-             # For local models, skip heavy LLM summarization for speed
-             summary = summarize(cluster_text, provider, api_key, model_path, f"Cluster {cluster_id}")
-        else:
-             summary = smart_summary(cluster_text, "Summarize the key themes and facts in this collection.", 
-                                   provider, api_key, model_path, file_name=f"Cluster {cluster_id}")
-        return cluster_id, summary
-
-    total_clusters = len(cluster_map)
-    processed_clusters = 0
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        future_to_cid = {executor.submit(process_cluster, cid, idxs): cid for cid, idxs in cluster_map.items()}
+    # Group chunks by filepath
+    doc_chunks_map = {}
+    for i, chunk in enumerate(all_chunks):
+        filepath = chunk['filepath']
+        if filepath not in doc_chunks_map:
+            doc_chunks_map[filepath] = []
+        doc_chunks_map[filepath].append(i)
         
-        clusters_batch_data = []
-        for future in concurrent.futures.as_completed(future_to_cid):
-            cid, summary = future.result()
-            if summary:
-                # Collect for batch insert
-                clusters_batch_data.append((summary, 1))
-                
-                # The index in this list will be the FAISS index
-                current_summary_idx = len(cluster_summaries)
-                cluster_summaries.append(summary)
-                
-                # Remap: Summary Index ID -> Original Chunk Indices
-                final_cluster_map[current_summary_idx] = cluster_map[cid]
-            
-            processed_clusters += 1
-            if progress_callback:
-                # Map 0-total_clusters to 75-95% (range of 20)
-                percent = 75 + int((processed_clusters / total_clusters) * 20)
-                progress_callback(percent, 100, f"Summarizing cluster {processed_clusters}/{total_clusters}")
+    doc_embeddings = {}
+    from collections import Counter
+    
+    # Simple stop words for keyword extraction
+    STOP_WORDS = set(["the", "and", "a", "to", "of", "in", "i", "is", "that", "it", "on", "you", "this", "for", "but", "with", "are", "have", "be", "at", "or", "as", "was", "so", "if", "out", "not", "we", "my", "from", "by", "an"])
+    
+    seen_keywords = set()
+    for filepath, indices in doc_chunks_map.items():
+        # Average chunk embeddings to get doc embedding
+        chunk_embs = [chunk_embeddings[i] for i in indices if i < len(chunk_embeddings)]
+        if chunk_embs:
+            doc_emb = np.mean(chunk_embs, axis=0)
+            doc_embeddings[filepath] = doc_emb
 
-        # Batch insert clusters
-        if clusters_batch_data:
-            database.add_clusters_batch(clusters_batch_data)
+        # Add Node for Document
+        filename = os.path.basename(filepath)
+        graph_nodes.append({
+            "id": filepath,
+            "type": "document",
+            "label": filename,
+            "metadata": json.dumps({
+                "file_type": os.path.splitext(filepath)[1].lower(),
+                "chunks": len(indices),
+            })
+        })
+
+        # Extract Keywords (TF-like approach)
+        doc_text = " ".join([chunk_strings[i] for i in indices])
+        tokens = tokenize(doc_text)
+        filtered_tokens = [t for t in tokens if len(t) > 3 and t not in STOP_WORDS]
+        counts = Counter(filtered_tokens)
+        top_keywords = counts.most_common(5)
+
+        for kw, kw_count in top_keywords:
+            kw_id = f"kw_{kw}"
+            if kw_id not in seen_keywords:
+                seen_keywords.add(kw_id)
+                graph_nodes.append({
+                    "id": kw_id,
+                    "type": "keyword",
+                    "label": kw,
+                    "metadata": "{}"
+                })
+            # Add Edge Document -> Keyword (weight = term frequency)
+            graph_edges.append({
+                "source_id": filepath,
+                "target_id": kw_id,
+                "weight": float(kw_count),
+                "relation_type": "mentions"
+            })
+
+    # Compute Document Similarity Edges (vectorized cosine, top-k neighbors).
+    # A fixed high threshold (e.g. 0.85) almost never fires between mean-pooled
+    # documents, leaving the graph edge-less; top-k with a floor keeps it useful.
+    filepaths = list(doc_embeddings.keys())
+    if len(filepaths) > 1:
+        emb_matrix = np.array([doc_embeddings[fp] for fp in filepaths], dtype='float32')
+        norms = np.linalg.norm(emb_matrix, axis=1, keepdims=True)
+        norms[norms == 0] = 1.0
+        normalized = emb_matrix / norms
+        sim_matrix = normalized @ normalized.T
+        np.fill_diagonal(sim_matrix, -1.0)
+
+        # Calibrated for MiniLM-class mean-pooled doc vectors: related topics
+        # score ~0.35-0.55, unrelated docs < 0.3.
+        _SIM_FLOOR = 0.35
+        _TOP_K = 3
+        seen_pairs = set()
+        for i, fp1 in enumerate(filepaths):
+            neighbor_idxs = np.argsort(sim_matrix[i])[::-1][:_TOP_K]
+            for j in neighbor_idxs:
+                sim = float(sim_matrix[i][j])
+                if sim < _SIM_FLOOR:
+                    continue
+                pair = tuple(sorted((i, int(j))))
+                if pair in seen_pairs:
+                    continue
+                seen_pairs.add(pair)
+                fp2 = filepaths[int(j)]
+                graph_edges.append({
+                    "source_id": fp1,
+                    "target_id": fp2,
+                    "weight": sim,
+                    "relation_type": "similar_to"
+                })
+
+    database.add_graph_data(graph_nodes, graph_edges)
+    logger.info(f"Knowledge Graph created with {len(set(n['id'] for n in graph_nodes))} nodes and {len(graph_edges)} edges.")
+    
+    # Maintain existing return signature structure (dummy lists since we disabled RAPTOR)
+    cluster_summaries = []
+    final_cluster_map = {}
     
     # 8. Create FAISS Indices - 95% to 99%
     if progress_callback: progress_callback(97, 100, "Finalizing Indices...")
     logger.info("Finalizing Indices...")
-    
+
     # Chunk Index
-    chunk_emb_np = np.array(chunk_embeddings).astype('float32')
+    try:
+        chunk_emb_np = np.array(chunk_embeddings).astype('float32')
+        if chunk_emb_np.ndim != 2:
+            raise ValueError(f"ragged embedding matrix (shape {chunk_emb_np.shape})")
+    except (ValueError, TypeError) as dim_err:
+        logger.error(
+            "Indexing aborted: cached vectors are incompatible with freshly "
+            "embedded ones (%s). Delete data/index.faiss and re-index for a clean rebuild.",
+            dim_err,
+        )
+        _clear_checkpoint()
+        return None, None, None, None, None, None, None, {}
     index_chunks = faiss.IndexFlatL2(chunk_emb_np.shape[1])
     index_chunks.add(chunk_emb_np)
     
@@ -376,12 +597,12 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
 
     # Store the embedding dimension so load_index can detect future model mismatches
     _embedding_dim = int(chunk_emb_np.shape[1])
-    _model_name = getattr(embeddings_model, 'model_name', None) or getattr(embeddings_model, 'model', 'unknown')
 
     # Return both indices packaged (we'll need to modify save_index/load_index too)
     meta = {
         'model_name': _model_name,
         'embedding_dim': _embedding_dim,
+        'chunker': _CHUNKER_VERSION,
     }
     _clear_checkpoint()
     return index_chunks, all_chunks, tags, index_summaries, cluster_summaries, final_cluster_map, bm25, meta
@@ -419,6 +640,7 @@ def save_index(index_chunks: faiss.Index, all_chunks: List[Dict], tags: List[str
     meta = {
         'model_name': model_name,
         'embedding_dim': dim,
+        'chunker': _CHUNKER_VERSION,
     }
     with open(base_path + _META_SUFFIX, 'w') as f:
         json.dump(meta, f)
@@ -436,7 +658,21 @@ def save_index(index_chunks: faiss.Index, all_chunks: List[Dict], tags: List[str
             pickle.dump(cluster_summaries, f)
         with open(base_path + '_cluster_map.pkl', 'wb') as f:
             pickle.dump(cluster_map, f)
-            
+    else:
+        # Remove stale summary artifacts from a previous run: load_index would
+        # otherwise pair an old cluster_map with the NEW chunk ordering and
+        # silently return wrong chunks for theme matches.
+        for suffix in ('_summary.index', '_summaries.pkl', '_summaries.json',
+                       '_cluster_map.pkl', '_cluster_map.json'):
+            stale = base_path + suffix
+            if os.path.exists(stale):
+                try:
+                    os.remove(stale)
+                    logger.info(f"Removed stale summary artifact: {stale}")
+                except OSError as e:
+                    logger.warning(f"Could not remove stale artifact {stale}: {e}")
+
+
     if bm25 is not None:
         with open(base_path + '_bm25.pkl', 'wb') as f:
             pickle.dump(bm25, f)

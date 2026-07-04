@@ -16,6 +16,10 @@ export const api = {
     // Embeddings
     getEmbeddingConfig: () => client.get('/settings/embeddings'),
     saveEmbeddingConfig: (data) => client.post('/settings/embeddings', data),
+    getEmbeddingPresets: () => client.get('/settings/embeddings/presets'),
+
+    // Knowledge graph
+    getGraph: () => client.get('/graph'),
 
     // Folders
     browse: () => client.get('/browse'),
@@ -38,11 +42,12 @@ export const api = {
     // Search
     search: (query, opts = {}) =>
         client.post('/search', { query, ...opts }),
-    streamAnswer: async (query, context, systemPromptId, onChunk) => {
+    streamAnswer: async (query, context, systemPromptId, onChunk, signal) => {
         const res = await fetch('/api/stream-answer', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query, context, system_prompt_id: systemPromptId }),
+            signal,
         });
         if (!res.ok || !res.body) throw new Error('Stream failed');
         const reader = res.body.getReader();
@@ -50,7 +55,8 @@ export const api = {
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            const chunk = decoder.decode(value);
+            // stream: true handles multi-byte characters split across chunks
+            const chunk = decoder.decode(value, { stream: true });
             if (chunk) onChunk(chunk);
         }
     },

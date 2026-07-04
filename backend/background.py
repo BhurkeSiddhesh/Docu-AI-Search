@@ -75,10 +75,16 @@ class IndexingEventHandler(FileSystemEventHandler):
         the absolute INDEX_PATH.
         """
         print("Change detected, updating index...")
-        res = create_index(self.folder, self.provider, self.api_key, self.model_path)
+        # previous_index_path enables incremental re-indexing: only files that
+        # actually changed are re-extracted and re-embedded.
+        res = create_index(self.folder, self.provider, self.api_key, self.model_path,
+                           previous_index_path=INDEX_PATH)
         index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
+        meta = res[7] if len(res) > 7 else {}
         if index:
-            save_index(index, docs, tags, INDEX_PATH, idx_sum, clus_sum, clus_map, bm25)
+            save_index(index, docs, tags, INDEX_PATH, idx_sum, clus_sum, clus_map, bm25,
+                       model_name=meta.get('model_name', 'unknown'),
+                       embedding_dim=meta.get('embedding_dim', 0))
             print("Index updated.")
 
 def start_background_indexing():

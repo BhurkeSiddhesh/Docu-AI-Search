@@ -39,6 +39,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.info("--- SERVER RESTARTING (Logging Configured Early) ---")
 
+def neutralize_log(val: Any) -> str:
+    """Neutralize carriage returns and line feeds to prevent log injection."""
+    if val is None:
+        return ""
+    s = str(val)
+    return s.replace('\r', '\\r').replace('\n', '\\n')
+
 # --- Lazy Loading Helpers ---
 # These functions allow us to defer heavy imports while keeping tests patchable at the module level
 
@@ -252,6 +259,19 @@ def get_active_embedding_client(*args, **kwargs):
     from backend.settings import get_active_embedding_client as _get_active
     return _get_active(*args, **kwargs)
 
+def get_search_embedding_client(*args, **kwargs):
+    """
+    Lazy wrapper for the search-time embedding client resolver.
+
+    Unlike get_active_embedding_client, this honours the loaded index's
+    metadata so query vectors always match the index dimensions.
+
+    Returns:
+        An instance of an embedding client compatible with the loaded index.
+    """
+    from backend.settings import get_search_embedding_client as _get_search
+    return _get_search(*args, **kwargs)
+
 # -----------------------------
 from backend import database
 
@@ -275,7 +295,7 @@ def verify_local_request(request: Request):
     logger.warning(f"Security: Blocked remote request to sensitive endpoint from {client_host}")
     raise HTTPException(status_code=403, detail="Access denied: Only local connections allowed")
 
-ALLOWED_EXTENSIONS = {'.pdf', '.docx', '.pptx', '.xlsx', '.txt'}
+ALLOWED_EXTENSIONS = {'.pdf', '.docx', '.pptx', '.xlsx', '.txt', '.csv', '.md'}
 
 
 
@@ -444,6 +464,21 @@ def save_config_file(config):
     with open(CONFIG_PATH, 'w') as configfile:
         config.write(configfile)
 
+def _parse_tensor_split(config) -> Optional[List[float]]:
+    """Parse the LocalLLM tensor_split config value into a list of floats."""
+    raw = config.get('LocalLLM', 'tensor_split', fallback=None)
+    if not raw:
+        return None
+    try:
+        return [float(x) for x in raw.split(',') if x.strip()]
+    except (ValueError, AttributeError):
+        logger.warning("Invalid tensor_split value in config.ini; ignoring: %s", neutralize_log(raw))
+        return None
+
+# Captured at startup so worker threads (indexing) can schedule WebSocket
+# broadcasts onto the running event loop via run_coroutine_threadsafe.
+_main_event_loop = None
+
 # Initialize index on startup if available
 @app.on_event("startup")
 async def startup_event():
@@ -454,6 +489,8 @@ async def startup_event():
     triggers the background loading of the search index.
     """
     logger.info("Application starting up...")
+    global _main_event_loop
+    _main_event_loop = asyncio.get_running_loop()
     database.init_database()
     # Seed embedding config cache from config.ini
     from backend.settings import seed_app_state
@@ -466,6 +503,38 @@ async def startup_event():
         logger.warning("Failed to seed system prompts: %s", e)
     # Load index in background to not block health checks
     asyncio.create_task(load_initial_index())
+    # Pre-warm the local LLM and embedding model in the background so the
+    # first search/answer doesn't pay the multi-second model load.
+    asyncio.create_task(warmup_models())
+
+async def warmup_models():
+    """Load the embedding model and local GGUF into memory off the hot path."""
+    try:
+        config = load_config()
+        provider = config.get('LocalLLM', 'provider', fallback='local')
+
+        def _warm():
+            try:
+                from backend.settings import get_active_embedding_client
+                get_active_embedding_client(app)
+                logger.info("[Warmup] Embedding model ready.")
+            except Exception as e:
+                logger.warning("[Warmup] Embedding warmup failed: %s", e)
+            if provider == 'local':
+                try:
+                    from backend.llm_integration import warmup_local_model, _discover_local_gguf
+                    model_path = config.get('LocalLLM', 'model_path', fallback='') or ''
+                    if not model_path or not os.path.exists(model_path):
+                        model_path = _discover_local_gguf()
+                    if model_path:
+                        warmup_local_model(model_path)
+                        logger.info("[Warmup] Local LLM ready: %s", os.path.basename(model_path))
+                except Exception as e:
+                    logger.warning("[Warmup] Local LLM warmup failed: %s", e)
+
+        await asyncio.to_thread(_warm)
+    except Exception as e:
+        logger.warning("[Warmup] Skipped: %s", e)
 
 async def load_initial_index():
     """
@@ -484,6 +553,9 @@ async def load_initial_index():
             _index_meta = res[7] if len(res) > 7 else {}
             with _index_lock:
                 index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25 = res[:7]
+            # Expose the index's model/dim so search can embed queries with
+            # the matching model (see settings.get_search_embedding_client).
+            app.state.index_meta = _index_meta
             logger.info(
                 "Loaded existing index successfully. "
                 "Model: %s, dim: %s",
@@ -804,6 +876,8 @@ class SearchResult(BaseModel):
     file_path: Optional[str] = None
     file_name: Optional[str] = None
     faiss_idx: Optional[int] = None
+    # Knowledge-graph neighbours: [{path, filename, similarity}, ...]
+    related_files: List[Dict[str, Any]] = []
 
 class SearchResponse(BaseModel):
     """
@@ -973,17 +1047,12 @@ async def search_files(search_data: SearchRequest, request: Request, background_
     Raises:
         HTTPException: 400 if index not loaded, 409 if embedding dimension mismatch.
     """
-    global index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25
-
     with _index_lock:
         index_snap, docs_snap, tags_snap = index, docs, tags
         isumm_snap, csumm_snap, cmap_snap, bm25_snap = index_summaries, cluster_summaries, cluster_map, bm25
 
     if not index_snap:
         raise HTTPException(status_code=400, detail="Index not loaded. Please configure and index a folder first.")
-
-    index, docs, tags = index_snap, docs_snap, tags_snap
-    index_summaries, cluster_summaries, cluster_map, bm25 = isumm_snap, csumm_snap, cmap_snap, bm25_snap
 
     logger.info(f"\n[API] POST /api/search - Query: <redacted>")
 
@@ -1008,20 +1077,13 @@ async def search_files(search_data: SearchRequest, request: Request, background_
             logger.info("[API] Running in AGENTIC mode.")
             from backend.agent import ReActAgent
             agent = ReActAgent({
-                'index': index, 'docs': docs, 'tags': tags, 'config': config,
-                'index_summaries': index_summaries, 'cluster_summaries': cluster_summaries,
-                'cluster_map': cluster_map, 'bm25': bm25
+                'index': index_snap, 'docs': docs_snap, 'tags': tags_snap, 'config': config,
+                'index_summaries': isumm_snap, 'cluster_summaries': csumm_snap,
+                'cluster_map': cmap_snap, 'bm25': bm25_snap
             })
             return StreamingResponse(agent.stream_chat(search_data.query), media_type="text/event-stream")
 
         model_path = config.get('LocalLLM', 'model_path', fallback=None)
-        tensor_split_str = config.get('LocalLLM', 'tensor_split', fallback=None)
-        tensor_split = None
-        if tensor_split_str:
-            try:
-                tensor_split = [float(x) for x in tensor_split_str.split(',')]
-            except:
-                pass
 
         # Run Search — use the active embedding client from settings state
         from backend.search import EmbeddingDimensionMismatchError
@@ -1030,9 +1092,9 @@ async def search_files(search_data: SearchRequest, request: Request, background_
             results, _context_snippets = await asyncio.wait_for(
                 asyncio.to_thread(
                     search,
-                    search_data.query, index, docs, tags,
-                    get_active_embedding_client(request.app),
-                    index_summaries, cluster_summaries, cluster_map, bm25
+                    search_data.query, index_snap, docs_snap, tags_snap,
+                    get_search_embedding_client(request.app),
+                    isumm_snap, csumm_snap, cmap_snap, bm25_snap
                 ),
                 timeout=_search_timeout,
             )
@@ -1070,6 +1132,11 @@ async def search_files(search_data: SearchRequest, request: Request, background_
         # Build normalised filter values once
         _file_type_filter = {ft.lower().lstrip('.') for ft in (search_data.file_types or [])}
 
+        # Per-result LLM summaries are opt-in: with a local GGUF configured they
+        # add seconds *per result* to every search. The streamed AI answer
+        # (/api/stream-answer) is the intended place for LLM output.
+        _llm_result_summaries = config.getboolean('AdvancedRAG', 'llm_result_summaries', fallback=False)
+
         for result in results:
             faiss_idx = result.get('faiss_idx')
 
@@ -1095,8 +1162,12 @@ async def search_files(search_data: SearchRequest, request: Request, background_
                 if ext not in _file_type_filter:
                     continue
             
-            # OPTIMIZATION: Use fast summary for all results to avoid blocking
-            summary = cached_smart_summary(text=result['document'], query=search_data.query, provider=provider, api_key=api_key, model_path=model_path)
+            if _llm_result_summaries:
+                summary = cached_smart_summary(text=result['document'], query=search_data.query, provider=provider, api_key=api_key, model_path=model_path)
+            else:
+                # Fast extractive summary — no model call, sub-millisecond
+                from backend.llm_integration import summarize as _fast_summarize
+                summary = _fast_summarize(result['document'], question=search_data.query)
             
             # Add file context to snippets for AI answer
             file_prefix = f"[From: {file_name}] " if file_name else ""
@@ -1129,6 +1200,18 @@ async def search_files(search_data: SearchRequest, request: Request, background_
                 processed_results.sort(key=lambda r: os.path.getsize(r.file_path) if r.file_path and os.path.exists(r.file_path) else 0, reverse=True)
             elif search_data.sort_by == "date":
                 processed_results.sort(key=lambda r: os.path.getmtime(r.file_path) if r.file_path and os.path.exists(r.file_path) else 0, reverse=True)
+
+        # Attach knowledge-graph neighbours (Glean-style "related documents")
+        try:
+            _result_paths = [r.file_path for r in processed_results if r.file_path]
+            if _result_paths:
+                _related_map = await asyncio.to_thread(database.get_related_files, _result_paths)
+                if isinstance(_related_map, dict):
+                    for r in processed_results:
+                        if r.file_path and r.file_path in _related_map:
+                            r.related_files = _related_map[r.file_path]
+        except Exception as _rel_err:
+            logger.warning("Related-files lookup failed: %s", _rel_err)
 
         # Return results immediately - AI Answer will be streamed via separate endpoint
         active_model_name = provider.capitalize()
@@ -1167,14 +1250,18 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
     Returns:
         StreamingResponse: A server-sent event stream of AI response tokens.
     """
-    global index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25
+    with _index_lock:
+        index_snap, docs_snap, tags_snap = index, docs, tags
+        isumm_snap, csumm_snap, cmap_snap, bm25_snap = index_summaries, cluster_summaries, cluster_map, bm25
 
-    if not index:
+    # The index is only needed when we have to run a fresh search; when the
+    # caller already supplies context snippets, stream straight from the LLM.
+    if not index_snap and not search_data.context:
          return StreamingResponse(iter(["Error: Index not loaded."]), media_type="text/event-stream")
 
     config = load_config()
     provider = search_data.provider_override or config.get('LocalLLM', 'provider', fallback='openai')
-    
+
     api_key = search_data.api_key_override
     if not api_key:
         api_key = config.get('APIKeys', 'openai_api_key', fallback=None)
@@ -1188,14 +1275,7 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
             api_key = config.get('ExternalProviders', 'external_api_key', fallback=api_key)
 
     model_path = search_data.model_override or config.get('LocalLLM', 'model_path', fallback=None)
-    tensor_split_str = config.get('LocalLLM', 'tensor_split', fallback=None)
-    tensor_split = None
-    if tensor_split_str:
-        try:
-            tensor_split = [float(x) for x in tensor_split_str.split(',')]
-        except:
-            pass
-
+    tensor_split = _parse_tensor_split(config)
 
     final_context_snippets = []
 
@@ -1203,11 +1283,29 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
         logger.info(f"[API] Using provided context ({len(search_data.context)} snippets) for streaming answer")
         final_context_snippets = search_data.context
     else:
-        results, context_snippets = search(
-            search_data.query, index, docs, tags,
-            get_active_embedding_client(request.app),
-            index_summaries, cluster_summaries, cluster_map, bm25
-        )
+        # Run the search off the event loop — it embeds the query and hits
+        # FAISS/BM25, which are CPU-bound and would otherwise stall all
+        # concurrent requests.
+        from backend.search import EmbeddingDimensionMismatchError
+        _search_timeout = int(os.getenv("SEARCH_TIMEOUT_SECONDS", "30"))
+        try:
+            results, _ = await asyncio.wait_for(
+                asyncio.to_thread(
+                    search,
+                    search_data.query, index_snap, docs_snap, tags_snap,
+                    get_search_embedding_client(request.app),
+                    isumm_snap, csumm_snap, cmap_snap, bm25_snap,
+                ),
+                timeout=_search_timeout,
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail="Search timed out. The embedding service may be unavailable.")
+        except EmbeddingDimensionMismatchError as dim_err:
+            logger.error("[Stream] Embedding dimension mismatch: %s", dim_err)
+            raise HTTPException(
+                status_code=409,
+                detail="Embedding dimension mismatch: the index was built with a different model. Please re-index your documents.",
+            )
 
         # OPTIMIZATION: Batch fetch missing file info to avoid N+1 queries and improve context quality
         missing_faiss_idxs = [
@@ -1228,10 +1326,20 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
                      if info:
                          file_info_map[f_idx] = info
 
+        # Per-result summaries: extractive by default (sub-millisecond). LLM
+        # summaries here previously ran one full model call PER RESULT before
+        # any token streamed — tens of seconds of dead air with a local GGUF.
+        try:
+            _llm_result_summaries = config.getboolean('AdvancedRAG', 'llm_result_summaries', fallback=False) is True
+        except Exception:
+            _llm_result_summaries = False
+
         # Prepare context
         for result in results:
-             # Use fast fallback summary for streaming context (no new LLM calls)
-             summary = cached_smart_summary(text=result['document'], query=search_data.query, provider=provider, api_key=api_key, model_path=model_path)
+             if _llm_result_summaries:
+                 summary = cached_smart_summary(text=result['document'], query=search_data.query, provider=provider, api_key=api_key, model_path=model_path)
+             else:
+                 summary = summarize(result['document'], question=search_data.query)
 
              faiss_idx = result.get('faiss_idx')
              file_name = result.get('file_name')
@@ -1261,15 +1369,97 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
         if prompt_data:
             system_instruction = prompt_data["content"]
 
+    # ── Answer cache ───────────────────────────────────────────────────────
+    # Repeat questions over the same context replay instantly instead of
+    # paying full generation time again (~20s on a 7B CPU model). The cache is
+    # a pure optimization: any failure here silently falls back to generation.
+    if provider == 'local' and model_path:
+        _model_id = f"local:{os.path.basename(str(model_path))}"
+    else:
+        _model_id = str(provider)
+    _q_hash = _c_hash = None
+    cached_answer = None
+    try:
+        from backend.llm_integration import compute_cache_key
+        _cache_query = f"{search_data.query}\x1f{system_instruction or ''}"
+        _hashes = compute_cache_key(_cache_query, context_text, _model_id)
+        if isinstance(_hashes, (tuple, list)) and len(_hashes) == 2:
+            _q_hash, _c_hash = _hashes
+            cached_answer = await asyncio.to_thread(
+                database.get_cached_response, _q_hash, _c_hash, _model_id, "ai_answer"
+            )
+    except Exception as _cache_err:
+        logger.debug("[Stream] Answer cache lookup skipped: %s", _cache_err)
+        _q_hash = _c_hash = None
+        cached_answer = None
+    if isinstance(cached_answer, str) and cached_answer.strip():
+        logger.info("[Stream] Answer cache hit — replaying instantly.")
+        async def replay():
+            _CHUNK = 512
+            for i in range(0, len(cached_answer), _CHUNK):
+                yield cached_answer[i:i + _CHUNK]
+        return StreamingResponse(replay(), media_type="text/event-stream")
+    # ───────────────────────────────────────────────────────────────────────
+
     async def generate():
+        """Bridge the blocking LLM token generator to async without stalling
+        the event loop: a worker thread owns the iterator and pushes tokens
+        into an asyncio.Queue, so every token reaches the client immediately
+        and other requests stay responsive during generation."""
+        loop = asyncio.get_running_loop()
+        token_queue: asyncio.Queue = asyncio.Queue(maxsize=256)
+        _DONE = object()
+        stop_event = threading.Event()
+
+        def _produce():
+            try:
+                for token in stream_ai_answer(
+                    context_text, search_data.query, provider, api_key, model_path,
+                    tensor_split, system_instruction, base_url=search_data.base_url_override
+                ):
+                    if stop_event.is_set():
+                        break
+                    asyncio.run_coroutine_threadsafe(token_queue.put(token), loop).result()
+                    if stop_event.is_set():
+                        break
+            except Exception as _stream_err:
+                logger.error("[Stream] Answer generation error: %s", _stream_err)
+            finally:
+                try:
+                    asyncio.run_coroutine_threadsafe(token_queue.put(_DONE), loop).result(timeout=5)
+                except Exception:
+                    pass
+
+        producer = threading.Thread(target=_produce, name="answer-stream-producer", daemon=True)
+        producer.start()
+
+        collected = []
         try:
-            for token in stream_ai_answer(
-                context_text, search_data.query, provider, api_key, model_path, 
-                tensor_split, system_instruction, base_url=search_data.base_url_override
-            ):
+            while True:
+                token = await token_queue.get()
+                if token is _DONE:
+                    break
+                collected.append(str(token))
                 yield token
-        except Exception as _stream_err:
-            logger.error("[Stream] Answer generation error: %s", _stream_err)
+
+            answer = "".join(collected).strip()
+            if _q_hash and _c_hash and answer and not answer.startswith("Error") and not answer.startswith("No relevant"):
+                try:
+                    await asyncio.to_thread(
+                        database.cache_response, _q_hash, _c_hash, _model_id, "ai_answer", answer
+                    )
+                except Exception as cache_err:
+                    logger.warning("[Stream] Could not cache answer: %s", cache_err)
+        finally:
+            # Client disconnected or stream finished: let the producer exit so
+            # it releases the local-LLM lock. Drain any queued tokens so a
+            # producer blocked on a full queue can observe stop_event.
+            stop_event.set()
+            while not token_queue.empty():
+                try:
+                    token_queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    break
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -1493,29 +1683,33 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
     
     # Normalize and resolve symlinks to prevent path traversal
     file_path = os.path.realpath(os.path.normpath(file_path))
-    logger.info(f"[DEBUG-OPEN] Normalized path: {file_path}")
+    logger.info("[DEBUG-OPEN] Normalized path: %s", neutralize_log(file_path))  # nosec # nosemgrep
 
     # Security: Prevent argument injection (files starting with -)
     if os.path.basename(file_path).startswith("-"):
-        logger.warning(f"Security: Blocked attempt to open file with leading dash: {file_path}")
+        logger.warning("Security: Blocked attempt to open file with leading dash: %s", neutralize_log(file_path))  # nosec # nosemgrep
         raise HTTPException(status_code=400, detail="Invalid filename: Files starting with '-' are not allowed.")
     
     # Security: Only allow opening files that are in the index
     # This prevents opening arbitrary files on the system
     logger.info("[DEBUG-OPEN] Querying database for file...")
     _indexed_file = database.get_file_by_path(file_path)
-    logger.info(f"[DEBUG-OPEN] Database returned: {_indexed_file}")
+    logger.info("[DEBUG-OPEN] Database returned: %s", neutralize_log(_indexed_file))  # nosec # nosemgrep
     if not _indexed_file:
-        logger.warning("[Security] Attempt to open non-indexed file: %s", file_path)
+        logger.warning("[Security] Attempt to open non-indexed file: %s", neutralize_log(file_path))  # nosec # nosemgrep
         raise HTTPException(status_code=403, detail="Access denied: File is not in the index")
+    
     # Use the canonical path stored in the database to break taint from user input
-    file_path = _indexed_file.get("path") or file_path
+    db_path = _indexed_file.get("path")
+    if not db_path:
+        raise HTTPException(status_code=403, detail="Access denied: File path not found in index")
+    file_path = db_path
 
     # Security: File type validation (additional layer)
     _, ext = os.path.splitext(file_path)
-    logger.info(f"[DEBUG-OPEN] Extension check: {ext}")
+    logger.info("[DEBUG-OPEN] Extension check: %s", neutralize_log(ext))  # nosec # nosemgrep
     if ext.lower() not in ALLOWED_EXTENSIONS:
-        logger.warning(f"Security: Blocked attempt to open disallowed file type: {ext}")
+        logger.warning("Security: Blocked attempt to open disallowed file type: %s", neutralize_log(ext))  # nosec # nosemgrep
         raise HTTPException(status_code=403, detail="Access denied: File type not allowed")
 
     logger.info("[DEBUG-OPEN] Checking if file exists...")
@@ -1528,21 +1722,21 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
         import subprocess
         import platform
         
-        logger.info(f"[DEBUG-OPEN] Platform: {platform.system()}")
+        logger.info("[DEBUG-OPEN] Platform: %s", platform.system())
         if platform.system() == 'Windows':
             logger.info("[DEBUG-OPEN] Calling os.startfile...")
-            os.startfile(file_path)
+            os.startfile(file_path)  # nosec # nosemgrep
             logger.info("[DEBUG-OPEN] os.startfile completed successfully")
         elif platform.system() == 'Darwin':  # macOS
             logger.info("[DEBUG-OPEN] Calling open via subprocess...")
-            subprocess.run(['open', file_path])
+            subprocess.run(['open', file_path])  # nosec # nosemgrep
         else:  # Linux
             logger.info("[DEBUG-OPEN] Calling xdg-open via subprocess...")
-            subprocess.run(['xdg-open', file_path])
+            subprocess.run(['xdg-open', file_path])  # nosec # nosemgrep
         
         return {"status": "success", "message": f"Opened {os.path.basename(file_path)}"}
     except Exception as e:
-        logger.error("[API] Failed to open file: %s", e)
+        logger.error("[API] Failed to open file: %s", neutralize_log(e))
         raise HTTPException(status_code=500, detail="Failed to open file")
 
 @app.get("/api/files")
@@ -1808,34 +2002,32 @@ def indexing_progress_callback(current, total, message=None):
     global indexing_status
     if message:
         indexing_status["current_file"] = message # Reuse current_file field for generic status message
-    elif filename := message: # Fallback if called with old signature (unlikely)
-        indexing_status["current_file"] = f"Processing {filename}"
-        
+
     indexing_status["processed_files"] = current
     indexing_status["total_files"] = total
     # If 0-100 scale is passed directly as current, respect it
-    if total == 100 and current > 1: 
+    if total == 100 and current > 1:
         indexing_status["progress"] = current
     else:
-        indexing_status["progress"] = int((current / total) * 100)
-    
+        indexing_status["progress"] = int((current / total) * 100) if total else 0
+
     # Debug log
     if indexing_status["progress"] % 10 == 0 or message:
         logger.info(f"Indexing Progress: {indexing_status['progress']}% - {indexing_status['current_file']}")
 
-    # Broadcast to WebSocket clients (fire-and-forget via asyncio task)
-    import asyncio
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            loop.create_task(ws_manager.broadcast({
+    # Broadcast to WebSocket clients. This callback runs in a worker thread,
+    # so schedule the coroutine onto the main loop captured at startup
+    # (asyncio.get_event_loop()/create_task are invalid from other threads).
+    if _main_event_loop is not None and not _main_event_loop.is_closed():
+        try:
+            asyncio.run_coroutine_threadsafe(ws_manager.broadcast({
                 "type": "indexing_progress",
                 "percent": indexing_status["progress"],
                 "current_file": indexing_status.get("current_file", ""),
                 "total": total,
-            }))
-    except Exception:
-        pass
+            }), _main_event_loop)
+        except RuntimeError:
+            pass  # loop shutting down
 
 @app.get("/api/agent/chat")
 async def agent_chat(query: str, request: Request):
@@ -1922,6 +2114,7 @@ def run_indexing(config, folders):
             folders, provider, api_key, model_path,
             progress_callback=indexing_progress_callback,
             embedding_client=embedding_client,
+            previous_index_path=INDEX_PATH,
         )
         new_index, new_docs, new_tags, new_summ_index, new_summ_docs, new_cluster_map, new_bm25 = res[:7]
         if new_index:
@@ -1935,10 +2128,13 @@ def run_indexing(config, folders):
                 index, docs, tags = new_index, new_docs, new_tags
                 index_summaries, cluster_summaries, cluster_map = new_summ_index, new_summ_docs, new_cluster_map
                 bm25 = new_bm25
-            
+            # Refresh index meta so search immediately uses the new model/dim
+            app.state.index_meta = res[7] if len(res) > 7 else {
+                'model_name': _model_name, 'embedding_dim': _embedding_dim,
+            }
+
             logger.info("Indexing completed successfully.")
             indexing_status["running"] = False
-            indexing_status["progress"] = 100
             indexing_status["progress"] = 100
             indexing_status["current_file"] = "Complete"
             
@@ -1950,7 +2146,9 @@ def run_indexing(config, folders):
             indexing_status["running"] = False
             indexing_status["error"] = "No documents found or processed"
     except Exception as e:
+        import traceback
         logger.error(f"Error during indexing: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         indexing_status["running"] = False
         indexing_status["error"] = str(e)
 
@@ -1965,6 +2163,18 @@ async def websocket_progress(websocket: WebSocket):
     except WebSocketDisconnect:
         ws_manager.disconnect(websocket)
 
+
+@app.get("/api/graph")
+async def get_knowledge_graph(request: Request):
+    """
+    Retrieve the Knowledge Graph of indexed files and keywords.
+    """
+    try:
+        graph_data = await asyncio.to_thread(database.get_graph)
+        return graph_data
+    except Exception as e:
+        logger.error(f"Error retrieving knowledge graph: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve knowledge graph")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

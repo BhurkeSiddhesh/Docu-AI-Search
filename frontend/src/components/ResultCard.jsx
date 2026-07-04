@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FileText, FileSpreadsheet, Presentation, FileType, ExternalLink, Eye, X } from 'lucide-react';
+import { FileText, FileSpreadsheet, Presentation, FileType, ExternalLink, Eye, X, Link2 } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from './Toast';
 import { fileExt } from '../lib/format';
@@ -116,6 +116,26 @@ export default function ResultCard({ result }) {
                                 <span key={i} className="chip text-[10px]">
                                     {tag}
                                 </span>
+                            ))}
+                        </div>
+                    )}
+
+                    {result.related_files?.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-1.5 mt-3">
+                            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                Related
+                            </span>
+                            {result.related_files.slice(0, 3).map((rf, i) => (
+                                <button
+                                    key={i}
+                                    type="button"
+                                    onClick={() => api.openFile(rf.path).catch(() => toast.error('Could not open file'))}
+                                    title={`${rf.path}\nSimilarity: ${Math.round((rf.similarity || 0) * 100)}%`}
+                                    className="chip text-[10px] inline-flex items-center gap-1 hover:text-primary hover:border-primary/40 transition"
+                                >
+                                    <Link2 className="w-3 h-3" />
+                                    <span className="max-w-[160px] truncate">{rf.filename}</span>
+                                </button>
                             ))}
                         </div>
                     )}
