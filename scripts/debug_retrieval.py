@@ -37,7 +37,8 @@ def debug_retrieval():
         index_summaries, cluster_summaries, cluster_map, bm25
     )
     
-    with open("retrieval_debug.txt", "w", encoding="utf-8") as f:
+    output_path = os.path.join(PROJECT_ROOT, "data", "retrieval_debug.txt")
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write(f"DEBUGGING RETRIEVAL FOR: {QUERY}\n\n")
         for i, res in enumerate(results[:5]):
             faiss_idx = res.get('faiss_idx')
@@ -50,7 +51,7 @@ def debug_retrieval():
             output += "-" * 20 + "\n\n"
             print(output[:500] + "...") # print summary to console
             f.write(output)
-    print("\nFull debug output written to retrieval_debug.txt")
+    print(f"\nFull debug output written to {output_path}")
 
 if __name__ == "__main__":
     database.init_database()
