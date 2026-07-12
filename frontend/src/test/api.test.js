@@ -51,6 +51,7 @@ describe('api export shape', () => {
         'listAvailableModels', 'listLocalModels', 'downloadModel', 'modelDownloadStatus', 'deleteModel',
         'getCacheStats', 'clearCache',
         'runBenchmarks', 'benchmarkStatus', 'benchmarkResults',
+        'getAuthToken', 'streamAgentChat', 'sendLog',
     ];
 
     it.each(expectedMethods)('exports method: %s', (method) => {
@@ -301,6 +302,17 @@ describe('streamAnswer', () => {
     it('throws when the response is not ok', async () => {
         global.fetch = vi.fn().mockResolvedValue({ ok: false, body: null });
         await expect(api.streamAnswer('q', 'c', () => {})).rejects.toThrow('Stream failed');
+    });
+
+    it('forwards the AbortSignal to fetch (#346)', async () => {
+        const stream = new ReadableStream({ start(controller) { controller.close(); } });
+        global.fetch = vi.fn().mockResolvedValue({ ok: true, body: stream });
+
+        const controller = new AbortController();
+        await api.streamAnswer('q', 'c', () => {}, controller.signal);
+
+        const callArgs = global.fetch.mock.calls[0];
+        expect(callArgs[1].signal).toBe(controller.signal);
     });
 
     it('calls onChunk for each streamed chunk', async () => {

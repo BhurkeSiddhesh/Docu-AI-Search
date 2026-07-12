@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Brain, Terminal, Database, CheckCircle2, AlertCircle, Bot } from 'lucide-react';
+import api from '../lib/api';
 
 function eventIcon(type) {
     switch (type) {
@@ -34,18 +35,10 @@ export default function AgentView({ query }) {
         setIsRunning(true);
 
         const controller = new AbortController();
-        const token = localStorage.getItem('api_token');
-        const headers = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
 
         (async () => {
             try {
-                const res = await fetch('/api/agent/chat', {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify({ query }),
-                    signal: controller.signal,
-                });
+                const res = await api.streamAgentChat(query, controller.signal);
                 if (!res.ok || !res.body) throw new Error('Agent stream failed');
                 const reader = res.body.getReader();
                 const decoder = new TextDecoder();

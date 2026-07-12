@@ -346,7 +346,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Register embedding settings router
 from backend.settings import router as embedding_router
-app.include_router(embedding_router)
+app.include_router(embedding_router, dependencies=[Depends(require_auth)])
 
 # Enable CORS for frontend
 _default_origins = "http://localhost:5173,http://localhost:3000,http://localhost:5175,http://localhost:5174,http://localhost:5000"
@@ -1644,6 +1644,25 @@ class LogRequest(BaseModel):
     source: Optional[str] = Field(default="Frontend", max_length=128)
     stack: Optional[str] = Field(default=None, max_length=8192)
 
+def _resolve_indexed_path(user_path: str) -> Optional[str]:
+    """Resolve a user-supplied path to its indexed canonical form.
+
+    The return value is drawn from the database enumeration (never from the
+    request), so downstream filesystem access is not user-controlled.
+    """
+    try:
+        candidate = os.path.realpath(os.path.normpath(user_path))
+    except (ValueError, OSError):
+        return None
+    for indexed in database.get_all_file_paths():
+        try:
+            if os.path.realpath(indexed) == candidate:
+                return indexed
+        except (ValueError, OSError):
+            continue
+    return None
+
+
 def _sanitize_log_field(value: str) -> str:
     if not value:
         return value
@@ -1704,29 +1723,18 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
     if not file_path:
         raise HTTPException(status_code=400, detail="File path is required")
     
-    # Normalize and resolve symlinks to prevent path traversal
-    file_path = os.path.realpath(os.path.normpath(file_path))
-    logger.info("[DEBUG-OPEN] Normalized path: %s", neutralize_log(file_path))  # nosec # nosemgrep
+    # Security: resolve against the index enumeration — the value used from
+    # here on comes from the database, never from the request.
+    resolved = _resolve_indexed_path(file_path)
+    if not resolved:
+        logger.warning("[Security] Attempt to open non-indexed file: %s", neutralize_log(file_path))  # nosec # nosemgrep
+        raise HTTPException(status_code=403, detail="Access denied: File is not in the index")
+    file_path = resolved
 
     # Security: Prevent argument injection (files starting with -)
     if os.path.basename(file_path).startswith("-"):
         logger.warning("Security: Blocked attempt to open file with leading dash: %s", neutralize_log(file_path))  # nosec # nosemgrep
         raise HTTPException(status_code=400, detail="Invalid filename: Files starting with '-' are not allowed.")
-    
-    # Security: Only allow opening files that are in the index
-    # This prevents opening arbitrary files on the system
-    logger.info("[DEBUG-OPEN] Querying database for file...")
-    _indexed_file = database.get_file_by_path(file_path)
-    logger.info("[DEBUG-OPEN] Database returned: %s", neutralize_log(_indexed_file))  # nosec # nosemgrep
-    if not _indexed_file:
-        logger.warning("[Security] Attempt to open non-indexed file: %s", neutralize_log(file_path))  # nosec # nosemgrep
-        raise HTTPException(status_code=403, detail="Access denied: File is not in the index")
-    
-    # Use the canonical path stored in the database to break taint from user input
-    db_path = _indexed_file.get("path")
-    if not db_path:
-        raise HTTPException(status_code=403, detail="Access denied: File path not found in index")
-    file_path = db_path
 
     # Security: File type validation (additional layer)
     _, ext = os.path.splitext(file_path)
@@ -1802,16 +1810,12 @@ async def preview_file(path: str, request: Request, chars: int = 2000, _auth=Dep
     if not path:
         raise HTTPException(status_code=400, detail="path is required")
 
-    # Normalize and verify the file is indexed
-    real_path = os.path.realpath(os.path.normpath(path))
-    file_info = database.get_file_by_path(real_path)
-    if not file_info:
-        raise HTTPException(status_code=403, detail="Access denied: file is not in the index")
-    # Use ONLY the canonical path stored in the database — never fall back to
-    # the user-supplied value, so tainted input can't reach the filesystem.
-    real_path = file_info.get("path")
+    # Resolve against the index enumeration — the value used from here on
+    # comes from the database, never from the request.
+    real_path = _resolve_indexed_path(path)
     if not real_path:
         raise HTTPException(status_code=403, detail="Access denied: file is not in the index")
+    file_info = database.get_file_by_path(real_path) or {}
 
     if not os.path.exists(real_path):
         raise HTTPException(status_code=404, detail="File not found")
@@ -2190,9 +2194,10 @@ def run_indexing(config, folders):
             }
 
             logger.info("Indexing completed successfully.")
-            indexing_status["running"] = False
-            indexing_status["progress"] = 100
-            indexing_status["current_file"] = "Complete"
+            with _index_lock:
+                indexing_status["running"] = False
+                indexing_status["progress"] = 100
+                indexing_status["current_file"] = "Complete"
             
             # Mark folders as successfully indexed for history
             for folder in folders:

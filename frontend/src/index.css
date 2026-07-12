@@ -224,7 +224,6 @@
     line-height: 20px;
     transition: all 150ms ease;
     cursor: pointer;
-    border: none;
   }
 
   .btn-danger:hover {

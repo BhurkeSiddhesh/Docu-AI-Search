@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 from typing import List, Dict, Any
 
@@ -9,6 +10,7 @@ logger = logging.getLogger(__name__)
 # Cache for query rewriting; capped at _CACHE_MAX entries (LRU-style eviction)
 _QUERY_REWRITE_CACHE: Dict[str, str] = {}
 _CACHE_MAX = 500
+_cache_lock = threading.Lock()
 
 def rewrite_query(query: str, provider: str, api_key: str, model_path: str = "") -> str:
     """
@@ -61,10 +63,11 @@ def rewrite_query(query: str, provider: str, api_key: str, model_path: str = "")
         logger.debug("Query rewritten to: '%s' (%.2fs)", rewritten, elapsed)
 
         # Evict oldest entry if cache is full, then store
-        if len(_QUERY_REWRITE_CACHE) >= _CACHE_MAX:
-            oldest_key = next(iter(_QUERY_REWRITE_CACHE))
-            del _QUERY_REWRITE_CACHE[oldest_key]
-        _QUERY_REWRITE_CACHE[query] = rewritten
+        with _cache_lock:
+            if len(_QUERY_REWRITE_CACHE) >= _CACHE_MAX:
+                oldest_key = next(iter(_QUERY_REWRITE_CACHE), None)
+                _QUERY_REWRITE_CACHE.pop(oldest_key, None)
+            _QUERY_REWRITE_CACHE[query] = rewritten
         return rewritten
     except Exception as e:
         logger.warning("Query rewrite failed: %s. Falling back to original query.", e)
@@ -73,6 +76,7 @@ def rewrite_query(query: str, provider: str, api_key: str, model_path: str = "")
 
 # Global instance to avoid reloading the re-ranker on every search
 _RERANKER_CACHE = {}
+_reranker_lock = threading.Lock()
 
 def rerank_results(query: str, chunks: List[Dict[str, Any]], reranker_model_name: str) -> List[Dict[str, Any]]:
     """
@@ -104,13 +108,17 @@ def rerank_results(query: str, chunks: List[Dict[str, Any]], reranker_model_name
         return chunks
 
     if reranker_model_name not in _RERANKER_CACHE:
-        logger.info("Loading Cross-Encoder: %s", reranker_model_name)
-        try:
-            # Load locally or download automatically
-            _RERANKER_CACHE[reranker_model_name] = CrossEncoder(reranker_model_name)
-        except Exception as e:
-            logger.error("Failed to load re-ranker model: %s", e)
-            return chunks
+        # Serialize construction — concurrent sentence-transformers loads trip
+        # torch's meta-tensor init (same pattern as _embedding_client_lock).
+        with _reranker_lock:
+            if reranker_model_name not in _RERANKER_CACHE:
+                logger.info("Loading Cross-Encoder: %s", reranker_model_name)
+                try:
+                    # Load locally or download automatically
+                    _RERANKER_CACHE[reranker_model_name] = CrossEncoder(reranker_model_name)
+                except Exception as e:
+                    logger.error("Failed to load re-ranker model: %s", e)
+                    return chunks
 
     reranker = _RERANKER_CACHE[reranker_model_name]
 

@@ -83,6 +83,23 @@ export const api = {
         }
     },
 
+    // Agent
+    streamAgentChat: (query, signal) => {
+        // Raw fetch (SSE-style stream) — attach the token like streamAnswer does
+        const headers = { 'Content-Type': 'application/json' };
+        const token = localStorage.getItem('api_token');
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        return fetch('/api/agent/chat', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ query }),
+            signal,
+        });
+    },
+
+    // Logs (used by lib/logger.js so the auth interceptor applies)
+    sendLog: (payload) => client.post('/logs', payload),
+
     // History
     getSearchHistory: () => client.get('/search/history'),
     deleteSearchHistory: (id) => client.delete(`/search/history/${id}`),

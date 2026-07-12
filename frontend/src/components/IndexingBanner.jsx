@@ -47,8 +47,9 @@ export default function IndexingBanner() {
 
             ws.onclose = () => {
                 if (!closed) {
-                    // Fall back to HTTP polling when WebSocket is unavailable
-                    reconnectTimer = setTimeout(() => pollOnce(), 3000);
+                    // Refresh over HTTP once, then retry the socket after a pause.
+                    pollOnce();
+                    reconnectTimer = setTimeout(connect, 3000);
                 }
             };
 
@@ -72,8 +73,6 @@ export default function IndexingBanner() {
             } catch {
                 // ignore
             }
-            // Retry WebSocket connection after a brief pause
-            if (!closed) reconnectTimer = setTimeout(connect, 3000);
         };
 
         // Fetch initial status via HTTP, then open WebSocket for live updates

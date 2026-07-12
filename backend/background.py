@@ -128,7 +128,13 @@ def start_background_indexing():
             return
 
         provider = config.get('LocalLLM', 'provider', fallback='openai')
-        api_key = config.get('APIKeys', 'openai_api_key', fallback=None)
+        _key_names = {
+            'openai': 'openai_api_key',
+            'gemini': 'gemini_api_key',
+            'anthropic': 'anthropic_api_key',
+            'grok': 'grok_api_key',
+        }
+        api_key = config.get('APIKeys', _key_names.get(provider, 'openai_api_key'), fallback=None)
         model_path = config.get('LocalLLM', 'model_path', fallback=None)
 
         event_handler = IndexingEventHandler(folders, provider, api_key, model_path, debounce_delay=2.0)

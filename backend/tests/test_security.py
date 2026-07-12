@@ -49,9 +49,9 @@ class TestSecurityApi(unittest.TestCase):
         self.assertEqual(response.status_code, 404, "Should return 404 for unsafe path")
         self.assertTrue(file_exists, "File should NOT be deleted")
 
-    @patch('backend.database.get_file_by_path')
+    @patch('backend.database.get_all_file_paths')
     @patch('os.path.exists')
-    def test_open_file_security(self, mock_exists, mock_get_file):
+    def test_open_file_security(self, mock_exists, mock_paths):
         """
         Verify that opening a non-indexed file is forbidden.
         """
@@ -61,7 +61,7 @@ class TestSecurityApi(unittest.TestCase):
         mock_exists.return_value = True
 
         # 1. Try to open a file NOT in database
-        mock_get_file.return_value = None
+        mock_paths.return_value = []
 
         response = self.client.post("/api/open-file", json={"path": self.temp_path})
 
@@ -70,7 +70,7 @@ class TestSecurityApi(unittest.TestCase):
 
         # 2. Try to open a file IN database
         # Ensure extension is allowed (the temp file has .txt suffix)
-        mock_get_file.return_value = {'path': self.temp_path}
+        mock_paths.return_value = [self.temp_path]
 
         # We need to mock os.startfile or subprocess to avoid actually opening it
         # os.startfile is Windows only, subprocess.run is for Mac/Linux

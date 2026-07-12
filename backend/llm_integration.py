@@ -37,7 +37,7 @@ _CONFIG_PATH = os.path.join(_BASE_DIR, 'config.ini')
 
 # DEFAULT model IDs — overridable via [LLM] model= in config.ini
 _DEFAULT_OPENAI_MODEL    = "gpt-4o-mini"
-_DEFAULT_GEMINI_MODEL    = "gemini-2.0-flash"
+_DEFAULT_GEMINI_MODEL    = "gemini-flash-latest"
 _DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 _DEFAULT_GROK_MODEL      = "grok-2-1212"
 
@@ -53,13 +53,23 @@ def _get_configured_llm_model() -> Optional[str]:
         return None
 
 
+# Error-message markers for failures that retrying cannot fix (bad key,
+# malformed request, over-long context). Everything else is treated as
+# transient (timeouts, connection resets, 429/5xx).
+_NON_TRANSIENT_MARKERS = (
+    "authentication", "invalid_api_key", "api key", "unauthorized",
+    "permission", "bad request", "context_length", "context length",
+)
+
+
 def _invoke_with_retry(client, messages, retries: int = 3):
-    """Invoke a LangChain client with exponential backoff retry."""
+    """Invoke a LangChain client, retrying transient failures with backoff."""
     for attempt in range(retries):
         try:
             return client.invoke(messages)
         except Exception as e:
-            if attempt == retries - 1:
+            msg = str(e).lower()
+            if attempt == retries - 1 or any(m in msg for m in _NON_TRANSIENT_MARKERS):
                 raise
             import time as _time
             _time.sleep(2 ** attempt)
@@ -645,7 +655,6 @@ def generate_ai_answer(context: str, question: str, provider: str,
 
             messages.append(HumanMessage(content=user_content))
 
-            retry_client = client.with_retry(stop_after_attempt=3)
             if stop_seqs:
                 try:
                     response = _invoke_with_retry(client.bind(stop=stop_seqs), messages)
@@ -724,12 +733,13 @@ def stream_ai_answer(context: str, question: str, provider: str,
                 user_content = f"Documents:\n{context}\n\nQuestion: {question}\n\nAnswer (cite specific details from the documents):"
 
             # Collect tokens while holding the lock, then yield outside so the
-            # lock is not held across suspension points.
+            # lock is not held across suspension points (a slow SSE consumer
+            # must not serialize every other local-LLM request).
             with _local_llm_lock:
                 # Prefer the model's own chat template: instruct models then
                 # emit a proper EOS, stopping early instead of rambling to the
                 # token cap (faster AND cleaner answers).
-                stream = None
+                chat_tokens = None
                 try:
                     stream = llm.create_chat_completion(
                         messages=[
@@ -741,26 +751,35 @@ def stream_ai_answer(context: str, question: str, provider: str,
                         repeat_penalty=1.1,
                         stream=True,
                     )
+                    chat_tokens = []
                     for output in stream:
                         delta = output['choices'][0].get('delta', {})
                         token = delta.get('content')
                         if token:
-                            yield token
-                    return
+                            chat_tokens.append(token)
                 except Exception as chat_err:
-                    logger.info(f"[LLM] Chat template unavailable ({chat_err}); falling back to raw completion.")
+                    # Only fall back when chat generation produced nothing —
+                    # otherwise the client would receive a duplicated answer.
+                    if chat_tokens:
+                        logger.warning("[LLM] Chat stream failed mid-answer: %s", chat_err)
+                    else:
+                        logger.info(f"[LLM] Chat template unavailable ({chat_err}); falling back to raw completion.")
+                        chat_tokens = None
 
-                full_prompt = f"{system_prompt}\n\n{user_content}"
-                stream = llm.create_completion(
-                    full_prompt,
-                    max_tokens=320,
-                    stop=["System:", "Question:", "Context:", "Documents:", "\n\n\n"],
-                    echo=False,
-                    temperature=0.2,
-                    repeat_penalty=1.1,
-                    stream=True,
-                )
-                tokens = [output['choices'][0]['text'] for output in stream]
+                if chat_tokens is not None:
+                    tokens = chat_tokens
+                else:
+                    full_prompt = f"{system_prompt}\n\n{user_content}"
+                    stream = llm.create_completion(
+                        full_prompt,
+                        max_tokens=320,
+                        stop=["System:", "Question:", "Context:", "Documents:", "\n\n\n"],
+                        echo=False,
+                        temperature=0.2,
+                        repeat_penalty=1.1,
+                        stream=True,
+                    )
+                    tokens = [output['choices'][0]['text'] for output in stream]
 
             for token in tokens:
                 yield token
@@ -777,12 +796,16 @@ def stream_ai_answer(context: str, question: str, provider: str,
 
             retries = 3
             for attempt in range(retries):
+                yielded_any = False
                 try:
                     for chunk in client.stream(messages):
                         yield chunk.content
+                        yielded_any = True
                     break
                 except Exception as e:
-                    if attempt == retries - 1:
+                    # Never retry once content reached the client — a fresh
+                    # stream would duplicate the partial answer already shown.
+                    if yielded_any or attempt == retries - 1:
                         raise
                     logger.warning("Stream attempt %d failed, retrying: %s", attempt + 1, e)
                     _time.sleep(2 ** attempt)

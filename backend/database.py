@@ -210,6 +210,7 @@ def init_database():
             PRIMARY KEY (source_id, target_id, relation_type)
         )
     ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_graph_edges_target ON graph_edges(target_id, relation_type)')
 
     # System prompts table (reusable personas / instructions)
     cursor.execute('''
@@ -317,6 +318,19 @@ def count_files() -> int:
     conn.close()
     return count
 
+def get_all_file_paths() -> List[str]:
+    """Return every indexed file path (used to resolve user input safely)."""
+    conn = get_connection()
+    try:
+        rows = conn.execute('SELECT path FROM files').fetchall()
+        return [r['path'] if isinstance(r, sqlite3.Row) or hasattr(r, 'keys') else r[0] for r in rows]
+    except Exception:
+        logger.exception("Error listing file paths")
+        return []
+    finally:
+        conn.close()
+
+
 def get_file_by_path(path: str) -> Optional[Dict]:
     """
     Retrieve metadata for a specific file by its path.
@@ -355,9 +369,10 @@ def get_file_by_name(filename: str) -> Optional[Dict]:
         ).fetchone()
         if row:
             return dict(row)
-        # Fallback: match by path suffix
+        # Fallback: match by path suffix (both POSIX and Windows separators)
         row = conn.execute(
-            "SELECT * FROM files WHERE path LIKE ? LIMIT 1", (f"%/{filename}",)
+            "SELECT * FROM files WHERE path LIKE ? OR path LIKE ? LIMIT 1",
+            (f"%/{filename}", f"%\\{filename}"),
         ).fetchone()
         return dict(row) if row else None
     finally:
@@ -407,7 +422,7 @@ def get_file_fingerprints() -> Dict[str, Tuple[int, float]]:
         cursor.execute('SELECT path, size, last_modified FROM files')
         return {row['path']: (row['size'], row['last_modified']) for row in cursor.fetchall()}
     except Exception as e:
-        logger.error("Error reading file fingerprints: %s", e)
+        logger.exception("Error reading file fingerprints")
         return {}
     finally:
         conn.close()
@@ -894,7 +909,7 @@ def cleanup_test_data() -> Dict[str, int]:
 # N+1 Optimization for Search Metadata
 MAX_INDICES = 499  # SQLite SQLITE_MAX_VARIABLE_NUMBER is 999; each index uses 2 params → max 499
 
-def get_files_by_faiss_indices(indices: list[int]) -> dict[int, dict]:
+def get_files_by_faiss_indices(indices: List[int]) -> Dict[int, Dict]:
     """
     Batch retrieve file metadata for multiple FAISS indices.
 
@@ -910,7 +925,7 @@ def get_files_by_faiss_indices(indices: list[int]) -> dict[int, dict]:
     if not indices:
         return {}
 
-    unique_indices = sorted(list(set(indices)))
+    unique_indices = sorted(set(indices))
     conn = get_connection()
     result = {}
 
@@ -924,9 +939,17 @@ def get_files_by_faiss_indices(indices: list[int]) -> dict[int, dict]:
                 query_parts.append("(faiss_start_idx <= ? AND faiss_end_idx >= ?)")
                 params.extend([idx, idx])
 
-            sql = f"SELECT * FROM files WHERE {' OR '.join(query_parts)}"
-            cursor = conn.execute(sql, params)
-            files = [dict(row) for row in cursor.fetchall()]
+            sql = f"SELECT * FROM files WHERE {' OR '.join(query_parts)}"  # nosec B608 — placeholders only
+            try:
+                cursor = conn.execute(sql, params)
+                files = [dict(row) for row in cursor.fetchall()]
+            except ValueError:
+                # Legacy-schema signal — the caller falls back to per-index lookups
+                raise
+            except Exception:
+                # One failed batch shouldn't discard results already collected
+                logger.exception("Error fetching a batch of faiss indices; returning partial result")
+                continue
 
             for idx in batch:
                 for file in files:
@@ -935,9 +958,6 @@ def get_files_by_faiss_indices(indices: list[int]) -> dict[int, dict]:
                         break
 
         return result
-    except Exception as e:
-        logger.exception("Error getting files by faiss indices")
-        return {}
     finally:
         conn.close()
 
@@ -951,10 +971,12 @@ def clear_graph():
     """
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM graph_nodes")
-    cursor.execute("DELETE FROM graph_edges")
-    conn.commit()
-    conn.close()
+    try:
+        cursor.execute("DELETE FROM graph_nodes")
+        cursor.execute("DELETE FROM graph_edges")
+        conn.commit()
+    finally:
+        conn.close()
 
 def add_graph_data(nodes: List[Dict], edges: List[Dict]):
     """
@@ -978,7 +1000,7 @@ def add_graph_data(nodes: List[Dict], edges: List[Dict]):
         ''', edges)
         conn.commit()
     except Exception as e:
-        logger.error("Error adding graph data to DB: %s", e)
+        logger.exception("Error adding graph data to DB")
     finally:
         conn.close()
 
@@ -991,15 +1013,15 @@ def get_graph() -> Dict:
     """
     conn = get_connection()
     cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT * FROM graph_nodes")
+        nodes = [dict(row) for row in cursor.fetchall()]
 
-    cursor.execute("SELECT * FROM graph_nodes")
-    nodes = [dict(row) for row in cursor.fetchall()]
-
-    cursor.execute("SELECT * FROM graph_edges")
-    edges = [dict(row) for row in cursor.fetchall()]
-
-    conn.close()
-    return {"nodes": nodes, "edges": edges}
+        cursor.execute("SELECT * FROM graph_edges")
+        edges = [dict(row) for row in cursor.fetchall()]
+        return {"nodes": nodes, "edges": edges}
+    finally:
+        conn.close()
 
 def get_related_files(paths: List[str], limit_per_file: int = 3) -> Dict[str, List[Dict]]:
     """
@@ -1044,7 +1066,7 @@ def get_related_files(paths: List[str], limit_per_file: int = 3) -> Dict[str, Li
                     })
         return {p: rels for p, rels in result.items() if rels}
     except Exception as e:
-        logger.error("Error getting related files: %s", e)
+        logger.exception("Error getting related files")
         return {}
     finally:
         conn.close()

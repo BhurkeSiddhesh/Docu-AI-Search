@@ -196,7 +196,7 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
                  model_path: str = None, progress_callback: callable = None,
                  embedding_client: Any = None, previous_index_path: str = None) -> Tuple:
     """
-    Creates a RAPTOR index (Global Clustering + Recursive Summarization).
+    Builds the search index: FAISS vectors + BM25 + knowledge graph.
 
     This pipeline handles:
     1. Parallel text extraction from various file types.
@@ -224,7 +224,7 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
     if isinstance(folder_paths, str):
         folder_paths = [folder_paths]
 
-    logger.info(f"Starting RAPTOR Indexing of folders: {folder_paths}")
+    logger.info(f"Starting indexing of folders: {folder_paths}")
     start_time = time.time()
 
     # 1. Collect Files — only supported types, skipping dot/junk directories so
@@ -696,7 +696,7 @@ def save_index(index_chunks: faiss.Index, all_chunks: List[Dict], tags: List[str
         with open(base_path + '_bm25.pkl', 'wb') as f:
             pickle.dump(bm25, f)
             
-    logger.info(f"RAPTOR Index saved to {filepath} (Pickle format)")
+    logger.info(f"Index saved to {filepath} (Pickle format)")
 
 def load_index(filepath: str) -> Tuple:
     """

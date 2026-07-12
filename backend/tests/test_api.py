@@ -333,12 +333,12 @@ class TestAPIFileOperations(unittest.TestCase):
             data = response.json()
             self.assertFalse(data['valid'])
 
-    @patch('backend.database.get_file_by_path')
+    @patch('backend.database.get_all_file_paths')
     @patch('os.startfile', create=True)
     @patch('subprocess.run')
-    def test_open_file(self, mock_subprocess, mock_startfile, mock_get_file):
+    def test_open_file(self, mock_subprocess, mock_startfile, mock_paths):
         """Test opening a file."""
-        mock_get_file.return_value = {'path': '/test/document.pdf'}
+        mock_paths.return_value = ['/test/document.pdf']
         mock_subprocess.return_value = MagicMock(returncode=0)
         with patch('os.path.exists', return_value=True):
             response = self.client.post("/api/open-file", json={
@@ -585,10 +585,10 @@ class TestAPISecurityFeatures(unittest.TestCase):
         """Clean up overrides."""
         app.dependency_overrides = {}
 
-    @patch('backend.database.get_file_by_path')
-    def test_open_file_security_check_non_indexed(self, mock_get_file):
+    @patch('backend.database.get_all_file_paths')
+    def test_open_file_security_check_non_indexed(self, mock_paths):
         """Test that opening non-indexed files is blocked."""
-        mock_get_file.return_value = None  # File not in index
+        mock_paths.return_value = []  # File not in index
 
         response = self.client.post("/api/open-file", json={
             "path": "/some/random/file.pdf"
@@ -597,10 +597,10 @@ class TestAPISecurityFeatures(unittest.TestCase):
         # Should be blocked for security
         self.assertEqual(response.status_code, 403)
 
-    @patch('backend.database.get_file_by_path')
-    def test_open_file_security_check_disallowed_extension(self, mock_get_file):
+    @patch('backend.database.get_all_file_paths')
+    def test_open_file_security_check_disallowed_extension(self, mock_paths):
         """Test that files with disallowed extensions are blocked."""
-        mock_get_file.return_value = {'path': '/test/malicious.exe'}
+        mock_paths.return_value = ['/test/malicious.exe']
 
         with patch('os.path.exists', return_value=True):
             response = self.client.post("/api/open-file", json={
@@ -616,10 +616,10 @@ class TestAPISecurityFeatures(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
 
-    @patch('backend.database.get_file_by_path')
-    def test_open_file_nonexistent_file(self, mock_get_file):
+    @patch('backend.database.get_all_file_paths')
+    def test_open_file_nonexistent_file(self, mock_paths):
         """Test opening a file that doesn't exist on disk."""
-        mock_get_file.return_value = {'path': '/test/missing.pdf'}
+        mock_paths.return_value = ['/test/missing.pdf']
 
         with patch('os.path.exists', return_value=False):
             response = self.client.post("/api/open-file", json={

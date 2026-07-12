@@ -81,6 +81,16 @@ class TestLLMIntegrationV2(unittest.TestCase):
 
 class TestInvokeWithRetry(unittest.TestCase):
 
+    @patch('time.sleep')
+    def test_non_transient_error_not_retried(self, mock_sleep):
+        """Auth/bad-request failures must propagate immediately without retries."""
+        mock_client = MagicMock()
+        mock_client.invoke.side_effect = Exception("401 Unauthorized: invalid_api_key")
+        with self.assertRaises(Exception):
+            _invoke_with_retry(mock_client, ["msg"], retries=3)
+        self.assertEqual(mock_client.invoke.call_count, 1)
+        mock_sleep.assert_not_called()
+
     def test_succeeds_on_first_attempt(self):
         mock_client = MagicMock()
         mock_client.invoke.return_value = "result"

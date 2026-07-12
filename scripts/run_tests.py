@@ -325,7 +325,7 @@ def main():
             try:
                 with open(config_path, 'w', encoding='utf-8', newline='') as fh:
                     fh.write(config_backup)
-                print(f"  Restored config.ini (tests may modify it via /api/config)")
+                print("  Restored config.ini (tests may modify it via /api/config)")
             except Exception as e:
                 print(f"{Colors.YELLOW}Warning: Could not restore config.ini: {e}{Colors.ENDC}")
         if os.path.exists(temp_dir):

@@ -367,7 +367,7 @@ export default function GraphView() {
                                     key={i}
                                     x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                                     stroke={similar ? '#6366f1' : '#94a3b8'}
-                                    strokeWidth={similar ? Math.max(1.5, e.weight * 3) : 1}
+                                    strokeWidth={similar ? Math.max(1.5, (e.weight ?? 0) * 3) : 1}
                                     strokeOpacity={dim ? 0.06 : similar ? 0.55 : 0.25}
                                     strokeDasharray={similar ? undefined : '2 3'}
                                 />

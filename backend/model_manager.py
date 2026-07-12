@@ -725,12 +725,24 @@ def delete_model(model_path):
         _logger.warning("Security: attempt to delete unsafe path: %s", model_path)
         return False
 
-    abs_model_path = os.path.abspath(model_path)
-    if os.path.exists(abs_model_path):
-        try:
-            os.remove(abs_model_path)
-            return True
-        except OSError as e:
-            _logger.error("Error deleting model: %s", e)
-            return False
+    # Resolve against the directory listing so the path handed to os.remove
+    # always originates from MODELS_DIR enumeration, not from the request.
+    try:
+        candidate = os.path.realpath(os.path.abspath(model_path))
+    except (ValueError, OSError):
+        return False
+    try:
+        entries = os.listdir(MODELS_DIR)
+    except OSError as e:
+        _logger.error("Error listing models directory: %s", e)
+        return False
+    for name in entries:
+        target = os.path.join(MODELS_DIR, name)
+        if os.path.realpath(target) == candidate:
+            try:
+                os.remove(target)
+                return True
+            except OSError as e:
+                _logger.error("Error deleting model: %s", e)
+                return False
     return False

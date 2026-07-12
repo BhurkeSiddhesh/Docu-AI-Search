@@ -56,13 +56,20 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
 
     const save = async () => {
         setSaving(true);
+        let configSaved = false;
         try {
             await api.saveConfig(config);
+            configSaved = true;
             await api.saveEmbeddingConfig(embeddingConfig);
             toast.success('Settings saved');
             onSaved?.();
         } catch (e) {
-            toast.error(e.response?.data?.detail || 'Could not save settings');
+            toast.error(
+                e.response?.data?.detail ||
+                (configSaved
+                    ? 'General settings saved, but embedding settings failed to save'
+                    : 'Could not save settings')
+            );
         } finally {
             setSaving(false);
         }
