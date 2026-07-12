@@ -115,7 +115,7 @@ def init_database():
                         'faiss_start_idx', 'faiss_end_idx', 'tags'}
     if not required_columns.issubset(existing_columns):
         missing = sorted(required_columns - existing_columns)
-        print(f"[DB] files table schema outdated (missing {missing}); rebuilding. "
+        logger.warning(f"[DB] files table schema outdated (missing {missing}); rebuilding. "
               f"Re-index to repopulate file metadata.")
         cursor.execute('DROP TABLE files')
         cursor.execute('''
@@ -407,7 +407,7 @@ def get_file_fingerprints() -> Dict[str, Tuple[int, float]]:
         cursor.execute('SELECT path, size, last_modified FROM files')
         return {row['path']: (row['size'], row['last_modified']) for row in cursor.fetchall()}
     except Exception as e:
-        print(f"Error reading file fingerprints: {e}")
+        logger.error("Error reading file fingerprints: %s", e)
         return {}
     finally:
         conn.close()
@@ -978,7 +978,7 @@ def add_graph_data(nodes: List[Dict], edges: List[Dict]):
         ''', edges)
         conn.commit()
     except Exception as e:
-        print(f"Error adding graph data to DB: {e}")
+        logger.error("Error adding graph data to DB: %s", e)
     finally:
         conn.close()
 
@@ -1044,7 +1044,7 @@ def get_related_files(paths: List[str], limit_per_file: int = 3) -> Dict[str, Li
                     })
         return {p: rels for p, rels in result.items() if rels}
     except Exception as e:
-        print(f"Error getting related files: {e}")
+        logger.error("Error getting related files: %s", e)
         return {}
     finally:
         conn.close()

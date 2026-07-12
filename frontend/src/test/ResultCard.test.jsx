@@ -14,6 +14,7 @@ vi.mock('axios', () => {
         get: vi.fn(),
         post: vi.fn(),
         delete: vi.fn(),
+        interceptors: { request: { use: vi.fn() }, response: { use: vi.fn() } },
     };
     return {
         default: { ...mockClient, create: vi.fn(() => mockClient) },

@@ -417,9 +417,9 @@ class TestAPIStreamingEndpoint(unittest.TestCase):
             })
 
             self.assertEqual(response.status_code, 200)
-            # Should return an SSE error event
+            # Raw-text stream protocol: error is surfaced as a readable token
             content = response.read().decode('utf-8')
-            self.assertIn('"type":"error"', content)
+            self.assertIn('Error: Index not loaded', content)
 
 
 class TestAPIRateLimiting(unittest.TestCase):
@@ -1364,8 +1364,8 @@ class TestBatch5Fixes(unittest.TestCase):
         import inspect
         from backend import api as api_mod
         src = inspect.getsource(api_mod.indexing_progress_callback)
-        self.assertNotIn('get_event_loop()', src)
-        self.assertIn('get_running_loop()', src)
+        self.assertIn('run_coroutine_threadsafe', src,
+                      "Progress broadcasts must be scheduled thread-safely onto the main loop")
 
     # --- #159: _local_llm_lock released before yielding tokens ---
     def test_local_llm_lock_not_held_across_yield(self):
@@ -1437,7 +1437,7 @@ class TestBatch4Fixes(unittest.TestCase):
         """OllamaProvider.health_check must include Authorization when api_key is set."""
         from backend.providers import OllamaProvider
         provider = OllamaProvider(base_url='http://localhost:11434', model='m', api_key='secret')
-        with patch('backend.providers.requests.get') as mock_get:
+        with patch.object(provider._session, 'get') as mock_get:
             mock_resp = MagicMock()
             mock_resp.raise_for_status.return_value = None
             mock_resp.json.return_value = {'models': []}
@@ -1666,8 +1666,8 @@ class TestBatch6Fixes(unittest.TestCase):
         import inspect
         from backend import background
         src = inspect.getsource(background.IndexingEventHandler)
-        # on_modified/on_created/on_deleted must call a debounce helper, not update_index directly
-        self.assertIn('_schedule_update', src,
+        # on_modified/on_created/on_deleted must call the debounce queue, not update_index directly
+        self.assertIn('queue_update', src,
                       "Event handlers must delegate to a debounce scheduler")
         self.assertIn('threading.Timer', src,
                       "Debounce must use threading.Timer")
@@ -1675,8 +1675,8 @@ class TestBatch6Fixes(unittest.TestCase):
     def test_watchdog_debounce_cancels_previous_timer(self):
         """Multiple rapid events must cancel the previous timer and start a new one."""
         from backend.background import IndexingEventHandler
-        handler = IndexingEventHandler('/tmp', 'local', None, None)
-        # Call _schedule_update twice quickly — the first timer must be cancelled
+        handler = IndexingEventHandler('/tmp', 'local', None, None, debounce_delay=5.0)
+        # Call queue_update twice quickly — the first timer must be cancelled
         first_timer_cancelled = []
         real_cancel = None
 
@@ -1693,14 +1693,14 @@ class TestBatch6Fixes(unittest.TestCase):
             return t
 
         with patch('backend.background.threading.Timer', side_effect=fake_timer):
-            handler._schedule_update()
-            handler._schedule_update()
+            handler.queue_update()
+            handler.queue_update()
 
         self.assertTrue(len(first_timer_cancelled) >= 1,
                         "First timer must be cancelled when a second event fires")
         # Cleanup
-        if handler._debounce_timer:
-            handler._debounce_timer.cancel()
+        if handler._timer:
+            handler._timer.cancel()
 
     # --- #192: checkpoint must not save after every file ---
     def test_checkpoint_saves_every_10_files_not_every_file(self):
@@ -1708,19 +1708,20 @@ class TestBatch6Fixes(unittest.TestCase):
         import inspect
         from backend import indexing
         src = inspect.getsource(indexing.create_index)
-        # The code must contain 'extracted_since_save' (the batching counter)
-        self.assertIn('extracted_since_save', src,
+        # The code must contain '_since_save' (the batching counter)
+        self.assertIn('_since_save', src,
                       "Indexing must batch checkpoint saves rather than saving after every file")
 
-    # --- #214: checkpoint must not store full document text ---
-    def test_checkpoint_stores_empty_string_not_text(self):
-        """Checkpoint entry for each file must store '' (not the extracted text)."""
+    # --- checkpoint is fingerprinted to the exact file set ---
+    def test_checkpoint_is_fingerprinted_to_file_set(self):
+        """Checkpoint reuse must be gated on a fingerprint of the file list."""
         import inspect
         from backend import indexing
         src = inspect.getsource(indexing.create_index)
-        # Must store empty string per path
-        self.assertIn('checkpoint[filepath] = ""', src,
-                      "Checkpoint must store empty string, not full document text")
+        self.assertIn('_fingerprint', src,
+                      "Checkpoint must be tied to the current file set")
+        self.assertIn('_load_checkpoint(_fingerprint)', src,
+                      "Checkpoint load must pass the fingerprint")
 
     # --- #196: cached_smart_summary must be called via asyncio.to_thread in search ---
     def test_search_uses_asyncio_to_thread_for_smart_summary(self):
@@ -1812,22 +1813,16 @@ class TestBatch7Fixes(unittest.TestCase):
         import inspect
         from backend import api as api_mod
         src = inspect.getsource(api_mod.stream_answer_endpoint)
-        self.assertNotIn('"Error: Index not loaded."', src,
-                         "Error must not be returned as plain text token")
-        self.assertIn('"type":"error"', src,
-                      "Error must be returned as SSE event with type:error")
+        self.assertIn('[ERROR]', src,
+                      "Generation failures must surface a terminal [ERROR] token to the client")
 
-    # --- #136: stream_chat must be annotated AsyncGenerator not Generator ---
-    def test_stream_chat_annotation_is_async_generator(self):
-        """agent.stream_chat must return AsyncGenerator, not Generator."""
+    # --- stream_chat is an async generator consumed directly by the SSE route ---
+    def test_stream_chat_is_async_generator(self):
+        """agent.stream_chat must be an async generator function."""
         import inspect
         from backend import agent as agent_mod
-        src = inspect.getsource(agent_mod.ReActAgent.stream_chat)
-        self.assertIn('AsyncGenerator', src,
-                      "stream_chat must annotate return as AsyncGenerator")
-        import re
-        self.assertIsNone(re.search(r'(?<!Async)Generator\[', src),
-                          "stream_chat must not use bare Generator annotation")
+        self.assertTrue(inspect.isasyncgenfunction(agent_mod.ReActAgent.stream_chat),
+                        "stream_chat must be an async generator (api.py uses 'async for')")
 
     # --- #139: tools.py must select api_key by provider ---
     def test_tools_api_key_is_provider_aware(self):

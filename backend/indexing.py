@@ -314,9 +314,6 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
                 percent = int((compete_count / total_files) * 20)
                 progress_callback(percent, 100, f"Extracting: {os.path.basename(filepath)}")
         # Flush any remaining entries
-        if extracted_since_save > 0:
-            _save_checkpoint(checkpoint)
-
         if _since_save:
             _save_checkpoint(checkpoint, _fingerprint)
 
@@ -626,14 +623,6 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
         'embedding_dim': _embedding_dim,
         'chunker': _CHUNKER_VERSION,
     }
-    # Atomically commit metadata: only clear old data after a successful build (#165)
-    database.clear_files()
-    if files_to_add:
-        database.add_files_batch(files_to_add)
-    database.clear_clusters()
-    if clusters_batch_data:
-        database.add_clusters_batch(clusters_batch_data)
-
     _clear_checkpoint()
     return index_chunks, all_chunks, tags, index_summaries, cluster_summaries, final_cluster_map, bm25, meta
 

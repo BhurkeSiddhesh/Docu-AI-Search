@@ -668,7 +668,7 @@ async def download_status_endpoint(request: Request):
     return get_download_status()
 
 @app.delete("/api/models/delete")
-async def delete_model(request: dict, req: Request, _=Depends(verify_local_request)):
+async def delete_model(body: dict, request: Request, _=Depends(verify_local_request)):
     """
     Delete a downloaded model file from disk.
 
@@ -1445,6 +1445,15 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
                         break
             except Exception as _stream_err:
                 logger.error("[Stream] Answer generation error: %s", _stream_err)
+                # Surface a terminal error token so the client is not left
+                # with a silently truncated answer.
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        token_queue.put("\n[ERROR] Answer generation failed. Check server logs."),
+                        loop,
+                    ).result(timeout=5)
+                except Exception:
+                    pass
             finally:
                 try:
                     asyncio.run_coroutine_threadsafe(token_queue.put(_DONE), loop).result(timeout=5)

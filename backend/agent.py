@@ -1,7 +1,7 @@
 import re
 import asyncio
 import logging
-from typing import List, Dict, Any, Generator
+from typing import List, Dict, Any, AsyncGenerator
 from backend import tools, llm_integration
 
 logger = logging.getLogger(__name__)
