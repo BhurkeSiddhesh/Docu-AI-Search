@@ -4,6 +4,469 @@ Automated daily code audit results for [BhurkeSiddhesh/Docu-AI-Search](https://g
 
 ---
 
+## Audit: 2026-07-12
+
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-07-11
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-07-10
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-07-09
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-07-08
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-07-07
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-07-06
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-07-05
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-07-04
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-07-03
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-07-02
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-07-01
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-30
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-29
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-28
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-27
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-26
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-25
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-24
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-23
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-22
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-21
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-20
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-19
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-18
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-17
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-16
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-15
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-14
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-13
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-12
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-11
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-10
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-09
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-08
+
+- Issues filed: 6
+- Categories: 2 Critical Bug, 3 Logic Enhancement, 1 Developer Experience
+- Auto-merge eligible: 2
+- Needs human review: 2
+- Status: Issues Filed
+
+### Issues Created This Run
+
+| # | Category | Title | Labels |
+|---|----------|-------|--------|
+| [#344](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/344) | Critical Bug | Hardcoded `localhost:8000` in `logger.js` breaks all non-local deployments | needs-human-review |
+| [#345](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/345) | Critical Bug | TOCTOU race in search sort-by-size/date can crash the /search endpoint | needs-human-review |
+| [#346](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/346) | Logic Enhancement | `streamAnswer()` has no AbortSignal — stream leaks when user navigates away | — |
+| [#347](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/347) | Logic Enhancement | AgentView silently discards SSE parse errors — UI hangs indefinitely | auto-merge-ok |
+| [#348](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/348) | Logic Enhancement | No retry/backoff on external HTTP calls in `providers.py` — transient failures are fatal | — |
+| [#349](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/349) | Developer Experience | Bare `except:` in `test_database.py` suppresses KeyboardInterrupt during test runs | auto-merge-ok |
+
+### Scope Covered
+- `backend/api.py`, `backend/providers.py`, `backend/llm_integration.py`, `backend/model_manager.py`
+- `backend/database.py`, `backend/agent.py`, `backend/indexing.py`, `backend/search.py`
+- `backend/tests/test_database.py`
+- `frontend/src/components/AgentView.jsx`, `SearchView.jsx`, `ModelManager.jsx`, `BenchmarkView.jsx`
+- `frontend/src/lib/api.js`, `frontend/src/lib/logger.js`
+- 0 existing open issues (clean slate — all prior issues closed)
+
+---
+
+## Audit: 2026-06-07
+
+- Issues filed: 3
+- Categories: 0 Critical Bug, 2 Logic Enhancement, 1 Developer Experience
+- Auto-merge eligible: 1
+- Needs human review: 0
+- Status: Issues Filed
+
+### Issues Created This Run
+
+| # | Category | Title | Labels |
+|---|----------|-------|--------|
+| [#326](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/326) | Logic Enhancement | `SettingsModal.jsx`: optimistic folder add/remove not rolled back on `persistFolders()` failure — UI permanently shows stale state until reload | — |
+| [#327](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/327) | Logic Enhancement | `indexing.py`: single failed embedding batch sets chunk list to `[]` and aborts entire re-index — no per-batch retry attempted | — |
+| [#328](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/328) | Developer Experience | `ErrorBoundary.jsx`: caught React component crashes only logged to console — not forwarded to backend via `logger.js` | auto-merge-ok |
+
+### Scanned & Skipped (already covered by open issues)
+
+- Bare `except:` on tensor_split parsing → covered by #145
+- Missing retry logic for LLM API calls → covered by #316
+- `api.js streamAnswer` bypasses axios client → covered by #203
+- `SearchView.jsx` silently swallows `getSystemPrompts()` failure → covered by #201
+- `AgentView.jsx` SSE parse error silently dropped → covered by #266
+- `database.py` using `print()` instead of logger → covered by #127
+- `subprocess.run` in `/api/open-file` no timeout → covered by #157
+
+---
+
+## Audit: 2026-06-06
+
+- Issues filed: 3
+- Categories: 0 Critical Bug, 2 Logic Enhancement, 1 Developer Experience
+- Auto-merge eligible: 1 (#317)
+- Needs human review: 0
+- Status: Issues Filed
+
+### Issues Created This Run
+
+| # | Category | Title | Confidence | Auto-fix |
+|---|----------|-------|------------|---------|
+| [#316](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/316) | Logic Enhancement | `generate_ai_answer()` and `stream_ai_answer()` have no retry logic — transient API failures immediately surface as user errors | MEDIUM | yes |
+| [#317](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/317) | Logic Enhancement | `SettingsModal` `loadAll()` missing per-call `.catch()` on `api.getConfig()` — single `/api/config` failure blanks entire settings panel | HIGH | yes (auto-merge-ok) |
+| [#318](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/318) | Developer Experience | LLM model names hardcoded in `get_llm_client()` and not user-configurable — `grok-beta` deprecated, `gemini-1.5-flash`/`claude-3-haiku` outdated | MEDIUM | yes |
+
+### Scope Covered
+- `backend/llm_integration.py` (generate_ai_answer, stream_ai_answer, get_llm_client — complete)
+- `backend/agent.py` (stream_chat ReAct loop)
+- `backend/database.py` (init_database, connection pool)
+- `backend/auth.py` (token validation, config reads)
+- `backend/background.py` (watchdog update_index)
+- `frontend/src/components/SettingsModal.jsx` (loadAll, Promise.all guards)
+- `frontend/src/components/ResultCard.jsx` (togglePreview, async race)
+- `frontend/src/components/AgentView.jsx` (EventSource lifecycle)
+- `frontend/src/lib/api.js` (streamAnswer, Promise.all patterns)
+- Existing open issues cross-referenced (99 issues checked for duplicates)
+
+---
+
+## Audit: 2026-06-05
+
+- Issues filed: 5
+- Categories: 2 Critical Bug, 3 Logic Enhancement, 0 Developer Experience
+- Auto-merge eligible: 3
+- Needs human review: 2
+- Status: Issues Filed
+
+### Issues Created This Run
+
+| # | Category | Labels | Title |
+|---|----------|--------|-------|
+| [#304](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/304) | Critical Bug | needs-human-review | WebSocket active_connections iterated without asyncio.Lock — concurrent disconnect causes RuntimeError mid-broadcast |
+| [#305](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/305) | Critical Bug | needs-human-review | Agent.run() LLM calls have no per-step timeout — stalled provider hangs backend thread indefinitely |
+| [#306](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/306) | Logic Enhancement | auto-merge-ok | Bare `except: pass` in BM25 loader silently swallows all exceptions including pickle corruption and MemoryError |
+| [#307](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/307) | Logic Enhancement | auto-merge-ok | indexing_status dict mutated outside _index_lock — concurrent readers observe torn progress state |
+| [#308](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/308) | Logic Enhancement | auto-merge-ok | Dockerfile runs application as root and docker-compose binds port 8000 on all interfaces |
+
+### Scope Covered
+- `backend/api.py` (indexing status race condition, bare except in tensor_split)
+- `backend/agent.py` (LLM step timeout)
+- `backend/indexing.py` (bare except in BM25 loader)
+- `backend/websocket_manager.py` (broadcast race condition)
+- `backend/llm_integration.py`, `backend/search.py`, `backend/database.py`, `backend/auth.py`
+- `frontend/src/components/*.jsx`, `frontend/src/lib/api.js`
+- `Dockerfile`, `docker-compose.yml`
+- Pre-existing open issues cross-referenced: 4 (#266, #298, #299, #300); no duplicates filed
+
+---
+
+## Audit: 2026-06-04
+
+- Issues filed: 3
+- Categories: 1 Critical Bug, 0 Logic Enhancement, 2 Developer Experience
+- Auto-merge eligible: 2
+- Needs human review: 1
+- Status: Issues Filed
+
+### Issues Created This Run
+
+| # | Category | Title | Labels |
+|---|----------|-------|--------|
+| [#298](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/298) | Critical Bug | Frontend axios client has no auth token injection — AUTH_ENABLED=true makes entire UI non-functional | needs-human-review |
+| [#299](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/299) | Developer Experience | SearchView.jsx swallows streamAnswer errors — stream failure never surfaced to user | auto-merge-ok |
+| [#300](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/300) | Developer Experience | scripts/e2e_verify.py bare except swallows KeyboardInterrupt and trigger_indexing() has unbounded while-True poll loop | auto-merge-ok |
+
+### Scope Covered
+- `backend/api.py`, `backend/agent.py`, `backend/auth.py`, `backend/background.py`
+- `backend/database.py`, `backend/file_processing.py`, `backend/indexing.py`, `backend/settings.py`
+- `frontend/src/lib/api.js`, `frontend/src/components/SearchView.jsx`
+- `frontend/src/components/LibraryView.jsx`, `frontend/src/components/AgentView.jsx`
+- `scripts/e2e_verify.py`
+- 94 existing open issues cross-referenced to avoid duplicates
+
+---
+
+## Audit: 2026-06-03
+
+- Issues filed: 3
+- Categories: 0 Critical Bug, 2 Logic Enhancement, 1 Developer Experience
+- Auto-merge eligible: 3
+- Needs human review: 0
+- Status: Issues Filed
+
+### Issues Created This Run
+
+| # | Category | Title | Auto-fix |
+|---|----------|-------|----------|
+| [#291](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/291) | Logic Enhancement | `database.cleanup_test_data()` overly broad SQL patterns — silently deletes legitimate production search history | yes |
+| [#292](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/292) | Logic Enhancement | `SystemPromptRequest` has no field-length limits — authenticated users can exhaust SQLite storage | yes |
+| [#293](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/293) | Developer Experience | `llm_integration.py` default RAG prompt hardcodes developer's personal name 'Siddhesh' — testing artifact in production | yes |
+
+### Scope Covered
+- `backend/api.py`, `backend/agent.py`, `backend/auth.py`, `backend/background.py`
+- `backend/database.py`, `backend/file_processing.py`, `backend/indexing.py`
+- `backend/llm_integration.py`, `backend/model_manager.py`, `backend/providers.py`
+- `backend/rag_optimizers.py`, `backend/search.py`, `backend/settings.py`
+- `backend/system_prompts.py`, `backend/tools.py`, `backend/websocket_manager.py`
+- `frontend/src/components/` (all 13 components), `frontend/src/lib/api.js`
+- `.github/workflows/ci.yml`, `Dockerfile`, `docker-compose.yml`
+- Existing open issues cross-referenced (86 issues checked for duplicates)
+
+---
+
+## Audit: 2026-06-02
+- Issues filed: 0
+- Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Authentication failure for GitHub CLI (gh)
+
+---
+
+## Audit: 2026-06-01
+- Issues filed: 4
+- Categories: 2 Critical Bug, 1 Logic Enhancement, 1 Developer Experience
+- New issues:
+  - [#263](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/263) [Critical Bug] BenchmarkView.jsx pollStatus stale closure — auto-refresh never fires after benchmark completes
+  - [#264](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/264) [Critical Bug] ModelManager.jsx pollStatus stale closure — model list never reloads after download completes
+  - [#265](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/265) [Logic Enhancement] SearchView, AgentView, and BenchmarkView lack per-component error boundaries — single render error crashes entire app
+  - [#266](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/266) [Developer Experience] AgentView.jsx onmessage silently drops malformed SSE JSON — parse errors never logged or surfaced to user
+- Audit scope: All Python backend files, all JS/JSX frontend files, docker-compose.yml, Dockerfile, CLAUDE.md
+- Existing open issues checked: 100 (deduplicated against all findings)
+- Status: Issues Filed
+
+---
+
+## Audit: 2026-05-31
+- Issues filed: 1
+- Categories: 1 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
+- Status: Issues Filed
+- New issue: #255 — RAPTOR cluster summarization ThreadPoolExecutor `future.result()` has no exception handling; single LLM API failure aborts entire indexing job and empties the metadata DB (`backend/indexing.py:331`)
+
+---
+
+## Audit: 2026-05-30
+- Issues filed: 3
+- Categories: 0 Critical Bug, 2 Logic Enhancement, 1 Developer Experience
+- Issues created:
+  - #245 [Logic Enhancement] model_manager.py download_status mutated without lock — torn reads between download thread and status API
+  - #246 [Logic Enhancement] /ws/progress WebSocket endpoint has no idle timeout — stale connections held open indefinitely
+  - #247 [Developer Experience] clustering.py and background.py use print() for operational logging — output invisible in production
+- Existing open issues reviewed: 80+ (checked for duplicates before filing)
+- Files scanned: backend/api.py, backend/llm_integration.py, backend/agent.py, backend/search.py, backend/indexing.py, backend/database.py, backend/model_manager.py, backend/background.py, backend/clustering.py, backend/auth.py, backend/websocket_manager.py, frontend/src/lib/api.js, frontend/src/**/*.jsx
+- Status: Issues Filed
+
+---
+
+## Audit: 2026-05-29
+- Issues filed: 3
+- Categories: 2 Critical Bug, 0 Logic Enhancement, 1 Developer Experience
+- Status: Issues Filed
+- New issues:
+  - [#235](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/235) [Critical Bug] GET /api/config returns external_api_key in plaintext while all other provider keys are masked
+  - [#236](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/236) [Developer Experience] CI security-scan job uses `|| true` — bandit/pip-audit failures never fail the build
+  - [#237](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/237) [Critical Bug] background.py reads singular `folder` key with no fallback — crashes with NoOptionError after UI saves `folders` key, silently disabling auto-indexing
+
+---
+
 ## Audit: 2026-05-28
 
 - Issues filed: 6
@@ -288,8 +751,6 @@ Automated daily code audit results for [BhurkeSiddhesh/Docu-AI-Search](https://g
 
 ---
 
----
-
 ## Audit: 2026-05-09
 - Issues filed: 0
 - Categories: 0 Critical Bug, 0 Logic Enhancement, 0 Developer Experience
@@ -312,8 +773,6 @@ Automated daily code audit results for [BhurkeSiddhesh/Docu-AI-Search](https://g
 
 ---
 
----
-
 ## Audit: 2026-05-07
 - Issues filed: 5
 - Categories: 3 Critical Bug, 1 Logic Enhancement, 1 Developer Experience
@@ -327,8 +786,6 @@ Automated daily code audit results for [BhurkeSiddhesh/Docu-AI-Search](https://g
 | [#125](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/125) | Agentic mode in /api/search yields raw Python dicts to StreamingResponse â€” malformed SSE | Critical Bug |
 | [#126](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/126) | Auto-index watchdog rebuilds entire index on every filesystem event with no debounce | Logic Enhancement |
 | [#127](https://github.com/BhurkeSiddhesh/Docu-AI-Search/issues/127) | database.py uses print() instead of logger for all error reporting | Developer Experience |
-
----
 
 ---
 
