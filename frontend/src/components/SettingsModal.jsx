@@ -71,7 +71,11 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
     const addFolder = async (path = newFolder) => {
         if (!path) return;
         try {
-            await api.validatePath(path);
+            const res = await api.validatePath(path);
+            if (res.data && res.data.valid === false) {
+                toast.error(res.data.error || 'Invalid folder path');
+                return;
+            }
             setConfig((c) => ({
                 ...c,
                 folders: [...new Set([...(c.folders || []), path])],

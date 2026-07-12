@@ -67,6 +67,17 @@ def _invoke_with_retry(client, messages, retries: int = 3):
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _digest_secret(value: str) -> str:
+    """Derive a short cache-key digest from a secret without keeping it around.
+
+    PBKDF2 (not plain SHA-256) so credential material never meets a fast hash;
+    only computed on cache misses, so the iteration cost is irrelevant.
+    """
+    return hashlib.pbkdf2_hmac(
+        'sha256', (value or '').encode(), b'docu-ai-cache-key', 100_000
+    ).hex()[:16]
 logger.debug("llm_integration module loaded")
 
 # IMPORTS FIXED: Lazy loading to prevent startup crashes
@@ -104,8 +115,7 @@ def get_embeddings(provider: str, api_key: str = None, model_path: str = None) -
     Returns:
         Any: An instance of the requested embeddings model (e.g., OpenAIEmbeddings).
     """
-    key_digest = hashlib.sha256((api_key or '').encode()).hexdigest()[:16]
-    cache_key = f"{provider}:{key_digest}"
+    cache_key = f"{provider}:{_digest_secret(api_key)}"
 
     if cache_key in _embeddings_cache:
         return _embeddings_cache[cache_key]
@@ -442,7 +452,7 @@ def get_llm_client(provider: str, api_key: str = None, model_path: str = None, b
         Any: A LangChain chat client, or a "LOCAL:path" string for local models, 
              or None if configuration is invalid.
     """
-    cache_key = f"{provider}:{api_key or ''}:{model_path or ''}"
+    cache_key = f"{provider}:{_digest_secret(api_key)}:{model_path or ''}"
     if cache_key in _llm_client_cache:
         return _llm_client_cache[cache_key]
 

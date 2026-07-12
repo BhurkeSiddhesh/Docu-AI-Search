@@ -59,13 +59,10 @@ describe('formatRelative', () => {
     let now;
 
     beforeEach(() => {
+        // Real timers: inputs are derived from `now`, and every threshold is
+        // minutes-coarse, so sub-second drift can't flip an assertion.
+        // (vi.useFakeTimers hung the afterEach hook on CI's Node 18.)
         now = Date.now();
-        vi.useFakeTimers();
-        vi.setSystemTime(now);
-    });
-
-    afterEach(() => {
-        vi.useRealTimers();
     });
 
     it('returns empty string for falsy timestamp', () => {

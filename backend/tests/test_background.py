@@ -2,7 +2,7 @@ import unittest
 import tempfile
 import os
 import configparser
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock, call, ANY
 from backend.background import start_background_indexing, IndexingEventHandler
 
 
@@ -52,12 +52,14 @@ class TestBackground(unittest.TestCase):
 
         # Verify create_index was called
         mock_create_index.assert_called_once_with(
-            "/test/folder", "openai", "test_key", None
+            "/test/folder", "openai", "test_key", None,
+            previous_index_path=ANY
         )
 
         # Verify save_index was called (path is the absolute data/index.faiss path)
         mock_save_index.assert_called_once_with(
-            mock_index, ["doc1"], ["tag1"], ANY, None, None, None, None
+            mock_index, ["doc1"], ["tag1"], ANY, None, None, None, None,
+            model_name=ANY, embedding_dim=ANY
         )
     
     @patch('backend.background.create_index')
@@ -77,7 +79,8 @@ class TestBackground(unittest.TestCase):
         
         # Verify create_index was called but save_index was not
         mock_create_index.assert_called_once_with(
-            "/test/folder", "openai", "test_key", None
+            "/test/folder", "openai", "test_key", None,
+            previous_index_path=ANY
         )
     
     def test_on_modified_triggers_update(self):
@@ -89,7 +92,7 @@ class TestBackground(unittest.TestCase):
             model_path=None
         )
         event = MagicMock()
-        with patch.object(handler, '_schedule_update') as mock_schedule:
+        with patch.object(handler, 'queue_update') as mock_schedule:
             handler.on_modified(event)
         mock_schedule.assert_called_once()
 
@@ -102,7 +105,7 @@ class TestBackground(unittest.TestCase):
             model_path=None
         )
         event = MagicMock()
-        with patch.object(handler, '_schedule_update') as mock_schedule:
+        with patch.object(handler, 'queue_update') as mock_schedule:
             handler.on_created(event)
         mock_schedule.assert_called_once()
 
@@ -115,7 +118,7 @@ class TestBackground(unittest.TestCase):
             model_path=None
         )
         event = MagicMock()
-        with patch.object(handler, '_schedule_update') as mock_schedule:
+        with patch.object(handler, 'queue_update') as mock_schedule:
             handler.on_deleted(event)
         mock_schedule.assert_called_once()
 
@@ -144,16 +147,16 @@ class TestStartBackgroundIndexingFolderParsing(unittest.TestCase):
             'folders': '/dir/a, /dir/b, /dir/c',
         })
         try:
-            with patch('backend.background._CONFIG_PATH', config_path):
+            with patch('backend.background.CONFIG_PATH', config_path):
                 start_background_indexing()
         except (KeyboardInterrupt, SystemExit):
             pass
         finally:
             os.unlink(config_path)
 
-        self.assertEqual(MockHandler.call_count, 3)
-        folders_used = [c[0][0] for c in MockHandler.call_args_list]
-        self.assertEqual(sorted(folders_used), ['/dir/a', '/dir/b', '/dir/c'])
+        # A single handler is constructed with the full folder list
+        self.assertEqual(MockHandler.call_count, 1)
+        self.assertEqual(MockHandler.call_args[0][0], ['/dir/a', '/dir/b', '/dir/c'])
 
     @patch('backend.background.Observer')
     @patch('backend.background.IndexingEventHandler')
@@ -166,7 +169,7 @@ class TestStartBackgroundIndexingFolderParsing(unittest.TestCase):
             'folder': '/legacy/dir',
         })
         try:
-            with patch('backend.background._CONFIG_PATH', config_path):
+            with patch('backend.background.CONFIG_PATH', config_path):
                 start_background_indexing()
         except (KeyboardInterrupt, SystemExit):
             pass
@@ -174,7 +177,7 @@ class TestStartBackgroundIndexingFolderParsing(unittest.TestCase):
             os.unlink(config_path)
 
         self.assertEqual(MockHandler.call_count, 1)
-        self.assertEqual(MockHandler.call_args[0][0], '/legacy/dir')
+        self.assertEqual(MockHandler.call_args[0][0], ['/legacy/dir'])
 
     @patch('backend.background.Observer')
     @patch('backend.background.IndexingEventHandler')
@@ -188,7 +191,7 @@ class TestStartBackgroundIndexingFolderParsing(unittest.TestCase):
             'folder': '/legacy/dir',
         })
         try:
-            with patch('backend.background._CONFIG_PATH', config_path):
+            with patch('backend.background.CONFIG_PATH', config_path):
                 start_background_indexing()
         except (KeyboardInterrupt, SystemExit):
             pass
@@ -196,7 +199,7 @@ class TestStartBackgroundIndexingFolderParsing(unittest.TestCase):
             os.unlink(config_path)
 
         self.assertEqual(MockHandler.call_count, 1)
-        self.assertEqual(MockHandler.call_args[0][0], '/primary/dir')
+        self.assertEqual(MockHandler.call_args[0][0], ['/primary/dir'])
 
     def test_auto_index_false_does_not_start(self):
         """auto_index=false means no handlers or observer are created."""
@@ -206,7 +209,7 @@ class TestStartBackgroundIndexingFolderParsing(unittest.TestCase):
         })
         with patch('backend.background.Observer') as MockObserver, \
              patch('backend.background.IndexingEventHandler') as MockHandler, \
-             patch('backend.background._CONFIG_PATH', config_path):
+             patch('backend.background.CONFIG_PATH', config_path):
             start_background_indexing()
         os.unlink(config_path)
 

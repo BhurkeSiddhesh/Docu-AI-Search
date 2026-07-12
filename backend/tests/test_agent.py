@@ -265,7 +265,7 @@ class TestStreamChat(unittest.TestCase):
 
         self.assertIn("error", types)
         error_events = [e for e in events if e["type"] == "error"]
-        self.assertIn("LLM Error", error_events[0]["content"])
+        self.assertIn("language model failed", error_events[0]["content"])
 
     @patch("backend.llm_integration.generate_ai_answer")
     def test_generate_raises_exception_yields_error_event(self, mock_generate):

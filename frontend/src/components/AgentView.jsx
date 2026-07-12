@@ -70,28 +70,22 @@ export default function AgentView({ query }) {
                     }
                 }
             } catch (err) {
-                console.error('Failed to parse SSE message:', err, e.data);
-                // Malformed frame — treat as a fatal stream error so the UI
-                // always reaches a terminal state rather than spinning forever.
-                src.close();
+                if (err?.name !== 'AbortError') {
+                    console.error('[AgentView] Stream error:', err);
+                    setEvents((prev) => [
+                        ...prev,
+                        { type: 'error', content: 'Connection to server lost.' },
+                    ]);
+                }
                 setIsRunning(false);
-                setEvents((prev) => [
-                    ...prev,
-                    { type: 'error', content: 'Received malformed response from server.' },
-                ]);
+            } finally {
+                // Always reach a terminal state, even if the stream ended
+                // without an explicit answer/error event.
+                setIsRunning(false);
             }
         })();
 
-        src.onerror = () => {
-            src.close();
-            setIsRunning(false);
-            setEvents((prev) => [
-                ...prev,
-                { type: 'error', content: 'Connection to server lost.' },
-            ]);
-        };
-
-        return () => src.close();
+        return () => controller.abort();
     }, [query]);
 
     useEffect(() => {

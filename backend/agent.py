@@ -229,7 +229,8 @@ class ReActAgent:
                 yield {"type": "error", "content": f"LLM step timed out after {self.step_timeout}s"}
                 return
             except Exception as e:
-                yield {"type": "error", "content": f"LLM Error: {e}"}
+                logger.exception("LLM call failed during agent step")
+                yield {"type": "error", "content": "The language model failed to respond. Check server logs for details."}
                 return
 
             logger.debug("[AGENT STEP %d] %s", step + 1, response_text[:300])
@@ -334,7 +335,8 @@ class ReActAgent:
                     else:
                         observation = tool_func(action_input)
                 except Exception as e:
-                    observation = f"Error executing tool {action}: {e}"
+                    logger.exception("Tool %s failed", action)
+                    observation = f"Error executing tool {action}. See server logs for details."
             else:
                 observation = f"Error: Tool '{action}' not found. Available: {list(tools.AVAILABLE_TOOLS.keys())}"
 

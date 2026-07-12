@@ -507,7 +507,7 @@ export default function SearchView({ pendingQuery }) {
                                     </div>
                                 )}
                             </div>
-                            {/^(Error:|\n?\[ERROR\])/.test(aiAnswer.trim()) ? (
+                            {/^(Error:|\n?\[ERROR\])/.test((aiAnswer || '').trim()) ? (
                                 <div className="text-sm text-error leading-relaxed flex items-start gap-2">
                                     <span className="mt-0.5">⚠</span>
                                     <span>{aiAnswer.replace(/^\[ERROR\]\s*/, '').replace(/^Error:\s*/, '')} — configure a model under Settings → Local Models or Cloud Providers.</span>

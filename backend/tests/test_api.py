@@ -1657,8 +1657,8 @@ class TestBatch6Fixes(unittest.TestCase):
         # The cache key must use a hash of the api_key, not f"{provider}:{api_key}"
         self.assertNotIn('f"{provider}:{api_key', src,
                          "Cache key must not include raw api_key")
-        self.assertIn('hashlib.sha256', src,
-                      "Cache key must hash the api_key with sha256")
+        self.assertIn('_digest_secret', src,
+                      "Cache key must derive a digest of the api_key (PBKDF2)")
 
     # --- #126: watchdog handler must debounce rapid filesystem events ---
     def test_watchdog_handler_has_debounce(self):

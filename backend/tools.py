@@ -1,8 +1,11 @@
+import json
+import logging
+import os
 from typing import List, Dict, Any
 from backend import search, database, llm_integration
 from backend.file_processing import extract_text
-import json
-import os
+
+logger = logging.getLogger(__name__)
 
 def tool_search_knowledge_base(query: str, global_state: dict) -> str:
     """
@@ -103,7 +106,8 @@ def tool_read_file(file_path: str) -> str:
             return "File is empty or could not be read."
         return text[:5000] # Hard limit to prevent context overflow
     except Exception as e:
-        return f"Error reading file: {str(e)}"
+        logger.exception("read_file tool failed")
+        return "Error reading file. See server logs for details."
 
 def tool_list_files(query: str = None) -> str:
     """

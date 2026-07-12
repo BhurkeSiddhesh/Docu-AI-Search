@@ -584,19 +584,20 @@ async def browse_folder(request: Request):
     """
     import tkinter as tk
     from tkinter import filedialog
-    try:
-        # Create a hidden root window
+
+    def _open_dialog():
+        # Hidden root window; runs in a worker thread so the GUI pump
+        # doesn't freeze the FastAPI event loop.
         root = tk.Tk()
         root.withdraw()
         root.attributes('-topmost', True)  # Bring dialog to front
-        
-        folder_path = filedialog.askdirectory(title="Select Folder to Index")
+        path = filedialog.askdirectory(title="Select Folder to Index")
         root.destroy()
-        
-        if folder_path:
-            return {"folder": folder_path}
-        else:
-            return {"folder": None}
+        return path or None
+
+    try:
+        folder_path = await asyncio.to_thread(_open_dialog)
+        return {"folder": folder_path}
     except Exception as e:
         logger.error("Failed to open folder dialog: %s", e)
         raise HTTPException(status_code=500, detail="Failed to open folder dialog. Check server logs.")
@@ -1664,9 +1665,9 @@ async def receive_log(log: LogRequest, request: Request, _=Depends(verify_local_
     normalized_level = log.level.lower().strip()
     if normalized_level not in _VALID_LOG_LEVELS:
         normalized_level = "info"
-    log_msg = f"[{log.source}] {log.message}"
+    log_msg = f"[{_sanitize_log_field(log.source)}] {_sanitize_log_field(log.message)}"
     if log.stack:
-        log_msg += f"\nStack: {log.stack}"
+        log_msg += f"\nStack: {_sanitize_log_field(log.stack)}"
 
     if normalized_level == 'error':
         logger.error(log_msg)

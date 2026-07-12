@@ -8,6 +8,10 @@ from watchdog.events import FileSystemEventHandler
 from backend.indexing import create_index, save_index
 
 logger = logging.getLogger(__name__)
+
+# Serializes background index rebuilds — create_index/save_index write shared
+# files and SQLite tables and are not safe to run concurrently.
+_indexing_lock = threading.Lock()
 # Absolute path configurations to match backend/api.py
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
@@ -79,6 +83,9 @@ class IndexingEventHandler(FileSystemEventHandler):
         Executes the `create_index` pipeline and persists the results to
         the absolute INDEX_PATH.
         """
+        if not _indexing_lock.acquire(blocking=False):
+            logger.info("Indexing already in progress; skipping this trigger.")
+            return
         logger.info("Change detected, updating index...")
         try:
             # previous_index_path enables incremental re-indexing: only files that
@@ -94,6 +101,8 @@ class IndexingEventHandler(FileSystemEventHandler):
                 logger.info("Index updated.")
         except Exception as e:
             logger.error("Background index update failed for %s: %s", self.folder, e, exc_info=True)
+        finally:
+            _indexing_lock.release()
 
 def start_background_indexing():
     """
