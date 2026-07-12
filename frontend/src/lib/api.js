@@ -52,12 +52,16 @@ export const api = {
         if (!res.ok || !res.body) throw new Error('Stream failed');
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            // stream: true handles multi-byte characters split across chunks
-            const chunk = decoder.decode(value, { stream: true });
-            if (chunk) onChunk(chunk);
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                // stream: true handles multi-byte characters split across chunks
+                const chunk = decoder.decode(value, { stream: true });
+                if (chunk) onChunk(chunk);
+            }
+        } finally {
+            reader.cancel();
         }
     },
 

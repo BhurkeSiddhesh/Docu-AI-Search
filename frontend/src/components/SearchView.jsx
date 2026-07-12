@@ -112,6 +112,10 @@ export default function SearchView({ pendingQuery }) {
         return () => window.removeEventListener('keydown', handler);
     }, []);
 
+    useEffect(() => {
+        return () => streamAbortRef.current?.abort();
+    }, []);
+
     const selectModel = async (provider, modelPath = '') => {
         setSelectedProvider(provider);
         setSelectedModelPath(modelPath);
