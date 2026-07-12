@@ -1,0 +1,591 @@
+# Instincts generated from https://github.com/BhurkeSiddhesh/Docu-AI-Search
+# Generated: 2026-07-12T12:18:05.339Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: Docu-AI-Search-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: fix, feat, merge, chore, refactor
+
+## Evidence
+
+- 100 commits analyzed
+- Detected conventional commit pattern
+- Examples: fix: stop exposing raw API keys in GET /api/config response (closes #54), feat: add Dockerfile and docker-compose for consistent deployment (closes #63)
+
+---
+id: Docu-AI-Search-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Commit Length
+
+## Action
+
+Write moderate-length commit messages (~72 characters)
+
+## Evidence
+
+- Average commit message length: 72 chars
+- Based on 100 commits
+
+---
+id: Docu-AI-Search-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Naming Files
+
+## Action
+
+Use snake_case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: snake_case
+
+---
+id: Docu-AI-Search-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: Docu-AI-Search-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Export Style
+
+## Action
+
+Prefer mixed exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: mixed
+
+---
+id: Docu-AI-Search-arch-type-based
+trigger: "when adding new code"
+confidence: 0.8
+domain: architecture
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Arch Type Based
+
+## Action
+
+Place code in the appropriate type folder (components/, services/, utils/, etc.)
+
+## Evidence
+
+- Type-based module organization detected
+- Folders: 
+
+---
+id: Docu-AI-Search-test-framework
+trigger: "when writing tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Test Framework
+
+## Action
+
+Use vitest as the test framework
+
+## Evidence
+
+- Test framework detected: vitest
+- File pattern: *.test.js
+
+---
+id: Docu-AI-Search-test-naming
+trigger: "when creating a test file"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Test Naming
+
+## Action
+
+Name test files using the pattern: *.test.js
+
+## Evidence
+
+- File pattern: *.test.js
+- Consistent across test files
+
+---
+id: Docu-AI-Search-test-mocking
+trigger: "when mocking dependencies in tests"
+confidence: 0.75
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Test Mocking
+
+## Action
+
+Use vi.mock for mocking
+
+## Evidence
+
+- Mocking pattern detected: vi.mock
+- Consistent across test files
+
+---
+id: Docu-AI-Search-test-types
+trigger: "when planning tests for a feature"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Test Types
+
+## Action
+
+Write unit, integration tests to match project standards
+
+## Evidence
+
+- Test types detected: unit, integration
+- Coverage config: no
+
+---
+id: Docu-AI-Search-workflow-feature-development
+trigger: "when implementing a new feature"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Workflow Feature Development
+
+## Action
+
+Follow the feature-development workflow:
+1. Add feature implementation
+2. Add tests for feature
+3. Update documentation
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~16x per month
+- Files: frontend/src/components/*, **/*.test.*, **/api/**
+
+---
+id: Docu-AI-Search-workflow-backend-api-endpoint-update
+trigger: "when doing backend api endpoint update"
+confidence: 0.8
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Workflow Backend Api Endpoint Update
+
+## Action
+
+Follow the backend-api-endpoint-update workflow:
+1. Edit backend/api.py to implement or modify endpoint logic.
+2. Optionally update related backend modules (e.g., database.py, indexing.py, auth.py) if endpoint depends on them.
+3. If response shape or logic changes, update backend/tests/test_api.py to cover new/changed behavior.
+4. If config or environment variables are involved, update .env.example and/or requirements.txt.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~6x per month
+- Files: backend/api.py, backend/database.py, backend/indexing.py
+
+---
+id: Docu-AI-Search-workflow-frontend-component-feature-or-accessibility-update
+trigger: "when doing frontend component feature or accessibility update"
+confidence: 0.65
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Workflow Frontend Component Feature Or Accessibility Update
+
+## Action
+
+Follow the frontend-component-feature-or-accessibility-update workflow:
+1. Edit one or more frontend/src/components/*.jsx files to implement the feature or fix.
+2. Update frontend/src/App.jsx if global state or routing is affected.
+3. Update or add tests in frontend/src/test/*.test.jsx to cover the new/changed behavior.
+4. If accessibility is improved, add ARIA attributes or roles as needed.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~3x per month
+- Files: frontend/src/components/*.jsx, frontend/src/App.jsx, frontend/src/test/*.test.jsx
+
+---
+id: Docu-AI-Search-workflow-frontend-test-stabilization-or-fix
+trigger: "when doing frontend test stabilization or fix"
+confidence: 0.65
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Workflow Frontend Test Stabilization Or Fix
+
+## Action
+
+Follow the frontend-test-stabilization-or-fix workflow:
+1. Edit frontend/src/test/*.test.jsx to fix timing, selectors, or assertions.
+2. Optionally update frontend/src/components/*.jsx if test failures reveal accessibility or DOM issues.
+3. Rerun tests to confirm stability.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~3x per month
+- Files: frontend/src/test/*.test.jsx, frontend/src/components/*.jsx
+
+---
+id: Docu-AI-Search-workflow-backend-exception-or-error-handler-update
+trigger: "when doing backend exception or error handler update"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Workflow Backend Exception Or Error Handler Update
+
+## Action
+
+Follow the backend-exception-or-error-handler-update workflow:
+1. Edit backend/api.py to update exception handler logic.
+2. Optionally update backend/tests/test_api.py to cover new error cases or propagation.
+3. If related to middleware compatibility, update middleware usage or configuration.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: backend/api.py, backend/tests/test_api.py
+
+---
+id: Docu-AI-Search-workflow-merge-conflict-resolution
+trigger: "when doing merge conflict resolution"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Workflow Merge Conflict Resolution
+
+## Action
+
+Follow the merge-conflict-resolution workflow:
+1. Manually resolve conflicts in files listed by git.
+2. Update affected files to integrate both branches' changes.
+3. Commit the merge with a message referencing the branches/issues involved.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: backend/api.py, frontend/src/components/*.jsx, frontend/src/test/*.test.jsx
+
+---
+id: docu-ai-search-instinct-naming-conventions
+trigger: "When creating or renaming files, functions, classes, or constants in Python code"
+confidence: 0.9
+domain: code-style
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Naming Conventions
+
+## Action
+
+Use snake_case for files, camelCase for functions, PascalCase for classes, and SCREAMING_SNAKE_CASE for constants
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions
+- Consistent naming in backend/api.py, backend/database.py
+
+---
+id: docu-ai-search-instinct-import-style
+trigger: "When importing modules in Python code"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Import Style
+
+## Action
+
+Use relative imports instead of absolute imports
+
+## Evidence
+
+- Pattern in codeStyle.importStyle
+- Observed in backend/*.py files
+
+---
+id: docu-ai-search-instinct-export-style
+trigger: "When exporting modules or functions"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Export Style
+
+## Action
+
+Use a mixed export style as appropriate for the context
+
+## Evidence
+
+- Pattern in codeStyle.exportStyle
+
+---
+id: docu-ai-search-instinct-test-file-pattern
+trigger: "When adding or updating test files for frontend code"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Test File Pattern
+
+## Action
+
+Name test files with the pattern *.test.js or *.test.jsx and place them in frontend/src/test/
+
+## Evidence
+
+- Pattern in testing.filePattern
+- Examples in frontend/src/test/*.test.jsx
+
+---
+id: docu-ai-search-instinct-test-framework
+trigger: "When writing or updating frontend tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Test Framework
+
+## Action
+
+Use the vitest framework and vi.mock for mocking
+
+## Evidence
+
+- Pattern in testing.framework and testing.mockingStyle
+- Seen in frontend/src/test/*.test.jsx
+
+---
+id: docu-ai-search-instinct-test-types
+trigger: "When designing tests for new or existing features"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Test Types
+
+## Action
+
+Include both unit and integration tests as appropriate
+
+## Evidence
+
+- Pattern in testing.testTypes
+
+---
+id: docu-ai-search-instinct-git-commit-format
+trigger: "When making a git commit"
+confidence: 0.95
+domain: git
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Git Commit Format
+
+## Action
+
+Use conventional commit prefixes (fix, feat, merge, chore, refactor, docs) and keep the message concise (~72 characters)
+
+## Evidence
+
+- Pattern in commits.prefixes and averageLength
+- Examples: 'fix: stop exposing raw API keys...', 'feat: add Dockerfile...'
+
+---
+id: docu-ai-search-instinct-backend-api-endpoint-update
+trigger: "When someone wants to add, update, or secure a backend API endpoint"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Backend Api Endpoint Update
+
+## Action
+
+Edit backend/api.py, update related backend modules if needed, update backend/tests/test_api.py if logic changes, and update .env.example/requirements.txt if config changes
+
+## Evidence
+
+- Workflow: backend-api-endpoint-update
+- Seen in commits: 'fix(api): add pagination to /api/files endpoint (closes #61)'
+
+---
+id: docu-ai-search-instinct-frontend-component-feature-update
+trigger: "When someone wants to add a new frontend feature, improve accessibility, or fix UI bugs"
+confidence: 0.92
+domain: workflow
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Frontend Component Feature Update
+
+## Action
+
+Edit frontend/src/components/*.jsx, update frontend/src/App.jsx if needed, update or add tests in frontend/src/test/*.test.jsx, and add ARIA attributes for accessibility improvements
+
+## Evidence
+
+- Workflow: frontend-component-feature-or-accessibility-update
+- Pattern in files: frontend/src/components/*.jsx, frontend/src/App.jsx
+
+---
+id: docu-ai-search-instinct-frontend-test-stabilization
+trigger: "When someone wants to fix flaky frontend tests or adapt tests to component changes"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Frontend Test Stabilization
+
+## Action
+
+Edit frontend/src/test/*.test.jsx to fix timing/selectors/assertions, optionally update frontend/src/components/*.jsx if needed, and rerun tests to confirm stability
+
+## Evidence
+
+- Workflow: frontend-test-stabilization-or-fix
+- Pattern in files: frontend/src/test/*.test.jsx
+
+---
+id: docu-ai-search-instinct-backend-error-handler-update
+trigger: "When someone wants to improve or fix backend error handling, especially after middleware or validation changes"
+confidence: 0.88
+domain: workflow
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Backend Error Handler Update
+
+## Action
+
+Edit backend/api.py to update exception handler logic, update backend/tests/test_api.py for new error cases, and update middleware usage/configuration if needed
+
+## Evidence
+
+- Workflow: backend-exception-or-error-handler-update
+- Pattern in files: backend/api.py, backend/tests/test_api.py
+
+---
+id: docu-ai-search-instinct-merge-conflict-resolution
+trigger: "When someone needs to merge feature/fix branches into main or between each other after concurrent changes"
+confidence: 0.8
+domain: workflow
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Merge Conflict Resolution
+
+## Action
+
+Manually resolve conflicts in files listed by git, update affected files to integrate changes, and commit the merge with a message referencing the branches/issues involved
+
+## Evidence
+
+- Workflow: merge-conflict-resolution
+- Seen in commits: 'merge: resolve conflicts with main for fix/issue-67'
+
