@@ -1807,8 +1807,11 @@ async def preview_file(path: str, request: Request, chars: int = 2000, _auth=Dep
     file_info = database.get_file_by_path(real_path)
     if not file_info:
         raise HTTPException(status_code=403, detail="Access denied: file is not in the index")
-    # Use the canonical path stored in the database to break taint from user input
-    real_path = file_info.get("path") or real_path
+    # Use ONLY the canonical path stored in the database — never fall back to
+    # the user-supplied value, so tainted input can't reach the filesystem.
+    real_path = file_info.get("path")
+    if not real_path:
+        raise HTTPException(status_code=403, detail="Access denied: file is not in the index")
 
     if not os.path.exists(real_path):
         raise HTTPException(status_code=404, detail="File not found")
@@ -1909,7 +1912,7 @@ async def delete_folder_history_item(request: dict, req: Request, _auth=Depends(
         raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
 @app.post("/api/validate-path")
-async def validate_path(body: dict, request: Request):
+async def validate_path(body: dict, request: Request, _=Depends(verify_local_request)):
     """
     Validate a system path and count supported file types for indexing.
 
@@ -1948,7 +1951,7 @@ async def validate_path(body: dict, request: Request):
     path = normalized
 
     # Count supported files — run in thread to avoid blocking the event loop
-    supported_extensions = {'.txt', '.pdf', '.docx', '.xlsx', '.pptx'}
+    from backend.file_processing import SUPPORTED_EXTENSIONS as supported_extensions
 
     def _count_files(folder: str) -> int:
         count = 0
