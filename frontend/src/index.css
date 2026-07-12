@@ -213,8 +213,9 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    background: #ee0000;
-    color: #ffffff;
+    background: transparent;
+    color: #ee0000;
+    border: 1px solid rgba(238, 0, 0, 0.35);
     padding: 0 16px;
     height: 40px;
     border-radius: 100px;
@@ -227,7 +228,8 @@
   }
 
   .btn-danger:hover {
-    background: #c50000;
+    background: rgba(238, 0, 0, 0.08);
+    border-color: rgba(238, 0, 0, 0.55);
   }
 
   .btn-danger:active {

@@ -12,6 +12,9 @@ export default function HistoryDrawer({ isOpen, onClose, onSelectQuery }) {
     useEffect(() => {
         if (!isOpen) return;
         load();
+        const handleKey = (e) => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', handleKey);
+        return () => window.removeEventListener('keydown', handleKey);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen]);
 
@@ -88,26 +91,24 @@ export default function HistoryDrawer({ isOpen, onClose, onSelectQuery }) {
                     ) : (
                         <ul className="space-y-1">
                             {items.map((item) => (
-                                <li key={item.id}>
+                                <li key={item.id} className="group relative">
                                     <button
                                         onClick={() => { onSelectQuery(item.query); onClose(); }}
-                                        className="group w-full text-left px-3 py-2.5 rounded-v-sm hover:bg-canvas-soft dark:hover:bg-[rgba(255,255,255,0.04)] transition flex items-start gap-2"
+                                        className="w-full text-left px-3 py-2.5 pr-10 rounded-v-sm hover:bg-canvas-soft dark:hover:bg-[rgba(255,255,255,0.04)] transition"
                                     >
-                                        <div className="flex-1 min-w-0">
-                                            <div className="font-medium text-sm text-ink dark:text-[#ededed] truncate tracking-[-0.28px]">
-                                                {item.query}
-                                            </div>
-                                            <div className="text-[11px] font-mono text-mute mt-0.5">
-                                                {formatRelative(item.timestamp)} · {item.result_count} {item.result_count === 1 ? 'result' : 'results'}
-                                            </div>
+                                        <div className="font-medium text-sm text-ink dark:text-[#ededed] truncate tracking-[-0.28px]">
+                                            {item.query}
                                         </div>
-                                        <button
-                                            onClick={(e) => remove(item.id, e)}
-                                            className="opacity-0 group-hover:opacity-100 transition p-1.5 rounded-v-sm text-mute hover:text-error hover:bg-error-soft dark:hover:bg-[rgba(238,0,0,0.1)] flex-shrink-0"
-                                            aria-label="Delete history entry"
-                                        >
-                                            <Trash2 className="w-3.5 h-3.5" />
-                                        </button>
+                                        <div className="text-[11px] font-mono text-mute mt-0.5">
+                                            {formatRelative(item.timestamp)} · {item.result_count} {item.result_count === 1 ? 'result' : 'results'}
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={(e) => remove(item.id, e)}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 focus:opacity-100 transition p-1.5 rounded-v-sm text-mute hover:text-error hover:bg-error-soft dark:hover:bg-[rgba(238,0,0,0.1)]"
+                                        aria-label="Delete history entry"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
                                     </button>
                                 </li>
                             ))}

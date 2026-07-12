@@ -51,7 +51,6 @@ export default function App() {
     };
 
     return (
-    return (
         <div className={`h-screen supports-[height:100dvh]:h-dvh overflow-hidden ${darkMode ? 'bg-[#0a0a0a]' : 'bg-[#fafafa]'}`}>
             <Sidebar
                 activeTab={activeTab}
@@ -96,10 +95,8 @@ export default function App() {
                                 key={resetKey}
                                 pendingQuery={pendingQuery}
                             />
-                        </ErrorBoundary>
-                    )}
-                    {activeTab === 'library' && (
-                        <ErrorBoundary>
+                        )}
+                        {activeTab === 'library' && (
                             <LibraryView onOpenSettings={() => setSettingsOpen(true)} />
                         )}
                         {activeTab === 'graph' && <GraphView />}

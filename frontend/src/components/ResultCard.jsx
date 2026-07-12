@@ -106,9 +106,13 @@ export default function ResultCard({ result }) {
                         </p>
                     )}
 
-                    <p className="text-xs text-mute line-clamp-3 leading-relaxed">
-                        {result.document}
-                    </p>
+                    {/* Skip the raw excerpt when the summary already IS the excerpt
+                        (short documents produce identical extractive summaries) */}
+                    {result.document && result.document.replace(/\s+/g, ' ').trim() !== (result.summary || '').replace(/\s+/g, ' ').trim() && (
+                        <p className="text-xs text-mute line-clamp-3 leading-relaxed">
+                            {result.document}
+                        </p>
+                    )}
 
                     {result.tags?.length > 0 && (
                         <div className="flex flex-wrap gap-1.5 mt-3">

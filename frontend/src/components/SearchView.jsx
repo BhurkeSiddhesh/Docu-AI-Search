@@ -196,11 +196,6 @@ export default function SearchView({ pendingQuery }) {
             setIsSearching(false);
 
             if ((res.data.results || []).length > 0) {
-                // Abort any previous stream before starting a new one
-                streamAbortRef.current?.abort();
-                const controller = new AbortController();
-                streamAbortRef.current = controller;
-
                 // Stream the AI answer
                 const controller = new AbortController();
                 streamAbortRef.current = controller;
@@ -512,9 +507,16 @@ export default function SearchView({ pendingQuery }) {
                                     </div>
                                 )}
                             </div>
-                            <div className="prose-stream text-sm text-body dark:text-[#a1a1a1] leading-relaxed whitespace-pre-wrap">
-                                {aiAnswer || (isStreaming ? 'Thinking...' : '')}
-                            </div>
+                            {/^(Error:|\n?\[ERROR\])/.test(aiAnswer.trim()) ? (
+                                <div className="text-sm text-error leading-relaxed flex items-start gap-2">
+                                    <span className="mt-0.5">⚠</span>
+                                    <span>{aiAnswer.replace(/^\[ERROR\]\s*/, '').replace(/^Error:\s*/, '')} — configure a model under Settings → Local Models or Cloud Providers.</span>
+                                </div>
+                            ) : (
+                                <div className="prose-stream text-sm text-body dark:text-[#a1a1a1] leading-relaxed whitespace-pre-wrap">
+                                    {aiAnswer || (isStreaming ? 'Thinking...' : '')}
+                                </div>
+                            )}
                         </section>
                     )}
 
