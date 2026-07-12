@@ -74,21 +74,34 @@ class TestFileProcessing(unittest.TestCase):
     
     @patch('backend.file_processing.load_workbook')
     def test_extract_text_xlsx(self, mock_workbook):
-        """Test text extraction from .xlsx files."""
-        mock_cell1 = type('Cell', (), {})()
-        mock_cell1.value = 'Cell A1'
-        mock_cell2 = type('Cell', (), {})()
-        mock_cell2.value = 'Cell B1'
-        mock_row = [mock_cell1, mock_cell2]
-        
+        """Test text extraction from .xlsx files (sheet header + ' | ' rows)."""
         mock_sheet = type('Sheet', (), {})()
-        mock_sheet.iter_rows = lambda: [mock_row]
+        mock_sheet.title = 'Sheet1'
+        mock_sheet.iter_rows = lambda values_only=False: [('Cell A1', 'Cell B1')]
         mock_workbook_instance = mock_workbook.return_value
         mock_workbook_instance.worksheets = [mock_sheet]
-        
+
         result = extract_text("test.xlsx")
-        expected = "Cell A1\nCell B1"
+        expected = "Sheet: Sheet1\nCell A1 | Cell B1"
         self.assertEqual(result, expected)
+
+    def test_extract_text_csv(self):
+        """Test text extraction from .csv files."""
+        test_file = os.path.join(self.temp_dir, "test.csv")
+        with open(test_file, 'w', encoding='utf-8', newline='') as f:
+            f.write("Name,City\nAsha,Pune\nRahul,Mumbai\n")
+
+        result = extract_text(test_file)
+        self.assertEqual(result, "Name | City\nAsha | Pune\nRahul | Mumbai")
+
+    def test_extract_text_md(self):
+        """Test text extraction from .md files."""
+        test_file = os.path.join(self.temp_dir, "test.md")
+        with open(test_file, 'w', encoding='utf-8') as f:
+            f.write("# Title\nBody text.")
+
+        result = extract_text(test_file)
+        self.assertEqual(result, "# Title\nBody text.")
     
     def test_extract_text_file_not_found(self):
         """Test extraction from non-existent file."""

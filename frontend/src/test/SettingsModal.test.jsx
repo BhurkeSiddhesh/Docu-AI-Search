@@ -23,6 +23,10 @@ vi.mock('axios', () => {
         put: vi.fn(),
         delete: vi.fn(),
         create: vi.fn(),
+        interceptors: {
+            request: { use: vi.fn() },
+            response: { use: vi.fn() },
+        },
     }
     mockAxios.create.mockReturnValue(mockAxios)
     return {
@@ -135,14 +139,19 @@ describe('SettingsModal Component', () => {
     it('removes a folder from the list', async () => {
         render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
         await waitFor(() => screen.getByText('C:/Users/test/Documents'))
-        const folderRow = screen.getByText('C:/Users/test/Documents').closest('div').parentElement
+        const folderRow = screen.getByText('C:/Users/test/Documents').closest('li')
         await act(async () => {
             fireEvent.click(folderRow.querySelector('button'))
         })
-        expect(axios.post).toHaveBeenCalledWith(
-            expect.stringContaining('config'),
-            expect.objectContaining({ folders: [] })
-        )
+        
+        fireEvent.click(screen.getByText('Save Changes'))
+        
+        await waitFor(() => {
+            expect(axios.post).toHaveBeenCalledWith(
+                expect.stringContaining('config'),
+                expect.objectContaining({ folders: [] })
+            )
+        })
     })
 
     it.skip('clears all folder history via dropdown', async () => {

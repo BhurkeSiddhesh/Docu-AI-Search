@@ -3,11 +3,13 @@ import { Menu, Search as SearchIcon } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import SearchView from './components/SearchView';
 import LibraryView from './components/LibraryView';
+import GraphView from './components/GraphView';
 import BenchmarkView from './components/BenchmarkView';
 import SettingsModal from './components/SettingsModal';
 import HistoryDrawer from './components/HistoryDrawer';
 import IndexingBanner from './components/IndexingBanner';
 import ErrorBoundary from './components/ErrorBoundary';
+import api from './lib/api';
 
 export default function App() {
     const [darkMode, setDarkMode] = useState(() => {
@@ -29,6 +31,14 @@ export default function App() {
         localStorage.setItem('docu-ai-theme', darkMode ? 'dark' : 'light');
     }, [darkMode]);
 
+    // On startup, fetch the auth token from the backend if AUTH_ENABLED and not yet stored
+    useEffect(() => {
+        if (localStorage.getItem('api_token')) return;
+        api.getAuthToken().then((r) => {
+            if (r.data?.token) localStorage.setItem('api_token', r.data.token);
+        }).catch(() => { /* auth disabled or already retrieved */ });
+    }, []);
+
     const handleSelectQuery = (q) => {
         setActiveTab('search');
         setPendingQuery({ q, k: Date.now() });
@@ -41,7 +51,7 @@ export default function App() {
     };
 
     return (
-        <div className="h-screen supports-[height:100dvh]:h-dvh overflow-hidden bg-slate-50 dark:bg-slate-950">
+        <div className={`h-screen supports-[height:100dvh]:h-dvh overflow-hidden ${darkMode ? 'bg-[#0a0a0a]' : 'bg-[#fafafa]'}`}>
             <Sidebar
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
@@ -55,17 +65,17 @@ export default function App() {
             />
 
             <div className="lg:ml-64 h-full flex flex-col">
-                {/* Top bar */}
-                <header className="lg:hidden flex items-center justify-between gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-30">
+                {/* Top bar — mobile */}
+                <header className="lg:hidden flex items-center justify-between gap-3 px-4 h-16 border-b border-hairline dark:border-[rgba(255,255,255,0.1)] bg-canvas dark:bg-[#171717] sticky top-0 z-30">
                     <button
                         onClick={() => setSidebarOpen(true)}
-                        className="p-2 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800"
+                        className="p-2 rounded-v-sm hover:bg-canvas-soft-2 dark:hover:bg-[rgba(255,255,255,0.06)]"
                         aria-label="Open menu"
                     >
-                        <Menu className="w-5 h-5" />
+                        <Menu className="w-5 h-5 text-ink dark:text-[#ededed]" />
                     </button>
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-50">
-                        <SearchIcon className="w-4 h-4 text-primary" />
+                    <div className="flex items-center gap-2 text-sm font-semibold text-ink dark:text-[#ededed]">
+                        <SearchIcon className="w-4 h-4" />
                         Docu AI
                     </div>
                     <div className="w-9" />
@@ -89,6 +99,7 @@ export default function App() {
                         {activeTab === 'library' && (
                             <LibraryView onOpenSettings={() => setSettingsOpen(true)} />
                         )}
+                        {activeTab === 'graph' && <GraphView />}
                         {activeTab === 'benchmarks' && <BenchmarkView />}
                     </ErrorBoundary>
                 </main>

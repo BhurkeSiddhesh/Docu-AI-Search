@@ -27,8 +27,34 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Generator, List, Optional
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Retry helpers
+# ---------------------------------------------------------------------------
+
+def _make_retry_session(
+    retries: int = 3,
+    backoff_factor: float = 0.5,
+    status_forcelist: tuple = (502, 503, 504),
+) -> requests.Session:
+    """Return a requests.Session with automatic retry on transient errors."""
+    session = requests.Session()
+    retry = Retry(
+        total=retries,
+        backoff_factor=backoff_factor,
+        status_forcelist=status_forcelist,
+        allowed_methods={"GET", "POST"},
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
 
 # ---------------------------------------------------------------------------
 # Abstract base
@@ -86,6 +112,7 @@ class OllamaProvider(LLMProvider):
         self.model = model
         self.api_key = api_key
         self._timeout = 120  # seconds
+        self._session = _make_retry_session()
 
     def _headers(self) -> dict:
         headers = {"Content-Type": "application/json"}
@@ -119,7 +146,7 @@ class OllamaProvider(LLMProvider):
             payload["options"]["stop"] = stop
 
         try:
-            resp = requests.post(
+            resp = self._session.post(
                 f"{self.base_url}/api/generate",
                 json=payload,
                 headers=self._headers(),
@@ -161,7 +188,7 @@ class OllamaProvider(LLMProvider):
             payload["options"]["stop"] = stop
 
         try:
-            resp = requests.post(
+            resp = self._session.post(
                 f"{self.base_url}/api/generate",
                 json=payload,
                 headers=self._headers(),
@@ -188,7 +215,7 @@ class OllamaProvider(LLMProvider):
 
     def list_models(self) -> List[Dict[str, Any]]:
         try:
-            resp = requests.get(
+            resp = self._session.get(
                 f"{self.base_url}/api/tags",
                 headers=self._headers(),
                 timeout=10,
@@ -218,7 +245,7 @@ class OllamaProvider(LLMProvider):
 
     def health_check(self) -> Dict[str, Any]:
         try:
-            resp = requests.get(f"{self.base_url}/api/tags", timeout=5)
+            resp = self._session.get(f"{self.base_url}/api/tags", headers=self._headers(), timeout=5)
             resp.raise_for_status()
             model_count = len(resp.json().get("models", []))
             return {"status": "ok", "provider": "ollama", "models_available": model_count}
@@ -256,6 +283,7 @@ class OpenAICompatibleProvider(LLMProvider):
         self._timeout = 180  # Large models may need more time
         # Auto-detect API format: if URL ends with /v1, use OpenAI format
         self._use_openai_format = self.base_url.endswith("/v1")
+        self._session = _make_retry_session()
 
     def _headers(self) -> dict:
         return {
@@ -304,7 +332,7 @@ class OpenAICompatibleProvider(LLMProvider):
             payload["system_prompt"] = system_prompt
 
         try:
-            resp = requests.post(
+            resp = self._session.post(
                 f"{self.base_url}/api/v1/chat",
                 json=payload,
                 headers=self._headers(),
@@ -339,7 +367,7 @@ class OpenAICompatibleProvider(LLMProvider):
             payload["stop"] = stop
 
         try:
-            resp = requests.post(
+            resp = self._session.post(
                 f"{self.base_url}/chat/completions",
                 json=payload,
                 headers=self._headers(),
@@ -387,7 +415,7 @@ class OpenAICompatibleProvider(LLMProvider):
             payload["system_prompt"] = system_prompt
 
         try:
-            resp = requests.post(
+            resp = self._session.post(
                 f"{self.base_url}/api/v1/chat",
                 json=payload,
                 headers=self._headers(),
@@ -426,7 +454,7 @@ class OpenAICompatibleProvider(LLMProvider):
             payload["stop"] = stop
 
         try:
-            resp = requests.post(
+            resp = self._session.post(
                 f"{self.base_url}/chat/completions",
                 json=payload,
                 headers=self._headers(),
@@ -462,7 +490,7 @@ class OpenAICompatibleProvider(LLMProvider):
             url = f"{self.base_url}/api/v1/models"
 
         try:
-            resp = requests.get(url, headers=self._headers(), timeout=10)
+            resp = self._session.get(url, headers=self._headers(), timeout=10)
             resp.raise_for_status()
             data = resp.json()
             # LM Studio native uses "models" key; OpenAI uses "data" key
@@ -500,7 +528,7 @@ class OpenAICompatibleProvider(LLMProvider):
             url = f"{self.base_url}/api/v1/models"
 
         try:
-            resp = requests.get(url, headers=self._headers(), timeout=5)
+            resp = self._session.get(url, headers=self._headers(), timeout=5)
             resp.raise_for_status()
             data = resp.json()
             models_list = data.get("data") or data.get("models", [])
@@ -556,21 +584,24 @@ def get_provider(provider_type: str, config: Optional[Dict[str, Any]] = None) ->
 
     if provider_type == PROVIDER_OLLAMA:
         url = base_url or DEFAULT_OLLAMA_URL
-        cache_key = f"ollama:{url}:{model}"
+        cache_key = f"ollama:{url}:{model}:{api_key}"
         if cache_key not in _provider_cache:
             _provider_cache[cache_key] = OllamaProvider(base_url=url, model=model, api_key=api_key)
         else:
-            # Update model if changed
             _provider_cache[cache_key].model = model
+            if "api_key" in (config or {}):
+                _provider_cache[cache_key].api_key = config["api_key"]
         return _provider_cache[cache_key]
 
     if provider_type in (PROVIDER_LMSTUDIO, PROVIDER_OPENAI_COMPAT):
         url = base_url or DEFAULT_LMSTUDIO_URL
-        cache_key = f"openai_compat:{url}:{model}"
+        cache_key = f"openai_compat:{url}:{model}:{api_key}"
         if cache_key not in _provider_cache:
             _provider_cache[cache_key] = OpenAICompatibleProvider(base_url=url, model=model, api_key=api_key)
         else:
             _provider_cache[cache_key].model = model
+            if "api_key" in (config or {}):
+                _provider_cache[cache_key].api_key = config["api_key"] or "lm-studio"
         return _provider_cache[cache_key]
 
     raise ValueError(

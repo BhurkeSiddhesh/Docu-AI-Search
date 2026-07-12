@@ -6,7 +6,7 @@ import re
 import threading
 import multiprocessing
 from backend import database
-from typing import Any, List, Dict, Optional, Tuple, Union
+from typing import Any, Iterator, List, Dict, Optional, Tuple, Union
 
 
 try:
@@ -32,18 +32,63 @@ except ImportError:
 
 _local_llm_lock = threading.Lock()
 
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_CONFIG_PATH = os.path.join(_BASE_DIR, 'config.ini')
 
-# DEBUG: Print environment info IMMEDIATELY
+# DEFAULT model IDs — overridable via [LLM] model= in config.ini
+_DEFAULT_OPENAI_MODEL    = "gpt-4o-mini"
+_DEFAULT_GEMINI_MODEL    = "gemini-flash-latest"
+_DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
+_DEFAULT_GROK_MODEL      = "grok-2-1212"
+
+
+def _get_configured_llm_model() -> Optional[str]:
+    """Read optional [LLM] model override from config.ini."""
+    try:
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg.read(_CONFIG_PATH)
+        return cfg.get('LLM', 'model', fallback=None) or None
+    except Exception:
+        return None
+
+
+# Error-message markers for failures that retrying cannot fix (bad key,
+# malformed request, over-long context). Everything else is treated as
+# transient (timeouts, connection resets, 429/5xx).
+_NON_TRANSIENT_MARKERS = (
+    "authentication", "invalid_api_key", "api key", "unauthorized",
+    "permission", "bad request", "context_length", "context length",
+)
+
+
+def _invoke_with_retry(client, messages, retries: int = 3):
+    """Invoke a LangChain client, retrying transient failures with backoff."""
+    for attempt in range(retries):
+        try:
+            return client.invoke(messages)
+        except Exception as e:
+            msg = str(e).lower()
+            if attempt == retries - 1 or any(m in msg for m in _NON_TRANSIENT_MARKERS):
+                raise
+            import time as _time
+            _time.sleep(2 ** attempt)
+
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-try:
-    logger.info(f"LLM Integration Module Loading...")
-    logger.info(f"Python Executable: {sys.executable}")
-    logger.info(f"Python Path: {sys.path}")
-    logger.info(f"CWD: {os.getcwd()}")
-except Exception as e:
-    logger.error(f"{e}")
+
+def _digest_secret(value: str) -> str:
+    """Derive a short cache-key digest from a secret without keeping it around.
+
+    PBKDF2 (not plain SHA-256) so credential material never meets a fast hash;
+    only computed on cache misses, so the iteration cost is irrelevant.
+    """
+    return hashlib.pbkdf2_hmac(
+        'sha256', (value or '').encode(), b'docu-ai-cache-key', 100_000
+    ).hex()[:16]
+logger.debug("llm_integration module loaded")
 
 # IMPORTS FIXED: Lazy loading to prevent startup crashes
 # from langchain_huggingface import HuggingFaceEmbeddings
@@ -54,6 +99,10 @@ except Exception as e:
 _embeddings_cache = {}
 _llm_cache = {}
 _llm_client_cache = {}
+# Serializes sentence-transformers model construction: two threads building
+# the same model concurrently (startup warmup + first search/index) trip
+# torch's meta-tensor initialization and fail.
+_embedding_client_lock = threading.Lock()
 
 _DEFAULT_RAG_SYSTEM_PROMPT = (
     "You are a precise document search assistant. "
@@ -76,12 +125,20 @@ def get_embeddings(provider: str, api_key: str = None, model_path: str = None) -
     Returns:
         Any: An instance of the requested embeddings model (e.g., OpenAIEmbeddings).
     """
-    cache_key = f"{provider}:{api_key or ''}"
-    
+    cache_key = f"{provider}:{_digest_secret(api_key)}"
+
     if cache_key in _embeddings_cache:
         return _embeddings_cache[cache_key]
-    
+
     logger.info(f"Loading embeddings for provider: {provider}")
+    # Serialize sentence-transformers construction (torch meta-tensor race)
+    with _embedding_client_lock:
+        if cache_key in _embeddings_cache:
+            return _embeddings_cache[cache_key]
+        return _load_embeddings_unlocked(provider, api_key, cache_key)
+
+def _load_embeddings_unlocked(provider: str, api_key: str, cache_key: str) -> Any:
+    """Constructs and caches the legacy embeddings client. Caller holds the lock."""
 
 
     if provider == 'openai' and api_key:
@@ -122,7 +179,51 @@ def get_embeddings(provider: str, api_key: str = None, model_path: str = None) -
 # Embedding Factory (Factory Pattern)
 # ---------------------------------------------------------------------------
 
-_DEFAULT_LOCAL_EMBEDDING_MODEL = "Alibaba-NLP/gte-Qwen2-1.5B-instruct"
+# Default must stay CPU-friendly: MiniLM embeds ~1000 chunks/min on a laptop CPU,
+# while larger instruct models (e.g. gte-Qwen2-1.5B) take seconds per chunk and
+# multi-GB downloads. Heavier models remain available as explicit opt-in presets.
+_DEFAULT_LOCAL_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+# Curated open-source embedding presets surfaced in Settings.
+EMBEDDING_PRESETS = [
+    {
+        "id": "fast",
+        "model_name": "sentence-transformers/all-MiniLM-L6-v2",
+        "label": "Fast (MiniLM-L6)",
+        "dim": 384,
+        "size": "~90 MB",
+        "description": "Best speed on CPU. Great default for most folders.",
+    },
+    {
+        "id": "balanced",
+        "model_name": "BAAI/bge-small-en-v1.5",
+        "label": "Balanced (BGE-small)",
+        "dim": 384,
+        "size": "~130 MB",
+        "description": "Stronger semantics than MiniLM, still fast on CPU.",
+    },
+    {
+        "id": "quality",
+        "model_name": "BAAI/bge-base-en-v1.5",
+        "label": "Quality (BGE-base)",
+        "dim": 768,
+        "size": "~440 MB",
+        "description": "Higher accuracy; ~3x slower indexing than Fast.",
+    },
+    {
+        "id": "max",
+        "model_name": "Alibaba-NLP/gte-Qwen2-1.5B-instruct",
+        "label": "Max (GTE-Qwen2 1.5B)",
+        "dim": 1536,
+        "size": "~6 GB",
+        "description": "Top retrieval quality but very slow without a GPU.",
+    },
+]
+
+# Cache embedding clients: constructing HuggingFaceEmbeddings reloads the model
+# from disk (seconds), and the search path resolves a client on every request.
+# Guarded by _embedding_client_lock (defined with the caches above).
+_embedding_client_cache = {}
 
 def get_embedding_client(provider_type: str, model_name: str = None, api_key: str = None) -> Any:
     """
@@ -150,6 +251,10 @@ def get_embedding_client(provider_type: str, model_name: str = None, api_key: st
     """
     provider_type = provider_type.strip().lower()
 
+    cache_key = (provider_type, model_name or '', api_key or '')
+    if cache_key in _embedding_client_cache:
+        return _embedding_client_cache[cache_key]
+
     # ------------------------------------------------------------------ local
     if provider_type == 'local':
         if HuggingFaceEmbeddings is None:
@@ -158,12 +263,17 @@ def get_embedding_client(provider_type: str, model_name: str = None, api_key: st
                 "Run: pip install langchain-huggingface"
             )
         resolved_model = model_name or _DEFAULT_LOCAL_EMBEDDING_MODEL
-        logger.info(f"[EmbeddingFactory] local → {resolved_model}")
-        return HuggingFaceEmbeddings(
-            model_name=resolved_model,
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={'normalize_embeddings': True},
-        )
+        with _embedding_client_lock:
+            if cache_key in _embedding_client_cache:
+                return _embedding_client_cache[cache_key]
+            logger.info(f"[EmbeddingFactory] local -> {resolved_model}")
+            client = HuggingFaceEmbeddings(
+                model_name=resolved_model,
+                model_kwargs={'device': 'cpu'},
+                encode_kwargs={'normalize_embeddings': True},
+            )
+            _embedding_client_cache[cache_key] = client
+            return client
 
     # -------------------------------------------------------- huggingface_api
     if provider_type == 'huggingface_api':
@@ -176,11 +286,13 @@ def get_embedding_client(provider_type: str, model_name: str = None, api_key: st
             raise ValueError("'huggingface_api' requires an api_key (HuggingFace token).")
         if not model_name:
             raise ValueError("'huggingface_api' requires a model_name (repo_id).")
-        logger.info(f"[EmbeddingFactory] huggingface_api → {model_name}")
-        return HuggingFaceEndpointEmbeddings(
+        logger.info(f"[EmbeddingFactory] huggingface_api -> {model_name}")
+        client = HuggingFaceEndpointEmbeddings(
             huggingfacehub_api_token=api_key,
             repo_id=model_name,
         )
+        _embedding_client_cache[cache_key] = client
+        return client
 
     # --------------------------------------------------------- commercial_api
     if provider_type == 'commercial_api':
@@ -198,8 +310,10 @@ def get_embedding_client(provider_type: str, model_name: str = None, api_key: st
                     "langchain-openai is not installed. "
                     "Run: pip install langchain-openai"
                 )
-            logger.info(f"[EmbeddingFactory] commercial_api/OpenAI → {model_name}")
-            return OpenAIEmbeddings(model=model_name, api_key=api_key)
+            logger.info(f"[EmbeddingFactory] commercial_api/OpenAI -> {model_name}")
+            client = OpenAIEmbeddings(model=model_name, api_key=api_key)
+            _embedding_client_cache[cache_key] = client
+            return client
 
         # Google Gemini: model names like 'models/embedding-001', 'gemini-…'
         if any(kw in model_lower for kw in ('gemini', 'embedding-001')):
@@ -208,11 +322,13 @@ def get_embedding_client(provider_type: str, model_name: str = None, api_key: st
                     "langchain-google-genai is not installed. "
                     "Run: pip install langchain-google-genai"
                 )
-            logger.info(f"[EmbeddingFactory] commercial_api/Gemini → {model_name}")
-            return GoogleGenerativeAIEmbeddings(
+            logger.info(f"[EmbeddingFactory] commercial_api/Gemini -> {model_name}")
+            client = GoogleGenerativeAIEmbeddings(
                 model=model_name,
                 google_api_key=api_key,
             )
+            _embedding_client_cache[cache_key] = client
+            return client
 
         raise ValueError(
             f"Unrecognised commercial model_name '{model_name}'. "
@@ -269,6 +385,17 @@ def get_local_llm(model_path: str, tensor_split: List[float] = None) -> Any:
             tensor_split=tensor_split,
             verbose=False         # Disable verbose logs for cleaner console unless debugging
         )
+        # Prompt prefix cache: consecutive calls sharing a prompt prefix
+        # (static system prompt, or a follow-up question over the same
+        # document context) restore the KV state instead of re-evaluating
+        # the whole prompt — the dominant latency cost on CPU.
+        try:
+            from llama_cpp import LlamaRAMCache
+            cache_bytes = int(os.getenv("LLAMA_CACHE_BYTES", str(512 * 1024 * 1024)))
+            llm.set_cache(LlamaRAMCache(capacity_bytes=cache_bytes))
+            logger.info(f"Prompt prefix cache enabled ({cache_bytes // (1024*1024)} MB LlamaRAMCache).")
+        except Exception as cache_err:
+            logger.info(f"Prompt prefix cache unavailable: {cache_err}")
         _llm_cache[model_path] = llm
         logger.info("Local LLM loaded!")
         return llm
@@ -288,6 +415,40 @@ def warmup_local_model(model_path: str, tensor_split: List[float] = None) -> Non
         get_local_llm(model_path, tensor_split=tensor_split)
 
 
+def _discover_local_gguf() -> Optional[str]:
+    """
+    Find a usable GGUF model in the models/ directory when none is configured.
+
+    Prefers the largest model that still runs comfortably on CPU (≤ 3 GB —
+    e.g. phi-2 / gemma-2b class); falls back to the smallest available so a
+    fresh setup with only tinyllama still works.
+
+    Returns:
+        Optional[str]: Absolute path to a .gguf file, or None if none exist.
+    """
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    models_dir = os.path.join(base_dir, 'models')
+    if not os.path.isdir(models_dir):
+        return None
+    ggufs = []
+    for name in os.listdir(models_dir):
+        if name.lower().endswith('.gguf'):
+            path = os.path.join(models_dir, name)
+            try:
+                ggufs.append((os.path.getsize(path), path))
+            except OSError:
+                continue
+    if not ggufs:
+        return None
+    ggufs.sort()
+    cpu_friendly = [g for g in ggufs if g[0] <= 3 * 1024 ** 3]
+    pool = cpu_friendly or ggufs[:1]
+    # Instruction-tuned models follow the answer format far better than base
+    # models, so prefer them even when slightly smaller.
+    instruct = [g for g in pool if re.search(r'instruct|chat|-it\b|-it[.-]', os.path.basename(g[1]), re.IGNORECASE)]
+    return (instruct or pool)[-1][1]
+
+
 def get_llm_client(provider: str, api_key: str = None, model_path: str = None, base_url: str = None) -> Any:
     """
     Returns a LangChain-compatible Chat Model or special path for local models.
@@ -301,9 +462,11 @@ def get_llm_client(provider: str, api_key: str = None, model_path: str = None, b
         Any: A LangChain chat client, or a "LOCAL:path" string for local models, 
              or None if configuration is invalid.
     """
-    cache_key = f"{provider}:{api_key or ''}:{model_path or ''}"
+    cache_key = f"{provider}:{_digest_secret(api_key)}:{model_path or ''}"
     if cache_key in _llm_client_cache:
         return _llm_client_cache[cache_key]
+
+    llm_model_override = _get_configured_llm_model()
 
     client = None
     try:
@@ -311,19 +474,19 @@ def get_llm_client(provider: str, api_key: str = None, model_path: str = None, b
             if not api_key:
                 logger.warning("OpenAI API Key missing")
                 return None
-            client = ChatOpenAI(api_key=api_key, model="gpt-4o-mini", temperature=0.3)
+            client = ChatOpenAI(api_key=api_key, model=llm_model_override or _DEFAULT_OPENAI_MODEL, temperature=0.3)
 
         elif provider == 'gemini':
             if not api_key:
                 logger.warning("Gemini API Key missing")
                 return None
-            client = ChatGoogleGenerativeAI(google_api_key=api_key, model="gemini-1.5-flash", temperature=0.3)
+            client = ChatGoogleGenerativeAI(google_api_key=api_key, model=llm_model_override or _DEFAULT_GEMINI_MODEL, temperature=0.3)
 
         elif provider == 'anthropic':
             if not api_key:
                 logger.warning("Anthropic API Key missing")
                 return None
-            client = ChatAnthropic(api_key=api_key, model="claude-3-haiku-20240307", temperature=0.3)
+            client = ChatAnthropic(api_key=api_key, model=llm_model_override or _DEFAULT_ANTHROPIC_MODEL, temperature=0.3)
 
         elif provider == 'grok':
             if not api_key:
@@ -333,7 +496,7 @@ def get_llm_client(provider: str, api_key: str = None, model_path: str = None, b
             client = ChatOpenAI(
                 api_key=api_key,
                 base_url="https://api.x.ai/v1",
-                model="grok-beta",
+                model=llm_model_override or _DEFAULT_GROK_MODEL,
                 temperature=0.3
             )
 
@@ -341,8 +504,11 @@ def get_llm_client(provider: str, api_key: str = None, model_path: str = None, b
             # For local, we don't return a LangChain object because we are using llama-cpp-python directly
             # for better control over the 'create_completion' call in generate_ai_answer currently.
             if not model_path or not os.path.exists(model_path):
-                logger.warning("Local model path missing or invalid")
-                return None
+                model_path = _discover_local_gguf()
+                if not model_path:
+                    logger.warning("Local model path missing and no GGUF found in models/")
+                    return None
+                logger.info(f"[LLM] Auto-selected local model: {os.path.basename(model_path)}")
             client = "LOCAL:" + model_path
 
         elif provider in ('ollama', 'lmstudio', 'openai_compatible'):
@@ -489,15 +655,14 @@ def generate_ai_answer(context: str, question: str, provider: str,
 
             messages.append(HumanMessage(content=user_content))
 
-            # Use bind for stop sequences if supported, otherwise just invoke
             if stop_seqs:
-                 try:
-                    response = client.bind(stop=stop_seqs).invoke(messages)
-                 except Exception:
+                try:
+                    response = _invoke_with_retry(client.bind(stop=stop_seqs), messages)
+                except Exception:
                     # Fallback if bind not supported
-                    response = client.invoke(messages)
+                    response = _invoke_with_retry(client, messages)
             else:
-                 response = client.invoke(messages)
+                response = _invoke_with_retry(client, messages)
 
             return response.content.strip()
 
@@ -508,7 +673,7 @@ def generate_ai_answer(context: str, question: str, provider: str,
 def stream_ai_answer(context: str, question: str, provider: str,
                      api_key: str = None, model_path: str = None,
                      tensor_split: List[float] = None,
-                     system_instruction: str = None, base_url: str = None) -> Any:
+                     system_instruction: str = None, base_url: str = None) -> Iterator[str]:
     """
     Generator that yields tokens for the AI answer.
 
@@ -559,38 +724,91 @@ def stream_ai_answer(context: str, question: str, provider: str,
                 yield "Error: Local model failed to load."
                 return
 
-            MAX_CONTEXT_CHARS = 10000
+            # CPU prompt evaluation is the dominant cost (~30-60 tok/s on a
+            # laptop): every 1000 chars of context adds seconds before the
+            # first token. Keep the prompt tight.
+            MAX_CONTEXT_CHARS = 4500
             if len(context) > MAX_CONTEXT_CHARS:
                 context = context[:MAX_CONTEXT_CHARS] + "... [Truncated to fit context window]"
+                user_content = f"Documents:\n{context}\n\nQuestion: {question}\n\nAnswer (cite specific details from the documents):"
 
-            full_prompt = f"{system_prompt}\n\n{user_content}"
-
+            # Collect tokens while holding the lock, then yield outside so the
+            # lock is not held across suspension points (a slow SSE consumer
+            # must not serialize every other local-LLM request).
             with _local_llm_lock:
-                stream = llm.create_completion(
-                    full_prompt,
-                    max_tokens=512,
-                    stop=["System:", "Question:", "Context:", "Documents:"],
-                    echo=False,
-                    temperature=0.2,
-                    repeat_penalty=1.1,
-                    stream=True  # ENABLE STREAMING
-                )
+                # Prefer the model's own chat template: instruct models then
+                # emit a proper EOS, stopping early instead of rambling to the
+                # token cap (faster AND cleaner answers).
+                chat_tokens = None
+                try:
+                    stream = llm.create_chat_completion(
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_content},
+                        ],
+                        max_tokens=320,
+                        temperature=0.2,
+                        repeat_penalty=1.1,
+                        stream=True,
+                    )
+                    chat_tokens = []
+                    for output in stream:
+                        delta = output['choices'][0].get('delta', {})
+                        token = delta.get('content')
+                        if token:
+                            chat_tokens.append(token)
+                except Exception as chat_err:
+                    # Only fall back when chat generation produced nothing —
+                    # otherwise the client would receive a duplicated answer.
+                    if chat_tokens:
+                        logger.warning("[LLM] Chat stream failed mid-answer: %s", chat_err)
+                    else:
+                        logger.info(f"[LLM] Chat template unavailable ({chat_err}); falling back to raw completion.")
+                        chat_tokens = None
 
-                for output in stream:
-                    token = output['choices'][0]['text']
-                    yield token
+                if chat_tokens is not None:
+                    tokens = chat_tokens
+                else:
+                    full_prompt = f"{system_prompt}\n\n{user_content}"
+                    stream = llm.create_completion(
+                        full_prompt,
+                        max_tokens=320,
+                        stop=["System:", "Question:", "Context:", "Documents:", "\n\n\n"],
+                        echo=False,
+                        temperature=0.2,
+                        repeat_penalty=1.1,
+                        stream=True,
+                    )
+                    tokens = [output['choices'][0]['text'] for output in stream]
+
+            for token in tokens:
+                yield token
 
         # Handle LangChain Clients (Cloud)
         else:
             from langchain_core.messages import HumanMessage, SystemMessage
+            import time as _time
 
             messages = []
             if system_prompt:
                 messages.append(SystemMessage(content=system_prompt))
             messages.append(HumanMessage(content=user_content))
 
-            for chunk in client.stream(messages):
-                 yield chunk.content
+            retries = 3
+            for attempt in range(retries):
+                yielded_any = False
+                try:
+                    for chunk in client.stream(messages):
+                        yield chunk.content
+                        yielded_any = True
+                    break
+                except Exception as e:
+                    # Never retry once content reached the client — a fresh
+                    # stream would duplicate the partial answer already shown.
+                    if yielded_any or attempt == retries - 1:
+                        raise
+                    logger.warning("Stream attempt %d failed, retrying: %s", attempt + 1, e)
+                    _time.sleep(2 ** attempt)
 
     except Exception as e:
         logger.error(f"Streaming error ({provider}): {e}")

@@ -1,18 +1,23 @@
 /**
  * Logger Utility Tests
+ *
+ * logger routes uploads through the shared API client (api.sendLog) so the
+ * auth interceptor and relative /api base apply — the mock mirrors that.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import axios from 'axios';
 
-vi.mock('axios');
+vi.mock('../lib/api', () => ({
+    default: { sendLog: vi.fn() },
+}));
 
 // Import after mock is set up
+import api from '../lib/api';
 import logger from '../lib/logger';
 
 beforeEach(() => {
     vi.clearAllMocks();
-    axios.post.mockResolvedValue({ status: 200 });
+    api.sendLog.mockResolvedValue({ status: 200 });
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -30,49 +35,44 @@ describe('Logger Utility', () => {
         expect(typeof logger.init).toBe('function');
     });
 
-    it('logger.info posts to the backend with level "info"', async () => {
+    it('logger.info sends level "info" through the API client', async () => {
         await logger.info('hello world');
-        expect(axios.post).toHaveBeenCalledWith(
-            expect.stringContaining('/api/logs'),
+        expect(api.sendLog).toHaveBeenCalledWith(
             expect.objectContaining({ level: 'info', message: 'hello world', source: 'Frontend' })
         );
     });
 
-    it('logger.warn posts to the backend with level "warn"', async () => {
+    it('logger.warn sends level "warn"', async () => {
         await logger.warn('something suspicious');
-        expect(axios.post).toHaveBeenCalledWith(
-            expect.any(String),
+        expect(api.sendLog).toHaveBeenCalledWith(
             expect.objectContaining({ level: 'warn', message: 'something suspicious' })
         );
     });
 
-    it('logger.error posts with level "error" and optional stack', async () => {
+    it('logger.error sends level "error" and optional stack', async () => {
         const stack = 'Error at line 42';
         await logger.error('crash', stack);
-        expect(axios.post).toHaveBeenCalledWith(
-            expect.any(String),
+        expect(api.sendLog).toHaveBeenCalledWith(
             expect.objectContaining({ level: 'error', message: 'crash', stack })
         );
     });
 
     it('logger.error works without a stack argument', async () => {
         await logger.error('no stack error');
-        expect(axios.post).toHaveBeenCalledWith(
-            expect.any(String),
+        expect(api.sendLog).toHaveBeenCalledWith(
             expect.objectContaining({ level: 'error', message: 'no stack error', stack: null })
         );
     });
 
     it('serializes non-string messages to JSON', async () => {
         await logger.log('info', { key: 'value' });
-        expect(axios.post).toHaveBeenCalledWith(
-            expect.any(String),
+        expect(api.sendLog).toHaveBeenCalledWith(
             expect.objectContaining({ message: '{"key":"value"}' })
         );
     });
 
     it('does not throw when the backend post fails', async () => {
-        axios.post.mockRejectedValueOnce(new Error('Network down'));
+        api.sendLog.mockRejectedValueOnce(new Error('Network down'));
         await expect(logger.info('safe')).resolves.not.toThrow();
     });
 

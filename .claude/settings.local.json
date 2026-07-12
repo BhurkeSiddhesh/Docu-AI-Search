@@ -13,7 +13,20 @@
       "Bash(gh pr create --repo BhurkeSiddhesh/Docu-AI-Search --base main --head fix/api-files-pagination --title 'fix\\(api\\): add pagination to /api/files endpoint' --body ' *)",
       "Bash(gh pr *)",
       "Bash(gh pr create --draft --title 'fix: stop exposing raw API keys in GET /api/config response' --body ' *)",
-      "Bash(gh api *)"
+      "Bash(gh api *)",
+      "Bash(venv/Scripts/python.exe scripts/run_tests.py --quick)",
+      "Bash(venv/Scripts/python.exe -c \"import llama_cpp; print\\(llama_cpp.__version__\\); from llama_cpp import LlamaRAMCache; print\\('LlamaRAMCache OK'\\)\")",
+      "Bash(venv/Scripts/python.exe -c \"from langchain_text_splitters import RecursiveCharacterTextSplitter; print\\('RecursiveSplitter OK'\\)\")",
+      "Bash(cp config.ini /tmp/config_backup.ini)",
+      "Bash(venv/Scripts/python.exe -m unittest backend.tests.test_indexing backend.tests.test_stream_optimization)",
+      "Bash(venv/Scripts/python.exe -m unittest backend.tests.test_incremental_indexing -v)",
+      "Bash(venv/Scripts/python.exe -c \"import backend.api, backend.indexing, backend.database, backend.llm_integration, backend.background; print\\('imports OK'\\)\")",
+      "Bash(npx vitest:*)",
+      "Bash(venv/Scripts/python.exe -)",
+      "Bash(curl -s -m 2 http://127.0.0.1:8000/api/health)",
+      "Bash(break)",
+      "Read(//tmp/**)",
+      "mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__send_later"
     ]
   }
 }

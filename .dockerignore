@@ -1,0 +1,43 @@
+# Secrets and local config (never bake into image)
+.env
+config.ini
+
+# Runtime-generated data (large, re-created at runtime)
+data/
+models/
+
+# Development artifacts
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node / frontend build artifacts
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Editor and OS metadata
+.git/
+.gitignore
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+# Virtual environments
+venv/
+venv_new/
+.venv/
+
+# Large binary artifacts
+**/*.gguf
+**/*.faiss
+**/*.pkl
+**/*.db
+

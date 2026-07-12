@@ -105,18 +105,38 @@ def init_database():
         )
     ''')
 
+    # Migration: legacy databases used different column names (size_bytes,
+    # modified_date, ...). Inserts then fail silently and the library/open-file
+    # features break, so rebuild the table when the schema doesn't match.
+    # Safe: the files table is repopulated from scratch on every re-index.
+    cursor.execute("PRAGMA table_info(files)")
+    existing_columns = {col[1] for col in cursor.fetchall()}
+    required_columns = {'path', 'filename', 'file_type', 'size', 'last_modified',
+                        'faiss_start_idx', 'faiss_end_idx', 'tags'}
+    if not required_columns.issubset(existing_columns):
+        missing = sorted(required_columns - existing_columns)
+        logger.warning(f"[DB] files table schema outdated (missing {missing}); rebuilding. "
+              f"Re-index to repopulate file metadata.")
+        cursor.execute('DROP TABLE files')
+        cursor.execute('''
+            CREATE TABLE files (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT UNIQUE NOT NULL,
+                filename TEXT NOT NULL,
+                file_type TEXT,
+                size INTEGER,
+                last_modified FLOAT,
+                faiss_start_idx INTEGER,
+                faiss_end_idx INTEGER,
+                tags TEXT
+            )
+        ''')
+
     # Indices for faster lookup
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_path ON files(path)')
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_files_faiss_start ON files(faiss_start_idx)')
 
-    # Migration: Add missing columns if they don't exist in older databases
-    cursor.execute("PRAGMA table_info(files)")
-    existing_columns = [col[1] for col in cursor.fetchall()]
-    if 'file_type' not in existing_columns:
-        cursor.execute("ALTER TABLE files ADD COLUMN file_type TEXT")
-    if 'tags' not in existing_columns:
-        cursor.execute("ALTER TABLE files ADD COLUMN tags TEXT")
-    
+
     # Search history table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS search_history (
@@ -170,6 +190,27 @@ def init_database():
             level INTEGER
         )
     ''')
+
+    # Knowledge Graph Tables
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS graph_nodes (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            label TEXT NOT NULL,
+            metadata TEXT
+        )
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS graph_edges (
+            source_id TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            weight FLOAT DEFAULT 1.0,
+            relation_type TEXT NOT NULL,
+            PRIMARY KEY (source_id, target_id, relation_type)
+        )
+    ''')
+    cursor.execute('CREATE INDEX IF NOT EXISTS idx_graph_edges_target ON graph_edges(target_id, relation_type)')
 
     # System prompts table (reusable personas / instructions)
     cursor.execute('''
@@ -277,6 +318,19 @@ def count_files() -> int:
     conn.close()
     return count
 
+def get_all_file_paths() -> List[str]:
+    """Return every indexed file path (used to resolve user input safely)."""
+    conn = get_connection()
+    try:
+        rows = conn.execute('SELECT path FROM files').fetchall()
+        return [r['path'] if isinstance(r, sqlite3.Row) or hasattr(r, 'keys') else r[0] for r in rows]
+    except Exception:
+        logger.exception("Error listing file paths")
+        return []
+    finally:
+        conn.close()
+
+
 def get_file_by_path(path: str) -> Optional[Dict]:
     """
     Retrieve metadata for a specific file by its path.
@@ -293,6 +347,36 @@ def get_file_by_path(path: str) -> Optional[Dict]:
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
+
+def get_file_by_name(filename: str) -> Optional[Dict]:
+    """
+    Retrieve metadata for a specific file by its filename (basename).
+
+    Tries an exact match on the filename column first; if not found, falls
+    back to a path suffix match for files that may lack a populated filename
+    column.
+
+    Args:
+        filename (str): The basename of the file (e.g. 'resume.pdf').
+
+    Returns:
+        Optional[Dict]: The file details if found, else None.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            'SELECT * FROM files WHERE filename = ? LIMIT 1', (filename,)
+        ).fetchone()
+        if row:
+            return dict(row)
+        # Fallback: match by path suffix (both POSIX and Windows separators)
+        row = conn.execute(
+            "SELECT * FROM files WHERE path LIKE ? OR path LIKE ? LIMIT 1",
+            (f"%/{filename}", f"%\\{filename}"),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
 
 def get_file_by_faiss_index(idx: int) -> Optional[Dict]:
     """
@@ -315,26 +399,6 @@ def get_file_by_faiss_index(idx: int) -> Optional[Dict]:
     conn.close()
     return dict(row) if row else None
 
-def get_file_by_name(filename: str) -> Optional[Dict]:
-    """
-    Return the first file record whose basename matches filename.
-    
-    Args:
-        filename (str): The name of the file to search for.
-        
-    Returns:
-        Optional[Dict]: The file metadata dictionary if found, else None.
-    """
-    conn = get_connection()
-    try:
-        row = conn.execute(
-            "SELECT * FROM files WHERE path LIKE ? LIMIT 1",
-            (f"%/{filename}",)
-        ).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
-
 def clear_files():
     """
     Delete all entries from the files table.
@@ -344,6 +408,24 @@ def clear_files():
     cursor.execute('DELETE FROM files')
     conn.commit()
     conn.close()
+
+def get_file_fingerprints() -> Dict[str, Tuple[int, float]]:
+    """
+    Return {path: (size, last_modified)} for every indexed file.
+
+    Used by incremental re-indexing to decide which files are unchanged
+    since the previous index build.
+    """
+    conn = get_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('SELECT path, size, last_modified FROM files')
+        return {row['path']: (row['size'], row['last_modified']) for row in cursor.fetchall()}
+    except Exception as e:
+        logger.exception("Error reading file fingerprints")
+        return {}
+    finally:
+        conn.close()
 
 # -----------------------------------------------------------------------------
 # Search History Operations
@@ -620,11 +702,25 @@ def cache_response(query_hash: str, context_hash: str, model_id: str, response_t
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            INSERT OR REPLACE INTO response_cache 
+            INSERT OR REPLACE INTO response_cache
             (query_hash, context_hash, model_id, response_type, response_text, hit_count, last_accessed_at)
             VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
         """, (query_hash, context_hash, model_id, response_type, response_text))
         conn.commit()
+        # Evict least-recently-accessed entries when cache exceeds 1000 rows
+        cursor.execute("SELECT COUNT(*) FROM response_cache")
+        count = cursor.fetchone()[0]
+        if count > 1000:
+            cursor.execute("""
+                DELETE FROM response_cache
+                WHERE (query_hash, context_hash, model_id, response_type) IN (
+                    SELECT query_hash, context_hash, model_id, response_type
+                    FROM response_cache
+                    ORDER BY last_accessed_at ASC
+                    LIMIT ?
+                )
+            """, (count - 1000,))
+            conn.commit()
     except Exception as e:
         logger.exception("Cache storage failed")
     finally:
@@ -811,56 +907,166 @@ def cleanup_test_data() -> Dict[str, int]:
     return counts
 
 # N+1 Optimization for Search Metadata
-MAX_INDICES = 900  # SQLite limit is usually 999 vars, keeping safe margin
+MAX_INDICES = 499  # SQLite SQLITE_MAX_VARIABLE_NUMBER is 999; each index uses 2 params → max 499
 
-def get_files_by_faiss_indices(indices: list[int]) -> dict[int, dict]:
+def get_files_by_faiss_indices(indices: List[int]) -> Dict[int, Dict]:
     """
-    Batch retrieve file metadata for multiple FAISS indices in a single query.
+    Batch retrieve file metadata for multiple FAISS indices.
 
-    Optimization to prevent N+1 query problems when fetching metadata for search results.
+    Indices are chunked into batches of MAX_INDICES to stay within SQLite's
+    bind-parameter limit (each index expands to 2 params in the WHERE clause).
 
     Args:
         indices (list[int]): List of vector indices from FAISS.
 
     Returns:
         dict[int, dict]: Mapping of faiss_idx to file metadata dictionary.
-
-    Raises:
-        ValueError: If too many indices are provided for a single SQLite query.
     """
     if not indices:
         return {}
 
-    # Deduplicate and validate
-    unique_indices = sorted(list(set(indices)))
+    unique_indices = sorted(set(indices))
+    conn = get_connection()
+    result = {}
 
-    if len(unique_indices) > MAX_INDICES:
-        raise ValueError(f"Too many indices for single query (max {MAX_INDICES}). Provided: {len(unique_indices)}")
+    try:
+        for chunk_start in range(0, len(unique_indices), MAX_INDICES):
+            batch = unique_indices[chunk_start:chunk_start + MAX_INDICES]
+
+            query_parts = []
+            params = []
+            for idx in batch:
+                query_parts.append("(faiss_start_idx <= ? AND faiss_end_idx >= ?)")
+                params.extend([idx, idx])
+
+            sql = f"SELECT * FROM files WHERE {' OR '.join(query_parts)}"  # nosec B608 — placeholders only
+            try:
+                cursor = conn.execute(sql, params)
+                files = [dict(row) for row in cursor.fetchall()]
+            except ValueError:
+                # Legacy-schema signal — the caller falls back to per-index lookups
+                raise
+            except Exception:
+                # One failed batch shouldn't discard results already collected
+                logger.exception("Error fetching a batch of faiss indices; returning partial result")
+                continue
+
+            for idx in batch:
+                for file in files:
+                    if file['faiss_start_idx'] <= idx <= file['faiss_end_idx']:
+                        result[idx] = file
+                        break
+
+        return result
+    finally:
+        conn.close()
+
+# -----------------------------------------------------------------------------
+# Knowledge Graph Operations
+# -----------------------------------------------------------------------------
+
+def clear_graph():
+    """
+    Delete all nodes and edges from the Knowledge Graph.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM graph_nodes")
+        cursor.execute("DELETE FROM graph_edges")
+        conn.commit()
+    finally:
+        conn.close()
+
+def add_graph_data(nodes: List[Dict], edges: List[Dict]):
+    """
+    Insert nodes and edges into the Knowledge Graph database.
+
+    Args:
+        nodes (List[Dict]): Each node dict has 'id', 'type', 'label', 'metadata'.
+        edges (List[Dict]): Each edge dict has 'source_id', 'target_id', 'weight', 'relation_type'.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.executemany('''
+            INSERT OR REPLACE INTO graph_nodes (id, type, label, metadata)
+            VALUES (:id, :type, :label, :metadata)
+        ''', nodes)
+
+        cursor.executemany('''
+            INSERT OR REPLACE INTO graph_edges (source_id, target_id, weight, relation_type)
+            VALUES (:source_id, :target_id, :weight, :relation_type)
+        ''', edges)
+        conn.commit()
+    except Exception as e:
+        logger.exception("Error adding graph data to DB")
+    finally:
+        conn.close()
+
+def get_graph() -> Dict:
+    """
+    Retrieve the entire knowledge graph (nodes and edges).
+
+    Returns:
+        Dict: {'nodes': [...], 'edges': [...]}
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT * FROM graph_nodes")
+        nodes = [dict(row) for row in cursor.fetchall()]
+
+        cursor.execute("SELECT * FROM graph_edges")
+        edges = [dict(row) for row in cursor.fetchall()]
+        return {"nodes": nodes, "edges": edges}
+    finally:
+        conn.close()
+
+def get_related_files(paths: List[str], limit_per_file: int = 3) -> Dict[str, List[Dict]]:
+    """
+    For each document path, return its most similar documents from the
+    knowledge graph ('similar_to' edges), ordered by similarity.
+
+    Args:
+        paths (List[str]): Document paths to look up (search result files).
+        limit_per_file (int): Max neighbours returned per document.
+
+    Returns:
+        Dict[str, List[Dict]]: {path: [{'path', 'filename', 'similarity'}, ...]}
+        Paths without neighbours are omitted.
+    """
+    if not paths:
+        return {}
+    unique_paths = list(dict.fromkeys(p for p in paths if p))[:100]
+    if not unique_paths:
+        return {}
+    placeholders = ",".join("?" for _ in unique_paths)
 
     conn = get_connection()
     try:
-        # Build query: SELECT * FROM files WHERE (faiss_start_idx <= ? AND faiss_end_idx >= ?) OR ...
-        query_parts = []
-        params = []
-        for idx in unique_indices:
-            query_parts.append("(faiss_start_idx <= ? AND faiss_end_idx >= ?)")
-            params.extend([idx, idx])
+        cursor = conn.cursor()
+        cursor.execute(f'''
+            SELECT source_id, target_id, weight FROM graph_edges
+            WHERE relation_type = 'similar_to'
+              AND (source_id IN ({placeholders}) OR target_id IN ({placeholders}))
+            ORDER BY weight DESC
+        ''', unique_paths + unique_paths)
 
-        sql = f"SELECT * FROM files WHERE {' OR '.join(query_parts)}"
-
-        cursor = conn.execute(sql, params)
-        files = [dict(row) for row in cursor.fetchall()]
-
-        result = {}
-        for idx in unique_indices:
-            for file in files:
-                if file['faiss_start_idx'] <= idx <= file['faiss_end_idx']:
-                    result[idx] = file
-                    break
-
-        return result
+        result: Dict[str, List[Dict]] = {p: [] for p in unique_paths}
+        for row in cursor.fetchall():
+            src, tgt, weight = row['source_id'], row['target_id'], row['weight']
+            # similar_to edges are undirected — attach to whichever side matched
+            for me, other in ((src, tgt), (tgt, src)):
+                if me in result and len(result[me]) < limit_per_file and other != me:
+                    result[me].append({
+                        'path': other,
+                        'filename': os.path.basename(other),
+                        'similarity': round(float(weight or 0.0), 3),
+                    })
+        return {p: rels for p, rels in result.items() if rels}
     except Exception as e:
-        logger.exception("Error getting files by faiss indices")
+        logger.exception("Error getting related files")
         return {}
     finally:
         conn.close()

@@ -40,9 +40,11 @@ CONFIG_PATH = os.path.join(BASE_DIR, "config.ini")
 # ---------------------------------------------------------------------------
 VALID_PROVIDER_TYPES = {"local", "huggingface_api", "commercial_api"}
 
+# Keep in sync with llm_integration._DEFAULT_LOCAL_EMBEDDING_MODEL.
+# MiniLM runs comfortably on CPU; heavier models are explicit opt-in presets.
 _DEFAULT_EMBEDDING_CONFIG = {
     "provider_type": "local",
-    "model_name": "Alibaba-NLP/gte-Qwen2-1.5B-instruct",
+    "model_name": "sentence-transformers/all-MiniLM-L6-v2",
     "api_key": "",
 }
 
@@ -126,6 +128,23 @@ async def get_embedding_config(request: Request):
         model_name=cfg["model_name"],
         api_key_set=bool(cfg["api_key"]),
     )
+
+
+# ── GET presets ──────────────────────────────────────────────────────────────
+
+@router.get("/embeddings/presets")
+async def get_embedding_presets(request: Request):
+    """
+    Returns the curated list of open-source embedding model presets so the
+    frontend can offer Fast / Balanced / Quality / Max choices without
+    hardcoding model names.
+    """
+    from backend.llm_integration import EMBEDDING_PRESETS  # lazy
+    active = getattr(request.app.state, "embedding_config", None) or _read_embedding_section()
+    return {
+        "presets": EMBEDDING_PRESETS,
+        "active_model": active.get("model_name", _DEFAULT_EMBEDDING_CONFIG["model_name"]),
+    }
 
 
 # ── POST ───────────────────────────────────────────────────────────────────
@@ -232,6 +251,58 @@ def get_active_embedding_client(app):
     return get_embeddings(provider="local")
 
 
+def get_search_embedding_client(app):
+    """
+    Resolves the embedding client to use for SEARCH queries.
+
+    Search queries must be embedded with the same model the saved index was
+    built with, otherwise FAISS dimensions mismatch and every search fails.
+    The configured model (app.state.embedding_config) only applies to the
+    *next* re-index; until then we honour the index's own metadata sidecar.
+
+    Resolution order:
+        1. app.state.index_meta['model_name'] (written by save_index /
+           load_index) — when it names a usable HuggingFace model.
+        2. Fall back to get_active_embedding_client(app).
+
+    Args:
+        app: The FastAPI application instance.
+
+    Returns:
+        Embeddings: A LangChain embeddings object guaranteed (best effort) to
+        match the loaded index.
+    """
+    from backend.llm_integration import get_embedding_client  # lazy
+
+    meta = getattr(app.state, "index_meta", None) or {}
+    index_model = (meta.get("model_name") or "").strip()
+
+    active_cfg = getattr(app.state, "embedding_config", None) or _read_embedding_section()
+    active_model = (active_cfg.get("model_name") or "").strip()
+
+    def _norm(name: str) -> str:
+        # 'sentence-transformers/all-MiniLM-L6-v2' and 'all-MiniLM-L6-v2'
+        # are the same model; compare on the repo-less suffix.
+        return name.split("/")[-1].lower()
+
+    if index_model and index_model != "unknown" and _norm(index_model) != _norm(active_model):
+        # Cloud embedding model names can't be loaded locally — only take the
+        # override path for HuggingFace-style names.
+        looks_cloud = any(kw in index_model.lower() for kw in ("text-embedding", "embedding-001", "gemini", "gpt"))
+        if not looks_cloud:
+            try:
+                logger.warning(
+                    "[Settings] Index was built with '%s' but active config is '%s'. "
+                    "Using the index's model for this search; re-index to switch models.",
+                    index_model, active_model,
+                )
+                return get_embedding_client("local", index_model)
+            except Exception as e:
+                logger.error("[Settings] Failed to load index model '%s': %s. Falling back.", index_model, e)
+
+    return get_active_embedding_client(app)
+
+
 # ---------------------------------------------------------------------------
 # Private helpers
 # ---------------------------------------------------------------------------
@@ -303,8 +374,12 @@ def _write_embedding_section(cfg: dict) -> None:
     config.set("Embeddings", "model_name", cfg["model_name"])
     config.set("Embeddings", "api_key", cfg["api_key"])
 
-    with open(CONFIG_PATH, "w") as fh:
-        config.write(fh)
+    import tempfile
+    dir_name = os.path.dirname(CONFIG_PATH)
+    with tempfile.NamedTemporaryFile("w", dir=dir_name, delete=False, suffix=".tmp") as tmp:
+        config.write(tmp)
+        tmp_path = tmp.name
+    os.replace(tmp_path, CONFIG_PATH)
 
 
 def seed_app_state(app) -> None:

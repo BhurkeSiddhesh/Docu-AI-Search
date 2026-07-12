@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Brain, Terminal, Database, CheckCircle2, AlertCircle, Bot } from 'lucide-react';
+import api from '../lib/api';
 
 function eventIcon(type) {
     switch (type) {
@@ -33,39 +34,51 @@ export default function AgentView({ query }) {
         setEvents([]);
         setIsRunning(true);
 
-        const src = new EventSource(`/api/agent/chat?query=${encodeURIComponent(query)}`);
+        const controller = new AbortController();
 
-        src.onmessage = (e) => {
+        (async () => {
             try {
-                const data = JSON.parse(e.data);
-                setEvents((prev) => [...prev, data]);
-                if (data.type === 'answer' || data.type === 'error') {
-                    src.close();
-                    setIsRunning(false);
+                const res = await api.streamAgentChat(query, controller.signal);
+                if (!res.ok || !res.body) throw new Error('Agent stream failed');
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buf = '';
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buf += decoder.decode(value, { stream: true });
+                    const lines = buf.split('\n');
+                    buf = lines.pop();
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            setEvents((prev) => [...prev, data]);
+                            if (data.type === 'answer' || data.type === 'error') {
+                                setIsRunning(false);
+                            }
+                        } catch (err) {
+                            console.warn('[AgentView] Failed to parse SSE frame:', line, err);
+                        }
+                    }
                 }
             } catch (err) {
-                console.error('Failed to parse SSE message:', err, e.data);
-                // Malformed frame — treat as a fatal stream error so the UI
-                // always reaches a terminal state rather than spinning forever.
-                src.close();
+                if (err?.name !== 'AbortError') {
+                    console.error('[AgentView] Stream error:', err);
+                    setEvents((prev) => [
+                        ...prev,
+                        { type: 'error', content: 'Connection to server lost.' },
+                    ]);
+                }
                 setIsRunning(false);
-                setEvents((prev) => [
-                    ...prev,
-                    { type: 'error', content: 'Received malformed response from server.' },
-                ]);
+            } finally {
+                // Always reach a terminal state, even if the stream ended
+                // without an explicit answer/error event.
+                setIsRunning(false);
             }
-        };
+        })();
 
-        src.onerror = () => {
-            src.close();
-            setIsRunning(false);
-            setEvents((prev) => [
-                ...prev,
-                { type: 'error', content: 'Connection to server lost.' },
-            ]);
-        };
-
-        return () => src.close();
+        return () => controller.abort();
     }, [query]);
 
     useEffect(() => {

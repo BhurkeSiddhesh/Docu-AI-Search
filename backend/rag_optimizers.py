@@ -1,10 +1,16 @@
+import logging
+import threading
 import time
 from typing import List, Dict, Any
 
 from backend.llm_integration import generate_ai_answer
 
-# Cache for query rewriting to save latency on repeated identical queries
+logger = logging.getLogger(__name__)
+
+# Cache for query rewriting; capped at _CACHE_MAX entries (LRU-style eviction)
 _QUERY_REWRITE_CACHE: Dict[str, str] = {}
+_CACHE_MAX = 500
+_cache_lock = threading.Lock()
 
 def rewrite_query(query: str, provider: str, api_key: str, model_path: str = "") -> str:
     """
@@ -23,7 +29,7 @@ def rewrite_query(query: str, provider: str, api_key: str, model_path: str = "")
         str: An optimized, keyword-dense search query string.
 
     Note:
-        The function uses a simple memory cache (`_QUERY_REWRITE_CACHE`) to avoid
+        The function uses a bounded memory cache (max 500 entries) to avoid
         redundant LLM calls for identical queries in the same session.
     """
     if query in _QUERY_REWRITE_CACHE:
@@ -36,11 +42,11 @@ def rewrite_query(query: str, provider: str, api_key: str, model_path: str = "")
         "Remove filler words (like 'how', 'what', 'can you', 'tell me'). "
         "Return ONLY the optimized search keywords on a single line. Do not explain."
     )
-    
+
     # We want a very fast response, so limit tokens and use low temp
     try:
         start_time = time.time()
-        print(f"[RAG OPTIMIZER] Rewriting Query: '{query}'")
+        logger.debug("Rewriting query: '%s'", query)
         rewritten = generate_ai_answer(
             context="",
             question=query,
@@ -54,18 +60,23 @@ def rewrite_query(query: str, provider: str, api_key: str, model_path: str = "")
         )
         rewritten = rewritten.strip()
         elapsed = time.time() - start_time
-        print(f"[RAG OPTIMIZER] Optimized to: '{rewritten}' (took {elapsed:.2f}s)")
-        
-        # Cache it
-        _QUERY_REWRITE_CACHE[query] = rewritten
+        logger.debug("Query rewritten to: '%s' (%.2fs)", rewritten, elapsed)
+
+        # Evict oldest entry if cache is full, then store
+        with _cache_lock:
+            if len(_QUERY_REWRITE_CACHE) >= _CACHE_MAX:
+                oldest_key = next(iter(_QUERY_REWRITE_CACHE), None)
+                _QUERY_REWRITE_CACHE.pop(oldest_key, None)
+            _QUERY_REWRITE_CACHE[query] = rewritten
         return rewritten
     except Exception as e:
-        print(f"[RAG OPTIMIZER] Query rewrite failed: {e}. Falling back to original query.")
+        logger.warning("Query rewrite failed: %s. Falling back to original query.", e)
         return query
 
 
 # Global instance to avoid reloading the re-ranker on every search
 _RERANKER_CACHE = {}
+_reranker_lock = threading.Lock()
 
 def rerank_results(query: str, chunks: List[Dict[str, Any]], reranker_model_name: str) -> List[Dict[str, Any]]:
     """
@@ -89,45 +100,49 @@ def rerank_results(query: str, chunks: List[Dict[str, Any]], reranker_model_name
     """
     if not chunks:
         return []
-        
+
     try:
         from sentence_transformers import CrossEncoder
     except ImportError:
-        print("[RAG OPTIMIZER] sentence-transformers not installed. Skipping re-ranking.")
+        logger.warning("sentence-transformers not installed. Skipping re-ranking.")
         return chunks
 
     if reranker_model_name not in _RERANKER_CACHE:
-        print(f"[RAG OPTIMIZER] Loading Cross-Encoder: {reranker_model_name}...")
-        try:
-            # Load locally or download automatically
-            _RERANKER_CACHE[reranker_model_name] = CrossEncoder(reranker_model_name)
-        except Exception as e:
-            print(f"[RAG OPTIMIZER] Failed to load re-ranker model: {e}")
-            return chunks
+        # Serialize construction — concurrent sentence-transformers loads trip
+        # torch's meta-tensor init (same pattern as _embedding_client_lock).
+        with _reranker_lock:
+            if reranker_model_name not in _RERANKER_CACHE:
+                logger.info("Loading Cross-Encoder: %s", reranker_model_name)
+                try:
+                    # Load locally or download automatically
+                    _RERANKER_CACHE[reranker_model_name] = CrossEncoder(reranker_model_name)
+                except Exception as e:
+                    logger.error("Failed to load re-ranker model: %s", e)
+                    return chunks
 
     reranker = _RERANKER_CACHE[reranker_model_name]
-    
+
     # Prepare inputs: list of (query, document) pairs
     pairs = [[query, chunk['document']] for chunk in chunks]
-    
-    print(f"[RAG OPTIMIZER] Re-ranking {len(chunks)} candidate chunks...")
+
+    logger.debug("Re-ranking %d candidate chunks", len(chunks))
     start_time = time.time()
-    
+
     try:
         scores = reranker.predict(pairs)
-        
+
         # Inject the new cross-encoder score and sort
         for i, chunk in enumerate(chunks):
             # We preserve the original FAISS/BM25 score, but sort by this one
             chunk['rerank_score'] = float(scores[i])
-            
+
         # Higher score is better in Cross-Encoders
         ranked_chunks = sorted(chunks, key=lambda x: x.get('rerank_score', -999.0), reverse=True)
-        
+
         elapsed = time.time() - start_time
-        print(f"[RAG OPTIMIZER] Re-ranking complete in {elapsed:.2f}s")
+        logger.debug("Re-ranking complete in %.2fs", elapsed)
         return ranked_chunks
-        
+
     except Exception as e:
-        print(f"[RAG OPTIMIZER] Re-ranking failed during prediction: {e}")
+        logger.error("Re-ranking failed during prediction: %s", e)
         return chunks

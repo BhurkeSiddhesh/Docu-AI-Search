@@ -128,5 +128,40 @@ class TestAgentRefactor(unittest.TestCase):
         kwargs = mock_generate.call_args.kwargs
         self.assertTrue(kwargs['raw'])
 
+    def test_agent_step_timeout_yields_error_event(self):
+        """asyncio.wait_for timeout surfaces as an error event, not an exception."""
+        mock_config = MagicMock()
+        def get_side_effect(section, key, fallback=None):
+            if section == "LocalLLM" and key == "provider": return "openai"
+            if section == "LocalLLM" and key == "model_path": return ""
+            if section == "APIKeys": return ""
+            return fallback
+        mock_config.get.side_effect = get_side_effect
+
+        from backend.agent import ReActAgent
+        agent = ReActAgent({"config": mock_config})
+
+        async def run_timeout_test():
+            events = []
+            with patch('asyncio.wait_for', side_effect=asyncio.TimeoutError):
+                async for event in agent.stream_chat("What is the answer?"):
+                    events.append(event)
+            return events
+
+        events = asyncio.run(run_timeout_test())
+        self.assertTrue(any(e.get("type") == "error" for e in events))
+        error_event = next(e for e in events if e.get("type") == "error")
+        self.assertIn("timed out", error_event["content"].lower())
+
+    def test_agent_step_timeout_is_configured(self):
+        """ReActAgent.step_timeout defaults to 60 seconds."""
+        mock_config = MagicMock()
+        mock_config.get.return_value = ""
+
+        from backend.agent import ReActAgent
+        agent = ReActAgent({"config": mock_config})
+        self.assertEqual(agent.step_timeout, 60)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
 
 const ToastContext = createContext(null);
@@ -41,21 +41,28 @@ export function ToastProvider({ children }) {
 
 function ToastItem({ toast, onDismiss }) {
     const Icon = toast.type === 'success' ? CheckCircle2 : toast.type === 'error' ? AlertCircle : Info;
+    
+    // Vercel-style toast colors
     const color =
         toast.type === 'success'
-            ? 'bg-green-50 dark:bg-green-950/50 text-green-900 dark:text-green-100 border-green-200 dark:border-green-900'
+            ? 'bg-canvas dark:bg-[#111111] text-ink dark:text-[#ededed] border-hairline dark:border-[rgba(255,255,255,0.1)]'
             : toast.type === 'error'
-            ? 'bg-red-50 dark:bg-red-950/50 text-red-900 dark:text-red-100 border-red-200 dark:border-red-900'
-            : 'bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-800';
+            ? 'bg-error-soft dark:bg-[rgba(238,0,0,0.1)] text-error-deep dark:text-[#ffcccc] border-[rgba(238,0,0,0.2)]'
+            : 'bg-canvas dark:bg-[#111111] text-ink dark:text-[#ededed] border-hairline dark:border-[rgba(255,255,255,0.1)]';
+
+    const iconColor = 
+        toast.type === 'success' ? 'text-success dark:text-[#3291ff]'
+        : toast.type === 'error' ? 'text-error dark:text-[#ff9999]'
+        : 'text-ink dark:text-[#ededed]';
 
     return (
         <div
-            className={`pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-lg border shadow-lg max-w-sm animate-slide-up ${color}`}
+            className={`pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-v-md border shadow-v-5 dark:shadow-v-dark-5 max-w-sm animate-slide-up ${color}`}
             role="status"
         >
-            <Icon className="w-5 h-5 flex-shrink-0 mt-0.5" />
-            <span className="text-sm font-medium flex-1">{toast.message}</span>
-            <button onClick={onDismiss} className="opacity-60 hover:opacity-100" aria-label="Dismiss">
+            <Icon className={`w-5 h-5 flex-shrink-0 mt-0.5 ${iconColor}`} />
+            <span className="text-[13px] font-medium flex-1 tracking-[-0.1px] leading-relaxed">{toast.message}</span>
+            <button onClick={onDismiss} className="opacity-60 hover:opacity-100 mt-0.5" aria-label="Dismiss">
                 <X className="w-4 h-4" />
             </button>
         </div>
@@ -65,7 +72,6 @@ function ToastItem({ toast, onDismiss }) {
 export function useToast() {
     const ctx = useContext(ToastContext);
     if (!ctx) {
-        // Fallback no-op so tests / standalone renders don't crash
         return { success: () => {}, error: () => {}, info: () => {} };
     }
     return ctx;

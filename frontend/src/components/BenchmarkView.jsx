@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Play, Loader2, RefreshCw, Zap, HardDrive, Clock, Trophy, Target } from 'lucide-react';
 import api from '../lib/api';
 import { useToast } from './Toast';
@@ -17,11 +17,13 @@ export default function BenchmarkView() {
     const [results, setResults] = useState(null);
     const [status, setStatus] = useState({ running: false, progress: 0 });
     const [loading, setLoading] = useState(true);
+    const prevRunningRef = useRef(false);
+    const pollStatusRef = useRef(null);
     const toast = useToast();
 
     useEffect(() => {
         load();
-        const t = setInterval(pollStatus, 2000);
+        const t = setInterval(() => pollStatusRef.current?.(), 2000);
         return () => clearInterval(t);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -41,13 +43,15 @@ export default function BenchmarkView() {
     const pollStatus = async () => {
         try {
             const r = await api.benchmarkStatus();
-            const wasRunning = status.running;
+            const wasRunning = prevRunningRef.current;
+            prevRunningRef.current = r.data.running;
             setStatus(r.data);
             if (wasRunning && !r.data.running) load();
         } catch {
             // ignore
         }
     };
+    pollStatusRef.current = pollStatus;
 
     const run = async () => {
         try {

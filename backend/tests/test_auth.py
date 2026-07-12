@@ -19,12 +19,24 @@ from fastapi.security import HTTPAuthorizationCredentials
 class TestValidateToken(unittest.TestCase):
     """Tests for the _validate_token() helper."""
 
+    def setUp(self):
+        """Clear the module-level token cache before each test."""
+        import backend.auth as _auth
+        self._saved_hash = _auth._cached_token_hash
+        _auth._cached_token_hash = ""
+
+    def tearDown(self):
+        """Restore the token cache after each test."""
+        import backend.auth as _auth
+        _auth._cached_token_hash = self._saved_hash
+
     def _write_token_hash(self, config_path: str, token: str) -> None:
         config = configparser.ConfigParser()
         config.read(config_path)
         if not config.has_section("Auth"):
             config.add_section("Auth")
-        config.set("Auth", "token_hash", hashlib.sha256(token.encode()).hexdigest())
+        from backend.auth import _hash_token
+        config.set("Auth", "token_hash", _hash_token(token, "ab" * 16))
         with open(config_path, "w") as f:
             config.write(f)
 
@@ -87,6 +99,17 @@ class TestValidateToken(unittest.TestCase):
 class TestGetOrCreateToken(unittest.TestCase):
     """Tests for _get_or_create_token()."""
 
+    def setUp(self):
+        """Clear the module-level token cache before each test."""
+        import backend.auth as _auth
+        self._saved_hash = _auth._cached_token_hash
+        _auth._cached_token_hash = ""
+
+    def tearDown(self):
+        """Restore the token cache after each test to avoid inter-test pollution."""
+        import backend.auth as _auth
+        _auth._cached_token_hash = self._saved_hash
+
     def test_creates_token_when_none_exists(self):
         """A new token is generated and hash written to config.ini."""
         with tempfile.NamedTemporaryFile(suffix=".ini", delete=False, mode="w") as f:
@@ -103,8 +126,11 @@ class TestGetOrCreateToken(unittest.TestCase):
             config = configparser.ConfigParser()
             config.read(config_path)
             stored_hash = config.get("Auth", "token_hash", fallback="")
-            expected = hashlib.sha256(token.encode()).hexdigest()
-            self.assertEqual(stored_hash, expected)
+            self.assertTrue(stored_hash.startswith("pbkdf2_sha256$"),
+                            "Token must be stored with a salted PBKDF2 hash")
+            from backend.auth import _hash_token
+            salt_hex = stored_hash.split("$")[2]
+            self.assertEqual(stored_hash, _hash_token(token, salt_hex))
         finally:
             os.unlink(config_path)
 
@@ -116,7 +142,8 @@ class TestGetOrCreateToken(unittest.TestCase):
         try:
             config = configparser.ConfigParser()
             config.add_section("Auth")
-            config.set("Auth", "token_hash", hashlib.sha256(b"existing").hexdigest())
+            from backend.auth import _hash_token
+            config.set("Auth", "token_hash", _hash_token("existing", "cd" * 16))
             with open(config_path, "w") as f:
                 config.write(f)
 

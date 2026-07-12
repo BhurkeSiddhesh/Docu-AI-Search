@@ -1,8 +1,11 @@
 import os
+import logging
 import requests
 import threading
 import shutil
 import psutil
+
+_logger = logging.getLogger(__name__)
 
 # Path configuration for new folder structure
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -426,6 +429,7 @@ download_status = {
     "bytes_downloaded": 0,
     "total_bytes": 0
 }
+_download_lock = threading.Lock()
 
 def get_available_models():
     """
@@ -532,73 +536,83 @@ def download_file(url, filename, model_id, total_bytes=0):
         This function updates the global `download_status` variable which is
         shared with the API to report progress to the frontend.
     """
+    import logging
+    _logger = logging.getLogger(__name__)
     global download_status
     filepath = os.path.join(MODELS_DIR, filename)
     temp_filepath = filepath + ".partial"
-    
+
     try:
-        print(f"Starting download: {url}")
-        download_status = {
-            "downloading": True, 
-            "model_id": model_id, 
-            "progress": 0, 
-            "error": None,
-            "bytes_downloaded": 0,
-            "total_bytes": total_bytes
-        }
-        
+        _logger.info("Starting download: %s", url)
+        with _download_lock:
+            download_status = {
+                "downloading": True,
+                "model_id": model_id,
+                "progress": 0,
+                "error": None,
+                "bytes_downloaded": 0,
+                "total_bytes": total_bytes
+            }
+
         # Check for partial download (resume support)
         headers = {}
         downloaded = 0
         if os.path.exists(temp_filepath):
             downloaded = os.path.getsize(temp_filepath)
             headers["Range"] = f"bytes={downloaded}-"
-            print(f"Resuming from byte {downloaded}")
-        
-        response = requests.get(url, stream=True, headers=headers, timeout=30)
+            _logger.info("Resuming from byte %d", downloaded)
+
+        # Retry transient connection/5xx failures; resume support above makes
+        # a retried request continue from the last byte rather than restart.
+        from backend.providers import _make_retry_session
+        response = _make_retry_session().get(url, stream=True, headers=headers, timeout=30)
         response.raise_for_status()
-        
+
         # Get total size from headers
         if "content-range" in response.headers:
             total_size = int(response.headers.get("content-range", "").split("/")[-1])
         else:
             total_size = int(response.headers.get('content-length', 0)) + downloaded
-        
-        download_status["total_bytes"] = total_size
+
+        with _download_lock:
+            download_status["total_bytes"] = total_size
         block_size = 1024 * 1024  # 1MB
-        
+
         mode = 'ab' if downloaded > 0 else 'wb'
         with open(temp_filepath, mode) as file:
             for data in response.iter_content(block_size):
                 downloaded += len(data)
                 file.write(data)
                 if total_size > 0:
-                    download_status["progress"] = int((downloaded / total_size) * 100)
-                    download_status["bytes_downloaded"] = downloaded
-        
+                    with _download_lock:
+                        download_status["progress"] = int((downloaded / total_size) * 100)
+                        download_status["bytes_downloaded"] = downloaded
+
         # Rename to final filename
         os.rename(temp_filepath, filepath)
-        
-        print(f"Download complete: {filename}")
-        download_status = {
-            "downloading": False, 
-            "model_id": None, 
-            "progress": 100, 
-            "error": None,
-            "bytes_downloaded": downloaded,
-            "total_bytes": total_size
-        }
-        
+
+        _logger.info("Download complete: %s", filename)
+        with _download_lock:
+            download_status = {
+                "downloading": False,
+                "model_id": None,
+                "progress": 100,
+                "error": None,
+                "bytes_downloaded": downloaded,
+                "total_bytes": total_size
+            }
+
     except Exception as e:
-        print(f"Download failed: {e}")
-        download_status = {
-            "downloading": False, 
-            "model_id": model_id, 
-            "progress": 0, 
-            "error": str(e),
-            "bytes_downloaded": 0,
-            "total_bytes": 0
-        }
+        _logger.error("Download failed: %s", e)
+        with _download_lock:
+            download_status = {
+                "downloading": False,
+                "model_id": model_id,
+                "progress": 0,
+                "error": str(e),
+                "bytes_downloaded": 0,
+                "total_bytes": 0
+            }
         # Keep partial file for resume
 
 def start_download(model_id):
@@ -617,28 +631,29 @@ def start_download(model_id):
             - str: A success or error message for the caller.
     """
     global download_status
-    
-    if download_status["downloading"]:
-        return False, "Another download is in progress"
-    
+
     model = next((m for m in AVAILABLE_MODELS if m["id"] == model_id), None)
     if not model:
         return False, f"Model not found: {model_id}"
-    
+
     filename = f"{model_id}.gguf"
     filepath = os.path.join(MODELS_DIR, filename)
-    
-    # Check if already downloaded
+
     if os.path.exists(filepath):
         return False, "Model already downloaded"
-    
-    # Check system resources
+
     can_download, warnings = check_system_resources(model)
     if not can_download:
         return False, f"Cannot download: {'; '.join(warnings)}"
-    
+
+    with _download_lock:
+        if download_status["downloading"]:
+            return False, "Another download is in progress"
+        download_status["downloading"] = True
+        download_status["model_id"] = model_id
+
     thread = threading.Thread(
-        target=download_file, 
+        target=download_file,
         args=(model["url"], filename, model_id, model.get("size_bytes", 0))
     )
     thread.daemon = True
@@ -656,7 +671,8 @@ def get_download_status():
               'progress' (int), 'error' (str), 'bytes_downloaded' (int),
               and 'total_bytes' (int).
     """
-    return download_status
+    with _download_lock:
+        return dict(download_status)
 
 def is_safe_model_path(path):
     """
@@ -706,16 +722,28 @@ def delete_model(model_path):
               False if the path was unsafe or an error occurred.
     """
     if not is_safe_model_path(model_path):
-        print(f"Security Warning: Attempt to delete unsafe path: {model_path}")
+        _logger.warning("Security: attempt to delete unsafe path: %s", model_path)
         return False
 
-    # Use the validated absolute path for all filesystem operations
-    abs_model_path = os.path.abspath(model_path)
-    if os.path.exists(abs_model_path):
-        try:
-            os.remove(abs_model_path)
-            return True
-        except OSError as e:
-            print(f"Error deleting model: {e}")
-            return False
+    # Resolve against the directory listing so the path handed to os.remove
+    # always originates from MODELS_DIR enumeration, not from the request.
+    # String-only normalisation: no filesystem call touches the raw input.
+    try:
+        candidate = os.path.normcase(os.path.abspath(os.path.normpath(model_path)))
+    except (ValueError, TypeError):
+        return False
+    try:
+        entries = os.listdir(MODELS_DIR)
+    except OSError as e:
+        _logger.error("Error listing models directory: %s", e)
+        return False
+    for name in entries:
+        target = os.path.join(MODELS_DIR, name)
+        if os.path.normcase(os.path.abspath(target)) == candidate:
+            try:
+                os.remove(target)
+                return True
+            except OSError as e:
+                _logger.error("Error deleting model: %s", e)
+                return False
     return False

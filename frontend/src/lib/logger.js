@@ -1,6 +1,6 @@
-import axios from 'axios';
-
-const API_URL = 'http://localhost:8000/api/logs';
+// Routed through the shared API client so the relative /api base and the
+// auth interceptor both apply (a raw axios call would 401 when AUTH_ENABLED).
+import api from './api';
 
 const logger = {
     log: async (level, message, stack = null) => {
@@ -9,7 +9,7 @@ const logger = {
         if (stack) console.error(stack);
 
         try {
-            await axios.post(API_URL, {
+            await api.sendLog({
                 level,
                 message: typeof message === 'string' ? message : JSON.stringify(message),
                 source: "Frontend",

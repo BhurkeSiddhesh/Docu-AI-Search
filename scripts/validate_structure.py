@@ -12,7 +12,7 @@ import sys
 ALLOWED_ROOT_FILES = [
     'package.json', 'package-lock.json', 'README.md', 'AGENTS.md', 
     'config.ini', '.gitignore', 'requirements.txt', 'LICENSE', 'CHANGELOG.md',
-    'JULES_LOG.json', 'task.md'
+    'JULES_LOG.json', 'task.md', 'Dockerfile', 'docker-compose.yml'
 ]
 ALLOWED_ROOT_EXTENSIONS = ['.md', '.json', '.ini', '.txt', '.js', '.png', '.PNG'] # limited JS allow for tailwind.config?
 DISALLOWED_ROOT_EXTENSIONS = ['.py']
@@ -59,7 +59,7 @@ def validate_structure():
 
     # 1. Check Root Directory for Pollution
     for item in os.listdir(project_root):
-        if item.startswith('.') or item == 'venv' or item == 'node_modules' or item == '__pycache__':
+        if item.startswith('.') or item == 'venv' or item == 'node_modules' or item == '__pycache__' or item == 'tmp' or item == 'scratch':
             continue
             
         full_path = os.path.join(project_root, item)

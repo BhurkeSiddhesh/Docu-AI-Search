@@ -1,9 +1,15 @@
 import faiss
+import logging
 import numpy as np
+import os
 import concurrent.futures
 from typing import List, Dict, Any, Tuple
 import string
 from rank_bm25 import BM25Okapi
+
+logger = logging.getLogger(__name__)
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_CONFIG_PATH = os.path.join(_BASE_DIR, 'config.ini')
 
 
 class EmbeddingDimensionMismatchError(Exception):
@@ -126,9 +132,8 @@ def search(query: str, index: faiss.Index, docs: List[Dict], tags: List[str],
     """
     
     import configparser
-    import os
     config = configparser.ConfigParser()
-    config.read('config.ini')
+    config.read(_CONFIG_PATH)
     do_rewrite = config.getboolean('AdvancedRAG', 'query_rewriting', fallback=False)
     do_rerank = config.getboolean('AdvancedRAG', 'cross_encoder_reranking', fallback=False)
     rerank_model = config.get('AdvancedRAG', 'reranker_model', fallback='cross-encoder/ms-marco-MiniLM-L-6-v2')
@@ -178,7 +183,7 @@ def search(query: str, index: faiss.Index, docs: List[Dict], tags: List[str],
             # Expand query for Keyword Search to hit document sections (e.g. "Work" -> "Experience")
             expanded_query_str = expand_query(query)
             tokenized_query = tokenize(expanded_query_str)
-            print(f"[SEARCH] Expanded query terms: <redacted>")
+            logger.debug("[SEARCH] Expanded query terms computed")
             future_bm25 = executor.submit(bm25.get_scores, tokenized_query)
             
         # Process Chunk Results
@@ -196,7 +201,7 @@ def search(query: str, index: faiss.Index, docs: List[Dict], tags: List[str],
                     if scores[idx] > 0:
                         keyword_candidates[int(idx)] = float(scores[idx])
             except Exception as e:
-                print(f"BM25 Parallel Error: {e}")
+                logger.warning("BM25 parallel search error: %s", e)
 
         # Process Summary -> Expansion
         if future_summaries and cluster_map:
@@ -214,8 +219,7 @@ def search(query: str, index: faiss.Index, docs: List[Dict], tags: List[str],
     k = 60
     final_scores = {} # idx -> rrf_score
 
-    print(f"\n[SEARCH] Query: <redacted>")
-    print(f"[SEARCH] Found {len(vector_candidates)} semantic and {len(keyword_candidates)} keyword candidates.")
+    logger.debug("[SEARCH] Found %d semantic and %d keyword candidates.", len(vector_candidates), len(keyword_candidates))
     
     # Rank Vector Results (Lower distance is better)
     sorted_vector = sorted(vector_candidates.items(), key=lambda x: x[1])
@@ -237,7 +241,7 @@ def search(query: str, index: faiss.Index, docs: List[Dict], tags: List[str],
     
     boost_count = 0
     if proper_nouns:
-        print(f"[SEARCH] Boosting proper nouns: <redacted>")
+        logger.debug("[SEARCH] Boosting %d proper noun(s).", len(proper_nouns))
         for idx in final_scores:
             doc_info = docs[idx]
             doc_text = doc_info.get('text', "") if isinstance(doc_info, dict) else str(doc_info)
@@ -249,13 +253,13 @@ def search(query: str, index: faiss.Index, docs: List[Dict], tags: List[str],
                     boost_count += 1
     
     if boost_count > 0:
-        print(f"[SEARCH] Applied Identity Boost to {boost_count} matches.")
+        logger.debug("[SEARCH] Applied identity boost to %d matches.", boost_count)
         
     # 5. Sort by RRF Score (Higher is better)
     sorted_final = sorted(final_scores.items(), key=lambda x: x[1], reverse=True)
     fetch_count = 20 if do_rerank else 10 # Load a larger pool if we are going to rerank
     top_indices = [idx for idx, score in sorted_final[:fetch_count]] 
-    print(f"[SEARCH] Returning top {len(top_indices)} fused results.")
+    logger.debug("[SEARCH] Returning top %d fused results.", len(top_indices))
     
     # 4. Format Results
     results = []
