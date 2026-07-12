@@ -54,14 +54,16 @@ def extract_text(filepath):
             return "\n".join(text)
         elif ext == '.xlsx':
             workbook = load_workbook(filepath, read_only=True)
-            text = []
-            for sheet in workbook.worksheets:
-                text.append(f"Sheet: {sheet.title}")
-                for row in sheet.iter_rows(values_only=True):
-                    cells = [str(c) for c in row if c is not None and str(c).strip()]
-                    if cells:
-                        text.append(" | ".join(cells))
-            workbook.close()
+            try:
+                text = []
+                for sheet in workbook.worksheets:
+                    text.append(f"Sheet: {sheet.title}")
+                    for row in sheet.iter_rows(values_only=True):
+                        cells = [str(c) for c in row if c is not None and str(c).strip()]
+                        if cells:
+                            text.append(" | ".join(cells))
+            finally:
+                workbook.close()
             return "\n".join(text)
         elif ext == '.csv':
             text = []

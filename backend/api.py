@@ -603,7 +603,8 @@ async def browse_folder(request: Request):
         else:
             return {"folder": None}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to open folder dialog: {str(e)}")
+        logger.error("Failed to open folder dialog: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to open folder dialog. Check server logs.")
 
 @app.get("/api/models/available")
 async def list_available_models(request: Request):
@@ -633,7 +634,7 @@ async def list_local_models(request: Request):
 
 @app.post("/api/models/download/{model_id}")
 @limiter.limit("3/minute")
-async def download_model_endpoint(model_id: str, request: Request):
+async def download_model_endpoint(model_id: str, request: Request, _=Depends(verify_local_request)):
     """
     Trigger a background task to download a specific model.
 
@@ -666,7 +667,7 @@ async def download_status_endpoint(request: Request):
     return get_download_status()
 
 @app.delete("/api/models/delete")
-async def delete_model(request: dict, req: Request):
+async def delete_model(request: dict, req: Request, _=Depends(verify_local_request)):
     """
     Delete a downloaded model file from disk.
 
@@ -697,7 +698,7 @@ async def delete_model(request: dict, req: Request):
         raise HTTPException(status_code=500, detail="Failed to delete model")
 
 @app.get("/api/cache/stats")
-def cache_stats_endpoint():
+def cache_stats_endpoint(_auth=Depends(require_auth)):
     """
     Get statistics about the AI response cache.
 
@@ -707,7 +708,7 @@ def cache_stats_endpoint():
     return database.get_cache_stats()
 
 @app.post("/api/cache/clear")
-def clear_cache_endpoint():
+def clear_cache_endpoint(_auth=Depends(require_auth)):
     """
     Clear all entries from the AI response cache.
 
@@ -773,7 +774,7 @@ def run_benchmark_task():
         benchmark_status["error"] = str(e)
 
 @app.post("/api/benchmarks/run")
-async def run_benchmarks(background_tasks: BackgroundTasks, request: Request):
+async def run_benchmarks(background_tasks: BackgroundTasks, request: Request, _=Depends(verify_local_request)):
     """
     Start the benchmark suite in the background.
 
@@ -965,12 +966,12 @@ async def get_config(request: Request):
         "ollama_base_url": config.get('ExternalProviders', 'ollama_base_url', fallback='http://localhost:11434'),
         "lmstudio_base_url": config.get('ExternalProviders', 'lmstudio_base_url', fallback='http://localhost:1234/v1'),
         "external_model_name": config.get('ExternalProviders', 'external_model_name', fallback=''),
-        "external_api_key": config.get('ExternalProviders', 'external_api_key', fallback=''),
+        "external_api_key_set": bool(config.get('ExternalProviders', 'external_api_key', fallback='')),
     }
 
 @app.post("/api/config")
 @limiter.limit("10/minute")
-async def update_config(config_data: ConfigModel, request: Request):
+async def update_config(config_data: ConfigModel, request: Request, _=Depends(verify_local_request)):
     """
     Update the application configuration.
 
@@ -1081,9 +1082,13 @@ async def search_files(search_data: SearchRequest, request: Request, background_
                 'index_summaries': isumm_snap, 'cluster_summaries': csumm_snap,
                 'cluster_map': cmap_snap, 'bm25': bm25_snap
             })
-            return StreamingResponse(agent.stream_chat(search_data.query), media_type="text/event-stream")
+            async def agentic_event_generator():
+                async for event in agent.stream_chat(search_data.query):
+                    yield f"data: {json.dumps(event)}\n\n"
+            return StreamingResponse(agentic_event_generator(), media_type="text/event-stream")
 
         model_path = config.get('LocalLLM', 'model_path', fallback=None)
+
 
         # Run Search — use the active embedding client from settings state
         from backend.search import EmbeddingDimensionMismatchError
@@ -1197,9 +1202,22 @@ async def search_files(search_data: SearchRequest, request: Request, background_
             if search_data.sort_by == "filename":
                 processed_results.sort(key=lambda r: (r.file_name or "").lower())
             elif search_data.sort_by == "file_size":
-                processed_results.sort(key=lambda r: os.path.getsize(r.file_path) if r.file_path and os.path.exists(r.file_path) else 0, reverse=True)
+                # Pre-fetch sizes in a thread to avoid blocking the event loop
+                def _get_size(r):
+                    try:
+                        return os.path.getsize(r.file_path) if r.file_path and os.path.exists(r.file_path) else 0
+                    except OSError:
+                        return 0
+                sizes = await asyncio.to_thread(lambda: [_get_size(r) for r in processed_results])
+                processed_results = [r for _, r in sorted(zip(sizes, processed_results), key=lambda x: x[0], reverse=True)]
             elif search_data.sort_by == "date":
-                processed_results.sort(key=lambda r: os.path.getmtime(r.file_path) if r.file_path and os.path.exists(r.file_path) else 0, reverse=True)
+                def _get_mtime(r):
+                    try:
+                        return os.path.getmtime(r.file_path) if r.file_path and os.path.exists(r.file_path) else 0
+                    except OSError:
+                        return 0
+                mtimes = await asyncio.to_thread(lambda: [_get_mtime(r) for r in processed_results])
+                processed_results = [r for _, r in sorted(zip(mtimes, processed_results), key=lambda x: x[0], reverse=True)]
 
         # Attach knowledge-graph neighbours (Glean-style "related documents")
         try:
@@ -1474,7 +1492,7 @@ class ProviderQueryRequest(BaseModel):
     api_key: Optional[str] = ""
 
 @app.post("/api/providers/health")
-async def provider_health_check(body: ProviderQueryRequest, request: Request):
+async def provider_health_check(body: ProviderQueryRequest, request: Request, _=Depends(verify_local_request)):
     """Check if an external LLM provider (Ollama / LM Studio) is reachable."""
     from backend.providers import get_provider
     try:
@@ -1483,13 +1501,14 @@ async def provider_health_check(body: ProviderQueryRequest, request: Request):
             "model": "",
             "api_key": body.api_key or "",
         })
-        result = provider.health_check()
+        # health_check makes a synchronous HTTP request; run in thread to avoid blocking
+        result = await asyncio.to_thread(provider.health_check)
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/providers/models")
-async def provider_list_models(body: ProviderQueryRequest, request: Request):
+async def provider_list_models(body: ProviderQueryRequest, request: Request, _=Depends(verify_local_request)):
     """Fetch available models from an external LLM provider."""
     from backend.providers import get_provider
     try:
@@ -1498,10 +1517,11 @@ async def provider_list_models(body: ProviderQueryRequest, request: Request):
             "model": "",
             "api_key": body.api_key or "",
         })
-        models = provider.list_models()
+        # list_models makes a synchronous HTTP request; run in thread to avoid blocking
+        models = await asyncio.to_thread(provider.list_models)
         return {"models": models}
     except ConnectionError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail="Provider unreachable. Check server logs.")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -1537,14 +1557,14 @@ async def list_system_prompts(request: Request, category: Optional[str] = None):
     return get_system_prompts(category=category)
 
 @app.post("/api/system-prompts")
-async def create_system_prompt(body: SystemPromptRequest, request: Request):
+async def create_system_prompt(body: SystemPromptRequest, request: Request, _auth=Depends(require_auth)):
     """Create a new system prompt."""
     from backend.system_prompts import add_system_prompt
     prompt_id = add_system_prompt(body.name, body.content, body.category)
     return {"status": "success", "id": prompt_id}
 
 @app.delete("/api/system-prompts/{prompt_id}")
-async def delete_system_prompt_endpoint(prompt_id: int, request: Request):
+async def delete_system_prompt_endpoint(prompt_id: int, request: Request, _auth=Depends(require_auth)):
     """Delete a system prompt by ID."""
     from backend.system_prompts import delete_system_prompt
     if delete_system_prompt(prompt_id):
@@ -1552,7 +1572,7 @@ async def delete_system_prompt_endpoint(prompt_id: int, request: Request):
     raise HTTPException(status_code=404, detail="System prompt not found")
 
 @app.get("/api/search/history")
-async def get_search_history(request: Request):
+async def get_search_history(request: Request, _auth=Depends(require_auth)):
     """
     Retrieve recent search history from the database.
 
@@ -1569,10 +1589,11 @@ async def get_search_history(request: Request):
         history = await asyncio.to_thread(database.get_search_history, limit=50)
         return history
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error retrieving search history: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
 @app.delete("/api/search/history/{history_id}")
-async def delete_search_history_item(history_id: int, request: Request):
+async def delete_search_history_item(history_id: int, request: Request, _auth=Depends(require_auth)):
     """
     Delete a specific search history entry.
 
@@ -1591,11 +1612,14 @@ async def delete_search_history_item(history_id: int, request: Request):
         if success:
             return {"status": "success", "message": "History item deleted"}
         raise HTTPException(status_code=404, detail="History item not found")
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error deleting history item: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
 @app.delete("/api/search/history")
-async def delete_all_search_history(request: Request):
+async def delete_all_search_history(request: Request, _auth=Depends(require_auth)):
     """
     Clear all search history from the database.
 
@@ -1612,8 +1636,10 @@ async def delete_all_search_history(request: Request):
         count = database.delete_all_search_history()
         return {"status": "success", "message": f"Deleted {count} history items", "deleted_count": count}
     except Exception as e:
-        logger.error(f"Error clearing history: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error clearing search history: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
+
+_VALID_LOG_LEVELS = {"info", "warn", "warning", "error"}
 
 class LogRequest(BaseModel):
     """
@@ -1625,13 +1651,13 @@ class LogRequest(BaseModel):
         source (Optional[str]): Source of the log (defaults to 'Frontend').
         stack (Optional[str]): Optional stack trace for errors.
     """
-    level: str
-    message: str
-    source: Optional[str] = "Frontend"
-    stack: Optional[str] = None
+    level: str = Field(..., max_length=20)
+    message: str = Field(..., max_length=4096)
+    source: Optional[str] = Field(default="Frontend", max_length=128)
+    stack: Optional[str] = Field(default=None, max_length=8192)
 
 @app.post("/api/logs")
-async def receive_log(log: LogRequest, request: Request):
+async def receive_log(log: LogRequest, request: Request, _=Depends(verify_local_request)):
     """
     Receive logs from the frontend and pipe them to the backend logger.
 
@@ -1642,13 +1668,16 @@ async def receive_log(log: LogRequest, request: Request):
     Returns:
         dict: Status 'logged'.
     """
+    normalized_level = log.level.lower().strip()
+    if normalized_level not in _VALID_LOG_LEVELS:
+        normalized_level = "info"
     log_msg = f"[{log.source}] {log.message}"
     if log.stack:
         log_msg += f"\nStack: {log.stack}"
-    
-    if log.level.lower() == 'error':
+
+    if normalized_level == 'error':
         logger.error(log_msg)
-    elif log.level.lower() == 'warn' or log.level.lower() == 'warning':
+    elif normalized_level in ('warn', 'warning'):
         logger.warning(log_msg)
     else:
         logger.info(log_msg)
@@ -1729,10 +1758,10 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
             logger.info("[DEBUG-OPEN] os.startfile completed successfully")
         elif platform.system() == 'Darwin':  # macOS
             logger.info("[DEBUG-OPEN] Calling open via subprocess...")
-            subprocess.run(['open', file_path])  # nosec # nosemgrep
+            subprocess.run(['open', file_path], timeout=30)  # nosec # nosemgrep
         else:  # Linux
             logger.info("[DEBUG-OPEN] Calling xdg-open via subprocess...")
-            subprocess.run(['xdg-open', file_path])  # nosec # nosemgrep
+            subprocess.run(['xdg-open', file_path], timeout=30)  # nosec # nosemgrep
         
         return {"status": "success", "message": f"Opened {os.path.basename(file_path)}"}
     except Exception as e:
@@ -1740,7 +1769,7 @@ async def open_file(body: dict, request: Request, _=Depends(verify_local_request
         raise HTTPException(status_code=500, detail="Failed to open file")
 
 @app.get("/api/files")
-async def list_indexed_files(request: Request, limit: int = 100, offset: int = 0):
+async def list_indexed_files(request: Request, limit: int = 100, offset: int = 0, _auth=Depends(require_auth)):
     """
     List indexed documents with pagination.
 
@@ -1764,10 +1793,11 @@ async def list_indexed_files(request: Request, limit: int = 100, offset: int = 0
         total = await asyncio.to_thread(database.count_files)
         return {"files": files, "total": total, "limit": limit, "offset": offset}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error listing files: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
 @app.get("/api/files/preview")
-async def preview_file(path: str, request: Request, chars: int = 2000):
+async def preview_file(path: str, request: Request, chars: int = 2000, _auth=Depends(require_auth)):
     """
     Return a text preview of an indexed file (path traversal protected).
 
@@ -1830,10 +1860,11 @@ async def get_folder_history(request: Request):
         history = database.get_folder_history(indexed_only=True)
         return [item['path'] for item in history]
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error retrieving folder history: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
 @app.delete("/api/folders/history")
-async def clear_folder_history(request: Request):
+async def clear_folder_history(request: Request, _auth=Depends(require_auth)):
     """
     Remove all folder entries from the indexing history.
 
@@ -1850,10 +1881,11 @@ async def clear_folder_history(request: Request):
         count = database.clear_folder_history()
         return {"status": "success", "message": f"Cleared {count} folder history items", "deleted_count": count}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error clearing folder history: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
 @app.delete("/api/folders/history/item")
-async def delete_folder_history_item(request: dict, req: Request):
+async def delete_folder_history_item(request: dict, req: Request, _auth=Depends(require_auth)):
     """
     Remove a single folder from the indexing history.
 
@@ -1879,7 +1911,8 @@ async def delete_folder_history_item(request: dict, req: Request):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("Error deleting folder history item: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
 @app.post("/api/validate-path")
 async def validate_path(body: dict, request: Request):
@@ -1919,16 +1952,20 @@ async def validate_path(body: dict, request: Request):
         return {"valid": False, "error": "Path is not a directory"}
 
     path = normalized
-    
-    # Count supported files
+
+    # Count supported files — run in thread to avoid blocking the event loop
     supported_extensions = {'.txt', '.pdf', '.docx', '.xlsx', '.pptx'}
-    file_count = 0
-    for dirpath, _, filenames in os.walk(path):
-        for filename in filenames:
-            ext = os.path.splitext(filename)[1].lower()
-            if ext in supported_extensions:
-                file_count += 1
-    
+
+    def _count_files(folder: str) -> int:
+        count = 0
+        for _, _, filenames in os.walk(folder):
+            for filename in filenames:
+                if os.path.splitext(filename)[1].lower() in supported_extensions:
+                    count += 1
+        return count
+
+    file_count = await asyncio.to_thread(_count_files, path)
+
     return {"valid": True, "file_count": file_count}
 
 @app.get("/api/index/status")
@@ -1942,11 +1979,12 @@ async def get_indexing_status(request: Request):
     Returns:
         dict: Indexing status including progress percentage and current file.
     """
-    return indexing_status
+    with _index_lock:
+        return dict(indexing_status)
 
 @app.post("/api/index")
 @limiter.limit("5/minute")
-async def trigger_indexing(background_tasks: BackgroundTasks, request: Request):
+async def trigger_indexing(background_tasks: BackgroundTasks, request: Request, _=Depends(verify_local_request)):
     """
     Manually trigger the background indexing process for configured folders.
 
@@ -2029,8 +2067,11 @@ def indexing_progress_callback(current, total, message=None):
         except RuntimeError:
             pass  # loop shutting down
 
-@app.get("/api/agent/chat")
-async def agent_chat(query: str, request: Request):
+class AgentChatRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=5000)
+
+@app.post("/api/agent/chat")
+async def agent_chat(body: AgentChatRequest, request: Request, _auth=Depends(require_auth)):
     """
     Stream AI agent's internal thoughts and final grounded answer.
 
@@ -2045,9 +2086,19 @@ async def agent_chat(query: str, request: Request):
         StreamingResponse: A stream of JSON events (type: 'thought' or 'answer').
     """
     global index, docs, tags, index_summaries, cluster_summaries, cluster_map
-    
+
+    # Snapshot index globals under the lock to prevent races during re-indexing
+    with _index_lock:
+        _index_snap = index
+        _docs_snap = docs
+        _tags_snap = tags
+        _isumm_snap = index_summaries
+        _csumm_snap = cluster_summaries
+        _cmap_snap = cluster_map
+        _bm25_snap = bm25
+
     # Check index
-    if not index:
+    if not _index_snap:
         # We can't use HTTPException in streaming response easily, yield error
         async def yield_error():
              """Inner helper to yield an error event."""
@@ -2057,13 +2108,13 @@ async def agent_chat(query: str, request: Request):
     # Construct global state for the agent
     config = load_config()
     global_state = {
-        'index': index,
-        'docs': docs,
-        'tags': tags,
-        'index_summaries': index_summaries,
-        'cluster_summaries': cluster_summaries,
-        'cluster_map': cluster_map,
-        'bm25': bm25,
+        'index': _index_snap,
+        'docs': _docs_snap,
+        'tags': _tags_snap,
+        'index_summaries': _isumm_snap,
+        'cluster_summaries': _csumm_snap,
+        'cluster_map': _cmap_snap,
+        'bm25': _bm25_snap,
         'config': config
     }
     
@@ -2073,7 +2124,7 @@ async def agent_chat(query: str, request: Request):
     async def event_generator():
         """Inner helper to generate and yield agent events."""
         try:
-            async for event in agent.stream_chat(query):
+            async for event in agent.stream_chat(body.query):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as e:
             logger.error("[Agent] Stream error: %s", e)
@@ -2098,9 +2149,17 @@ def run_indexing(config, folders):
     global index, docs, tags, index_summaries, cluster_summaries, cluster_map, bm25, indexing_status
     
     provider = config.get('LocalLLM', 'provider', fallback='openai')
-    api_key = config.get('APIKeys', 'openai_api_key', fallback=None)
     model_path = config.get('LocalLLM', 'model_path', fallback=None)
-    
+    api_key = config.get('APIKeys', 'openai_api_key', fallback=None)
+    if provider == 'gemini':
+        api_key = config.get('APIKeys', 'gemini_api_key', fallback=api_key)
+    elif provider == 'anthropic':
+        api_key = config.get('APIKeys', 'anthropic_api_key', fallback=api_key)
+    elif provider == 'grok':
+        api_key = config.get('APIKeys', 'grok_api_key', fallback=api_key)
+    elif provider in ('ollama', 'lmstudio'):
+        api_key = config.get('ExternalProviders', 'external_api_key', fallback=api_key)
+
     try:
         logger.info(f"Starting indexing for folders: {folders}")
 
@@ -2143,8 +2202,9 @@ def run_indexing(config, folders):
                 database.mark_folder_indexed(folder)
         else:
             logger.error("Indexing failed or no documents found.")
-            indexing_status["running"] = False
-            indexing_status["error"] = "No documents found or processed"
+            with _index_lock:
+                indexing_status["running"] = False
+                indexing_status["error"] = "No documents found or processed"
     except Exception as e:
         import traceback
         logger.error(f"Error during indexing: {e}")
@@ -2158,10 +2218,17 @@ async def websocket_progress(websocket: WebSocket):
     await ws_manager.connect(websocket)
     try:
         while True:
-            # Keep connection alive; server pushes events via ws_manager.broadcast()
-            await websocket.receive_text()
+            try:
+                # Keep connection alive; server pushes events via ws_manager.broadcast()
+                await asyncio.wait_for(websocket.receive_text(), timeout=300)
+            except asyncio.TimeoutError:
+                # Client idle for 5 minutes — close gracefully
+                await websocket.close(code=1001)
+                break
     except WebSocketDisconnect:
-        ws_manager.disconnect(websocket)
+        pass
+    finally:
+        await ws_manager.disconnect(websocket)
 
 
 @app.get("/api/graph")

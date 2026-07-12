@@ -8,13 +8,60 @@ export default function IndexingBanner() {
     const wasRunning = useRef(false);
 
     useEffect(() => {
-        let cancelled = false;
-        let timer;
+        let ws;
+        let closed = false;
+        let reconnectTimer;
 
-        const tick = async () => {
+        const connect = () => {
+            if (closed) return;
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws/progress`);
+
+            ws.onmessage = (evt) => {
+                try {
+                    const data = JSON.parse(evt.data);
+                    if (data.type === 'indexing_progress') {
+                        const next = {
+                            running: true,
+                            progress: data.percent ?? 0,
+                            current_file: data.current_file ?? '',
+                            error: null,
+                        };
+                        wasRunning.current = true;
+                        setStatus(next);
+                    } else if (data.type === 'indexing_complete') {
+                        if (wasRunning.current) {
+                            setRecentlyDone(true);
+                            setTimeout(() => setRecentlyDone(false), 4000);
+                        }
+                        wasRunning.current = false;
+                        setStatus({ running: false, progress: 100, current_file: '', error: null });
+                    } else if (data.type === 'error') {
+                        wasRunning.current = false;
+                        setStatus((s) => ({ ...s, running: false, error: data.message ?? 'Unknown error' }));
+                    }
+                } catch {
+                    // ignore parse errors
+                }
+            };
+
+            ws.onclose = () => {
+                if (!closed) {
+                    // Fall back to HTTP polling when WebSocket is unavailable
+                    reconnectTimer = setTimeout(() => pollOnce(), 3000);
+                }
+            };
+
+            ws.onerror = () => {
+                ws.close();
+            };
+        };
+
+        // One-shot HTTP poll for initial state and WebSocket fallback
+        const pollOnce = async () => {
+            if (closed) return;
             try {
                 const res = await api.getIndexStatus();
-                if (cancelled) return;
                 const data = res.data || {};
                 if (wasRunning.current && !data.running && !data.error) {
                     setRecentlyDone(true);
@@ -25,13 +72,19 @@ export default function IndexingBanner() {
             } catch {
                 // ignore
             }
-            if (!cancelled) timer = setTimeout(tick, 1500);
+            // Retry WebSocket connection after a brief pause
+            if (!closed) reconnectTimer = setTimeout(connect, 3000);
         };
 
-        tick();
+        // Fetch initial status via HTTP, then open WebSocket for live updates
+        pollOnce().then(() => {
+            if (!closed) connect();
+        });
+
         return () => {
-            cancelled = true;
-            clearTimeout(timer);
+            closed = true;
+            clearTimeout(reconnectTimer);
+            if (ws) ws.close();
         };
     }, []);
 

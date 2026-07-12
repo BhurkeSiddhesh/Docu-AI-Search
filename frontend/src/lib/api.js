@@ -5,6 +5,13 @@ const client = axios.create({
     timeout: 60000,
 });
 
+// Inject stored Bearer token if AUTH_ENABLED=true on the backend
+client.interceptors.request.use((config) => {
+    const token = localStorage.getItem('api_token');
+    if (token) config.headers['Authorization'] = `Bearer ${token}`;
+    return config;
+});
+
 export const api = {
     // Health
     health: () => client.get('/health'),
@@ -43,9 +50,13 @@ export const api = {
     search: (query, opts = {}) =>
         client.post('/search', { query, ...opts }),
     streamAnswer: async (query, context, systemPromptId, onChunk, signal) => {
+        // Raw fetch bypasses the axios interceptor, so attach the token here too
+        const headers = { 'Content-Type': 'application/json' };
+        const token = localStorage.getItem('api_token');
+        if (token) headers['Authorization'] = `Bearer ${token}`;
         const res = await fetch('/api/stream-answer', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify({ query, context, system_prompt_id: systemPromptId }),
             signal,
         });
@@ -55,11 +66,18 @@ export const api = {
         try {
             while (true) {
                 const { done, value } = await reader.read();
-                if (done) break;
+                if (done) {
+                    // Flush any buffered multi-byte character split across chunks
+                    const tail = decoder.decode();
+                    if (tail) onChunk(tail);
+                    break;
+                }
                 // stream: true handles multi-byte characters split across chunks
                 const chunk = decoder.decode(value, { stream: true });
                 if (chunk) onChunk(chunk);
             }
+        } catch (err) {
+            if (err.name !== 'AbortError') throw err;
         } finally {
             reader.cancel();
         }
@@ -105,6 +123,9 @@ export const api = {
     runBenchmarks: () => client.post('/benchmarks/run'),
     benchmarkStatus: () => client.get('/benchmarks/status'),
     benchmarkResults: () => client.get('/benchmarks/results'),
+
+    // Auth
+    getAuthToken: () => client.get('/auth/token'),
 };
 
 export default api;

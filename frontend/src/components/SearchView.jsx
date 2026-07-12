@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Search, Sparkles, Loader2, Bot, ChevronDown, Filter, Cpu, Cloud, Zap } from 'lucide-react';
 import ResultCard from './ResultCard';
 import AgentView from './AgentView';
+import ErrorBoundary from './ErrorBoundary';
 import api from '../lib/api';
 import { useToast } from './Toast';
 
@@ -199,6 +200,11 @@ export default function SearchView({ pendingQuery }) {
             setIsSearching(false);
 
             if ((res.data.results || []).length > 0) {
+                // Abort any previous stream before starting a new one
+                streamAbortRef.current?.abort();
+                const controller = new AbortController();
+                streamAbortRef.current = controller;
+
                 // Stream the AI answer
                 const controller = new AbortController();
                 streamAbortRef.current = controller;
@@ -550,7 +556,9 @@ export default function SearchView({ pendingQuery }) {
 
             {hasSearched && agentMode && (
                 <div className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1">
-                    <AgentView query={agentQuery} />
+                    <ErrorBoundary>
+                        <AgentView query={agentQuery} />
+                    </ErrorBoundary>
                 </div>
             )}
         </div>

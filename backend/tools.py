@@ -21,12 +21,24 @@ def tool_search_knowledge_base(query: str, global_state: dict) -> str:
     if not global_state.get('index'):
         return "Error: No knowledge base indexed."
         
+    cfg = global_state['config']
+    provider = cfg.get('LocalLLM', 'provider', fallback='openai')
+    model_path = cfg.get('LocalLLM', 'model_path', fallback=None)
+    api_key = cfg.get('APIKeys', 'openai_api_key', fallback=None)
+    if provider == 'gemini':
+        api_key = cfg.get('APIKeys', 'gemini_api_key', fallback=api_key)
+    elif provider == 'anthropic':
+        api_key = cfg.get('APIKeys', 'anthropic_api_key', fallback=api_key)
+    elif provider == 'grok':
+        api_key = cfg.get('APIKeys', 'grok_api_key', fallback=api_key)
+    elif provider in ('ollama', 'lmstudio'):
+        api_key = cfg.get('ExternalProviders', 'external_api_key', fallback=api_key)
     results, _ = search.search(
-        query, 
-        global_state['index'], 
-        global_state['docs'], 
-        global_state['tags'], 
-        llm_integration.get_embeddings(global_state['config'].get('LocalLLM', 'provider', fallback='openai')),
+        query,
+        global_state['index'],
+        global_state['docs'],
+        global_state['tags'],
+        llm_integration.get_embeddings(provider, api_key=api_key, model_path=model_path),
         global_state.get('index_summaries'),
         global_state.get('cluster_summaries'),
         global_state.get('cluster_map'),

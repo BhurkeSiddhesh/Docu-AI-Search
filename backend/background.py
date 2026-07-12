@@ -1,15 +1,21 @@
+import logging
+import threading
 import time
 import os
 import configparser
-import threading
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from backend.indexing import create_index, save_index
+
+logger = logging.getLogger(__name__)
 # Absolute path configurations to match backend/api.py
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 CONFIG_PATH = os.path.join(BASE_DIR, 'config.ini')
 INDEX_PATH = os.path.join(DATA_DIR, 'index.faiss')
+
+_DEBOUNCE_SECONDS = 5
+
 
 class IndexingEventHandler(FileSystemEventHandler):
     """
@@ -73,18 +79,21 @@ class IndexingEventHandler(FileSystemEventHandler):
         Executes the `create_index` pipeline and persists the results to
         the absolute INDEX_PATH.
         """
-        print("Change detected, updating index...")
-        # previous_index_path enables incremental re-indexing: only files that
-        # actually changed are re-extracted and re-embedded.
-        res = create_index(self.folder, self.provider, self.api_key, self.model_path,
-                           previous_index_path=INDEX_PATH)
-        index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
-        meta = res[7] if len(res) > 7 else {}
-        if index:
-            save_index(index, docs, tags, INDEX_PATH, idx_sum, clus_sum, clus_map, bm25,
-                       model_name=meta.get('model_name', 'unknown'),
-                       embedding_dim=meta.get('embedding_dim', 0))
-            print("Index updated.")
+        logger.info("Change detected, updating index...")
+        try:
+            # previous_index_path enables incremental re-indexing: only files that
+            # actually changed are re-extracted and re-embedded.
+            res = create_index(self.folder, self.provider, self.api_key, self.model_path,
+                               previous_index_path=INDEX_PATH)
+            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
+            meta = res[7] if len(res) > 7 else {}
+            if index:
+                save_index(index, docs, tags, INDEX_PATH, idx_sum, clus_sum, clus_map, bm25,
+                           model_name=meta.get('model_name', 'unknown'),
+                           embedding_dim=meta.get('embedding_dim', 0))
+                logger.info("Index updated.")
+        except Exception as e:
+            logger.error("Background index update failed for %s: %s", self.folder, e, exc_info=True)
 
 def start_background_indexing():
     """
@@ -106,7 +115,7 @@ def start_background_indexing():
                 folders = [folder]
 
         if not folders:
-            print("No folders configured for indexing.")
+            logger.warning("No folders configured for indexing.")
             return
 
         provider = config.get('LocalLLM', 'provider', fallback='openai')
@@ -120,9 +129,9 @@ def start_background_indexing():
         for folder in folders:
             if os.path.exists(folder):
                 observer.schedule(event_handler, folder, recursive=True)
-                print(f"Monitoring folder: {folder}")
+                logger.info("Monitoring folder: %s", folder)
             else:
-                print(f"Warning: Monitored folder does not exist: {folder}")
+                logger.warning("Monitored folder does not exist: %s", folder)
 
         observer.start()
 

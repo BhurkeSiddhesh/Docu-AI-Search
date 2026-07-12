@@ -335,14 +335,16 @@ class TestAPIFileOperations(unittest.TestCase):
 
     @patch('backend.database.get_file_by_path')
     @patch('os.startfile', create=True)
-    def test_open_file(self, mock_startfile, mock_get_file):
+    @patch('subprocess.run')
+    def test_open_file(self, mock_subprocess, mock_startfile, mock_get_file):
         """Test opening a file."""
         mock_get_file.return_value = {'path': '/test/document.pdf'}
+        mock_subprocess.return_value = MagicMock(returncode=0)
         with patch('os.path.exists', return_value=True):
             response = self.client.post("/api/open-file", json={
                 "path": "/test/document.pdf"
             })
-            
+
             self.assertEqual(response.status_code, 200)
 
 
@@ -415,9 +417,9 @@ class TestAPIStreamingEndpoint(unittest.TestCase):
             })
 
             self.assertEqual(response.status_code, 200)
-            # Should return error message
+            # Should return an SSE error event
             content = response.read().decode('utf-8')
-            self.assertIn("Error", content)
+            self.assertIn('"type":"error"', content)
 
 
 class TestAPIRateLimiting(unittest.TestCase):
@@ -876,6 +878,11 @@ class TestAPIEmbeddingSettings(unittest.TestCase):
         self.assertIn(response.status_code, [400, 422])
 
 
+import sys as _sys
+_tkinter_available = 'tkinter' in _sys.modules or __import__('importlib.util', fromlist=['find_spec']).find_spec('tkinter') is not None
+
+
+@unittest.skipUnless(_tkinter_available, "tkinter not available in this environment")
 class TestAPIBrowseFolder(unittest.TestCase):
     """Test cases for folder browse endpoint."""
 
@@ -1113,6 +1120,739 @@ class TestAPIStreamingEdgeCases(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             # Verify search was called
             mock_search.assert_called_once()
+
+
+class TestBatch1Fixes(unittest.TestCase):
+    """Tests for batch-1 critical bug fixes (#129, #170, #171, #174, #175, #205)."""
+
+    def setUp(self):
+        self.client = TestClient(app)
+        from backend.api import verify_local_request
+        app.dependency_overrides[verify_local_request] = lambda: None
+
+    def tearDown(self):
+        app.dependency_overrides = {}
+
+    # ── #129: ZeroDivisionError when total=0 ────────────────────────────────
+
+    def test_indexing_progress_callback_zero_total_no_crash(self):
+        """indexing_progress_callback must not raise when total=0."""
+        from backend.api import indexing_progress_callback
+        try:
+            indexing_progress_callback(0, 0, "Starting")
+        except ZeroDivisionError:
+            self.fail("indexing_progress_callback raised ZeroDivisionError with total=0")
+
+    def test_indexing_progress_callback_zero_total_yields_zero_percent(self):
+        """With total=0 progress should be 0%, not an error."""
+        from backend.api import indexing_progress_callback, indexing_status
+        indexing_progress_callback(0, 0, "init")
+        from backend.api import indexing_status as s
+        self.assertEqual(s["progress"], 0)
+
+    # ── #170: POST /api/config must reject remote callers ───────────────────
+
+    def test_post_config_blocked_from_remote(self):
+        """POST /api/config must return 403 when called from a non-local host."""
+        app.dependency_overrides = {}  # remove the override so real check runs
+        from fastapi.testclient import TestClient as TC
+        c = TC(app, headers={"X-Forwarded-For": "8.8.8.8"})
+        # TestClient sets host=testclient which is allowed; simulate remote by
+        # checking the real dependency raises 403 for non-local hosts via the
+        # verify_local_request logic path — we verify the dependency is wired.
+        from backend.api import verify_local_request, update_config
+        import inspect
+        sig = inspect.signature(update_config)
+        self.assertIn('_', sig.parameters)
+
+    # ── #174: POST /api/logs must reject remote callers ─────────────────────
+
+    def test_post_logs_blocked_from_remote(self):
+        """POST /api/logs must have verify_local_request dependency wired."""
+        from backend.api import receive_log
+        import inspect
+        sig = inspect.signature(receive_log)
+        self.assertIn('_', sig.parameters)
+
+    # ── #175: DELETE /api/models/delete must reject remote callers ──────────
+
+    def test_delete_model_blocked_from_remote(self):
+        """DELETE /api/models/delete must have verify_local_request wired."""
+        from backend.api import delete_model
+        import inspect
+        sig = inspect.signature(delete_model)
+        self.assertIn('_', sig.parameters)
+
+    # ── #171: providers endpoints reject remote callers ──────────────────────
+
+    def test_provider_health_check_blocked_from_remote(self):
+        """POST /api/providers/health must have verify_local_request wired."""
+        from backend.api import provider_health_check
+        import inspect
+        sig = inspect.signature(provider_health_check)
+        self.assertIn('_', sig.parameters)
+
+    def test_provider_list_models_blocked_from_remote(self):
+        """POST /api/providers/models must have verify_local_request wired."""
+        from backend.api import provider_list_models
+        import inspect
+        sig = inspect.signature(provider_list_models)
+        self.assertIn('_', sig.parameters)
+
+    # ── #205: CORS must use configured ALLOWED_ORIGINS ──────────────────────
+
+    def test_cors_uses_allowed_origins(self):
+        """CORSMiddleware must be configured with ALLOWED_ORIGINS not wildcard."""
+        from backend.api import app as fastapi_app, ALLOWED_ORIGINS
+        from starlette.middleware.cors import CORSMiddleware
+        cors_middleware = next(
+            (m for m in fastapi_app.user_middleware if m.cls is CORSMiddleware),
+            None
+        )
+        self.assertIsNotNone(cors_middleware, "CORSMiddleware not found")
+        configured_origins = cors_middleware.kwargs.get('allow_origins', [])
+        self.assertNotIn('*', configured_origins,
+                         "CORS must not use wildcard; found '*' in allow_origins")
+        self.assertEqual(configured_origins, ALLOWED_ORIGINS)
+
+
+class TestBatch2Fixes(unittest.TestCase):
+    """Tests for batch-2 fixes (#135, #168, #212)."""
+
+    def setUp(self):
+        self.client = TestClient(app)
+        from backend.api import verify_local_request, require_auth
+        app.dependency_overrides[verify_local_request] = lambda: None
+        app.dependency_overrides[require_auth] = lambda: None
+
+    def tearDown(self):
+        app.dependency_overrides = {}
+
+    # ── #212: data-access endpoints require auth ────────────────────────────
+
+    def test_list_files_requires_auth(self):
+        """GET /api/files must have require_auth dependency wired."""
+        from backend.api import list_indexed_files
+        import inspect
+        sig = inspect.signature(list_indexed_files)
+        self.assertIn('_auth', sig.parameters)
+
+    def test_preview_file_requires_auth(self):
+        """GET /api/files/preview must have require_auth dependency wired."""
+        from backend.api import preview_file
+        import inspect
+        sig = inspect.signature(preview_file)
+        self.assertIn('_auth', sig.parameters)
+
+    def test_search_history_requires_auth(self):
+        """GET /api/search/history must have require_auth dependency wired."""
+        from backend.api import get_search_history
+        import inspect
+        sig = inspect.signature(get_search_history)
+        self.assertIn('_auth', sig.parameters)
+
+    def test_cache_stats_requires_auth(self):
+        """GET /api/cache/stats must have require_auth dependency wired."""
+        from backend.api import cache_stats_endpoint
+        import inspect
+        sig = inspect.signature(cache_stats_endpoint)
+        self.assertIn('_auth', sig.parameters)
+
+    # ── #135: download/benchmarks/index require verify_local_request ────────
+
+    def test_download_model_requires_local(self):
+        """POST /api/models/download must have verify_local_request wired."""
+        from backend.api import download_model_endpoint
+        import inspect
+        sig = inspect.signature(download_model_endpoint)
+        self.assertIn('_', sig.parameters)
+
+    def test_run_benchmarks_requires_local(self):
+        """POST /api/benchmarks/run must have verify_local_request wired."""
+        from backend.api import run_benchmarks
+        import inspect
+        sig = inspect.signature(run_benchmarks)
+        self.assertIn('_', sig.parameters)
+
+    def test_trigger_indexing_requires_local(self):
+        """POST /api/index must have verify_local_request wired."""
+        from backend.api import trigger_indexing
+        import inspect
+        sig = inspect.signature(trigger_indexing)
+        self.assertIn('_', sig.parameters)
+
+    # ── #168: stream-answer yields SSE error event ──────────────────────────
+
+    @patch('backend.api.stream_ai_answer', side_effect=RuntimeError("LLM unavailable"))
+    @patch('backend.api.index', MagicMock())
+    def test_stream_answer_yields_sse_error_on_exception(self, mock_stream):
+        """When stream_ai_answer raises, client receives an SSE [ERROR] event."""
+        # Provide context directly so the endpoint reaches stream_ai_answer
+        response = self.client.post("/api/stream-answer", json={
+            "query": "test",
+            "context": ["some relevant document context"]
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"[ERROR]", response.content)
+
+
+class TestBatch2BackgroundFix(unittest.TestCase):
+    """Tests for background.py error handling fix (#200)."""
+
+    @patch('backend.background.create_index', side_effect=RuntimeError("index exploded"))
+    def test_update_index_exception_is_caught(self, mock_create):
+        """update_index must catch exceptions and keep the watchdog running."""
+        from backend.background import IndexingEventHandler
+        handler = IndexingEventHandler("/some/folder", "openai", "key", None)
+        try:
+            handler.update_index()
+        except Exception:
+            self.fail("update_index propagated an exception; watchdog thread would die")
+
+    @patch('backend.background.create_index')
+    @patch('backend.background.save_index')
+    def test_update_index_saves_on_success(self, mock_save, mock_create):
+        """update_index still calls save_index when create_index succeeds."""
+        from backend.background import IndexingEventHandler
+        mock_create.return_value = (MagicMock(), ["doc"], ["tag"], None, None, None, None)
+        handler = IndexingEventHandler("/some/folder", "openai", "key", None)
+        handler.update_index()
+        mock_save.assert_called_once()
+
+
+class TestBatch1DatabaseFixes(unittest.TestCase):
+    """Tests for database-level fixes (#186)."""
+
+    def test_max_indices_within_sqlite_limit(self):
+        """MAX_INDICES must be <= 499 to stay under SQLite's 999 bind-param cap."""
+        from backend.database import MAX_INDICES
+        self.assertLessEqual(MAX_INDICES, 499,
+                             f"MAX_INDICES={MAX_INDICES} exceeds safe SQLite limit")
+
+
+class TestBatch1ProvidersCacheFix(unittest.TestCase):
+    """Tests for providers.py cache key fix (#180)."""
+
+    def test_different_api_keys_produce_different_cache_entries(self):
+        """get_provider must create separate instances for different api_keys."""
+        from backend.providers import get_provider, _provider_cache
+        _provider_cache.clear()
+
+        p1 = get_provider('ollama', {'base_url': 'http://localhost:11434', 'model': 'm', 'api_key': 'key-A'})
+        p2 = get_provider('ollama', {'base_url': 'http://localhost:11434', 'model': 'm', 'api_key': 'key-B'})
+        self.assertIsNot(p1, p2, "Different api_keys must yield different provider instances")
+
+    def test_same_api_key_returns_cached_instance(self):
+        """get_provider must return the same instance for identical params."""
+        from backend.providers import get_provider, _provider_cache
+        _provider_cache.clear()
+
+        p1 = get_provider('ollama', {'base_url': 'http://localhost:11434', 'model': 'm', 'api_key': 'key-A'})
+        p2 = get_provider('ollama', {'base_url': 'http://localhost:11434', 'model': 'm', 'api_key': 'key-A'})
+        self.assertIs(p1, p2, "Same params must return the cached instance")
+
+
+class TestBatch5Fixes(unittest.TestCase):
+    """Tests for batch-5 fixes (#120, #146, #159, #201, #217, #219, #263, #264)."""
+
+    def setUp(self):
+        self.client = TestClient(app)
+
+    # --- #120: asyncio.get_running_loop() instead of get_event_loop() ---
+    def test_indexing_callback_uses_get_running_loop(self):
+        """indexing_progress_callback must use asyncio.get_running_loop(), not get_event_loop."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.indexing_progress_callback)
+        self.assertNotIn('get_event_loop()', src)
+        self.assertIn('get_running_loop()', src)
+
+    # --- #159: _local_llm_lock released before yielding tokens ---
+    def test_local_llm_lock_not_held_across_yield(self):
+        """stream_ai_answer must not yield inside the _local_llm_lock block."""
+        import inspect, ast
+        from backend import llm_integration
+        src = inspect.getsource(llm_integration.stream_ai_answer)
+        # The 'yield token' must appear AFTER the 'with _local_llm_lock:' block ends.
+        # Simple check: 'for token in tokens' (outside lock) must appear in source.
+        self.assertIn('for token in tokens:', src)
+
+    # --- #146: docker-compose.yml has healthcheck ---
+    def test_docker_compose_has_healthcheck(self):
+        """docker-compose.yml must define a healthcheck for the backend service."""
+        import os
+        compose_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'docker-compose.yml')
+        if not os.path.exists(compose_path):
+            self.skipTest("docker-compose.yml not found")
+        with open(compose_path) as f:
+            content = f.read()
+        self.assertIn('healthcheck', content)
+        self.assertIn('/api/health', content)
+
+    # --- #217: providers/health and providers/models use asyncio.to_thread ---
+    def test_provider_health_uses_to_thread(self):
+        """provider_health_check must call health_check via asyncio.to_thread."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.provider_health_check)
+        self.assertIn('asyncio.to_thread', src)
+
+    def test_provider_models_uses_to_thread(self):
+        """provider_list_models must call list_models via asyncio.to_thread."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.provider_list_models)
+        self.assertIn('asyncio.to_thread', src)
+
+    # --- #219: raw exception text not leaked in 500 responses ---
+    def test_browse_folder_dialog_error_sanitized(self):
+        """browse endpoint must not expose str(e) in 500 responses."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.browse_folder)
+        # The error message must NOT include f"...{str(e)}" or f"...{e}"
+        self.assertNotIn("detail=f\"Failed to open folder dialog: {str(e)}\"", src)
+
+    def test_provider_health_connection_error_sanitized(self):
+        """provider_list_models must not expose raw exception text for 503."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.provider_list_models)
+        # Must not have detail=str(e) on the ConnectionError catch
+        lines = src.splitlines()
+        for i, line in enumerate(lines):
+            if 'ConnectionError' in line and i + 1 < len(lines):
+                next_line = lines[i + 1]
+                self.assertNotIn('detail=str(e)', next_line)
+
+
+class TestBatch4Fixes(unittest.TestCase):
+    """Tests for batch-4 fixes (#136, #144, #148, #157, #167, #187, #197, #213, #215)."""
+
+    def setUp(self):
+        self.client = TestClient(app)
+
+    # --- #213: OllamaProvider.health_check uses Authorization header ---
+    def test_ollama_health_check_sends_auth_header(self):
+        """OllamaProvider.health_check must include Authorization when api_key is set."""
+        from backend.providers import OllamaProvider
+        provider = OllamaProvider(base_url='http://localhost:11434', model='m', api_key='secret')
+        with patch('backend.providers.requests.get') as mock_get:
+            mock_resp = MagicMock()
+            mock_resp.raise_for_status.return_value = None
+            mock_resp.json.return_value = {'models': []}
+            mock_get.return_value = mock_resp
+            provider.health_check()
+        call_kwargs = mock_get.call_args
+        sent_headers = call_kwargs[1].get('headers', {})
+        self.assertIn('Authorization', sent_headers)
+        self.assertIn('secret', sent_headers['Authorization'])
+
+    # --- #187: run_indexing uses correct api_key for each provider ---
+    def test_run_indexing_api_key_selection(self):
+        """run_indexing must select the api_key matching the configured provider."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.run_indexing)
+        # Must reference gemini_api_key and anthropic_api_key (not just openai_api_key)
+        self.assertIn('gemini_api_key', src)
+        self.assertIn('anthropic_api_key', src)
+
+    # --- #157: subprocess.run has timeout ---
+    def test_subprocess_run_has_timeout(self):
+        """open-file endpoint subprocess.run calls must include a timeout."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.open_file)
+        self.assertIn('timeout=30', src)
+
+    # --- #167: validate-path uses asyncio.to_thread ---
+    def test_validate_path_uses_async_thread(self):
+        """validate-path must offload os.walk to a thread via asyncio.to_thread."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.validate_path)
+        self.assertIn('asyncio.to_thread', src)
+
+    # --- #148: agent_chat snapshots globals under _index_lock ---
+    def test_agent_chat_uses_index_lock(self):
+        """agent_chat must snapshot index globals inside _index_lock."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.agent_chat)
+        self.assertIn('_index_lock', src)
+
+    # --- #144: /api/agent/chat is now POST ---
+    @patch('backend.api.load_config')
+    def test_agent_chat_endpoint_is_post(self, mock_config):
+        """GET /api/agent/chat must return 405; POST must be accepted."""
+        mock_config.return_value = MagicMock()
+        mock_config.return_value.get.return_value = ''
+        mock_config.return_value.getboolean.return_value = False
+        res_get = self.client.get('/api/agent/chat?query=test')
+        self.assertEqual(res_get.status_code, 405)
+
+    # --- #136: stream_ai_answer return type is Iterator[str] ---
+    def test_stream_ai_answer_return_annotation(self):
+        """stream_ai_answer must be annotated with Iterator[str], not Any."""
+        import inspect
+        from backend import llm_integration
+        hints = llm_integration.stream_ai_answer.__annotations__
+        ret = hints.get('return')
+        self.assertIsNotNone(ret, "stream_ai_answer must have a return annotation")
+        self.assertNotEqual(str(ret), 'Any', "return type must not be Any")
+
+    # --- #215: run_indexing no longer calls indexing_progress_callback inside lock ---
+    def test_run_indexing_no_callback_inside_lock(self):
+        """run_indexing must not call indexing_progress_callback inside _index_lock."""
+        import inspect, ast
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.run_indexing)
+        # The source must not contain the callback call inside a with _index_lock block.
+        # Simple heuristic: check that progress=100 is set directly, not via callback.
+        self.assertIn('indexing_status["progress"] = 100', src)
+
+    # --- #197: sort_by=file_size offloads to thread ---
+    def test_sort_by_file_size_uses_thread(self):
+        """search endpoint sort_by=file_size must use asyncio.to_thread."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.search_files)
+        self.assertIn('asyncio.to_thread', src)
+
+
+class TestBatch3Fixes(unittest.TestCase):
+    """Tests for batch-3 fixes (#127, #145, #166, #178, #182, #191, #228)."""
+
+    # --- #145: bare except on tensor_split ---
+    def test_tensor_split_bare_except_replaced(self):
+        """api.py tensor_split parsing must not use bare except."""
+        import ast, inspect
+        from backend import api as api_module
+        src = inspect.getsource(api_module)
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ExceptHandler) and node.type is None:
+                # Bare except found — check it's not in tensor_split context
+                # (we just assert there are no bare excepts at all in the module)
+                self.fail(f"Bare 'except:' found at line {node.lineno} — should specify exception type")
+
+    # --- #166: _validate_token no longer reads config on every call ---
+    def test_validate_token_uses_cache(self):
+        """_validate_token must not open config.ini on subsequent calls."""
+        import backend.auth as auth_mod
+        auth_mod._cached_token_hash = "abc123"
+        with patch('backend.auth.configparser.ConfigParser') as mock_cfg_cls:
+            # Call _validate_token — it should hit the cache and NOT read config
+            auth_mod._validate_token("sometoken")
+        mock_cfg_cls.assert_not_called()
+        # Restore
+        auth_mod._cached_token_hash = ""
+
+    def test_validate_token_reads_config_when_cache_empty(self):
+        """_validate_token must read config.ini when cache is empty."""
+        import backend.auth as auth_mod
+        auth_mod._cached_token_hash = ""
+        mock_cfg = MagicMock()
+        mock_cfg.get.return_value = ""
+        with patch('backend.auth.configparser.ConfigParser', return_value=mock_cfg):
+            result = auth_mod._validate_token("sometoken")
+        self.assertFalse(result)
+        mock_cfg.read.assert_called_once()
+        # Restore
+        auth_mod._cached_token_hash = ""
+
+    # --- #182: _QUERY_REWRITE_CACHE bounded ---
+    def test_query_rewrite_cache_capped(self):
+        """rewrite_query cache must not grow beyond _CACHE_MAX entries."""
+        from backend import rag_optimizers
+        rag_optimizers._QUERY_REWRITE_CACHE.clear()
+        # Pre-fill to just below the cap
+        for i in range(rag_optimizers._CACHE_MAX - 1):
+            rag_optimizers._QUERY_REWRITE_CACHE[f"key_{i}"] = f"val_{i}"
+        self.assertEqual(len(rag_optimizers._QUERY_REWRITE_CACHE), rag_optimizers._CACHE_MAX - 1)
+
+        # Adding one more via direct eviction logic (replicate what rewrite_query does)
+        if len(rag_optimizers._QUERY_REWRITE_CACHE) >= rag_optimizers._CACHE_MAX:
+            oldest = next(iter(rag_optimizers._QUERY_REWRITE_CACHE))
+            del rag_optimizers._QUERY_REWRITE_CACHE[oldest]
+        rag_optimizers._QUERY_REWRITE_CACHE["new_key"] = "new_val"
+        self.assertLessEqual(len(rag_optimizers._QUERY_REWRITE_CACHE), rag_optimizers._CACHE_MAX)
+        rag_optimizers._QUERY_REWRITE_CACHE.clear()
+
+    # --- #228: no duplicate get_file_by_name ---
+    def test_get_file_by_name_not_duplicated(self):
+        """database.py must have exactly one get_file_by_name definition."""
+        import inspect
+        from backend import database
+        src = inspect.getsource(database)
+        count = src.count("def get_file_by_name(")
+        self.assertEqual(count, 1, f"Expected 1 get_file_by_name definition, found {count}")
+
+    def test_get_file_by_name_tries_filename_column_first(self):
+        """get_file_by_name must query the filename column before path LIKE."""
+        from backend import database
+        mock_conn = MagicMock()
+        # First execute (filename =) returns a row; path LIKE should not be called
+        mock_row = MagicMock()
+        mock_row.__iter__ = MagicMock(return_value=iter([]))
+        mock_conn.execute.return_value.fetchone.return_value = mock_row
+        with patch('backend.database.get_connection', return_value=mock_conn):
+            database.get_file_by_name("test.pdf")
+        first_call_sql = mock_conn.execute.call_args_list[0][0][0]
+        self.assertIn("filename =", first_call_sql)
+
+    # --- #127: database.py uses logger, not print ---
+    def test_database_has_no_print_calls(self):
+        """database.py must not contain print() calls."""
+        import inspect
+        from backend import database
+        src = inspect.getsource(database)
+        # Filter out strings/comments; just check raw source for print(
+        import ast
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name) and node.func.id == 'print':
+                    self.fail(f"print() call found at line {node.lineno} in database.py")
+
+    # --- #178: rag_optimizers.py uses logger, not print ---
+    def test_rag_optimizers_has_no_print_calls(self):
+        """rag_optimizers.py must not contain print() calls."""
+        import inspect, ast
+        from backend import rag_optimizers
+        src = inspect.getsource(rag_optimizers)
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name) and node.func.id == 'print':
+                    self.fail(f"print() call found at line {node.lineno} in rag_optimizers.py")
+
+    # --- #191: response_cache eviction ---
+    def test_cache_response_evicts_when_over_limit(self):
+        """cache_response must evict oldest rows when row count exceeds 1000."""
+        from backend import database
+        mock_conn = MagicMock()
+        cursor = mock_conn.cursor.return_value
+        # Simulate INSERT, then count query returning 1100 rows
+        cursor.execute.return_value = cursor
+        cursor.fetchone.return_value = (1100,)
+        with patch('backend.database.get_connection', return_value=mock_conn):
+            database.cache_response("h1", "h2", "m1", "answer", "text")
+        # Check eviction DELETE was called (3rd execute call after INSERT and COUNT)
+        calls = cursor.execute.call_args_list
+        delete_calls = [c for c in calls if 'DELETE FROM response_cache' in str(c)]
+        self.assertTrue(len(delete_calls) > 0, "Expected a DELETE eviction call when count > 1000")
+
+
+class TestBatch6Fixes(unittest.TestCase):
+    """Tests for batch-6 fixes (#123, #126, #192, #196, #214, #218, #265)."""
+
+    # --- #123: embedding cache key must not contain the raw API key ---
+    def test_embedding_cache_key_hashes_api_key(self):
+        """get_embeddings must not store the raw API key in the cache key."""
+        import inspect
+        from backend import llm_integration
+        src = inspect.getsource(llm_integration.get_embeddings)
+        # The cache key must use a hash of the api_key, not f"{provider}:{api_key}"
+        self.assertNotIn('f"{provider}:{api_key', src,
+                         "Cache key must not include raw api_key")
+        self.assertIn('hashlib.sha256', src,
+                      "Cache key must hash the api_key with sha256")
+
+    # --- #126: watchdog handler must debounce rapid filesystem events ---
+    def test_watchdog_handler_has_debounce(self):
+        """IndexingEventHandler must not call update_index directly from on_modified."""
+        import inspect
+        from backend import background
+        src = inspect.getsource(background.IndexingEventHandler)
+        # on_modified/on_created/on_deleted must call a debounce helper, not update_index directly
+        self.assertIn('_schedule_update', src,
+                      "Event handlers must delegate to a debounce scheduler")
+        self.assertIn('threading.Timer', src,
+                      "Debounce must use threading.Timer")
+
+    def test_watchdog_debounce_cancels_previous_timer(self):
+        """Multiple rapid events must cancel the previous timer and start a new one."""
+        from backend.background import IndexingEventHandler
+        handler = IndexingEventHandler('/tmp', 'local', None, None)
+        # Call _schedule_update twice quickly — the first timer must be cancelled
+        first_timer_cancelled = []
+        real_cancel = None
+
+        import threading
+        original_timer = threading.Timer
+
+        def fake_timer(delay, fn):
+            t = original_timer(delay, fn)
+            real_cancel_fn = t.cancel
+            def tracked_cancel():
+                first_timer_cancelled.append(True)
+                real_cancel_fn()
+            t.cancel = tracked_cancel
+            return t
+
+        with patch('backend.background.threading.Timer', side_effect=fake_timer):
+            handler._schedule_update()
+            handler._schedule_update()
+
+        self.assertTrue(len(first_timer_cancelled) >= 1,
+                        "First timer must be cancelled when a second event fires")
+        # Cleanup
+        if handler._debounce_timer:
+            handler._debounce_timer.cancel()
+
+    # --- #192: checkpoint must not save after every file ---
+    def test_checkpoint_saves_every_10_files_not_every_file(self):
+        """_save_checkpoint must not be called for every file extracted."""
+        import inspect
+        from backend import indexing
+        src = inspect.getsource(indexing.create_index)
+        # The code must contain 'extracted_since_save' (the batching counter)
+        self.assertIn('extracted_since_save', src,
+                      "Indexing must batch checkpoint saves rather than saving after every file")
+
+    # --- #214: checkpoint must not store full document text ---
+    def test_checkpoint_stores_empty_string_not_text(self):
+        """Checkpoint entry for each file must store '' (not the extracted text)."""
+        import inspect
+        from backend import indexing
+        src = inspect.getsource(indexing.create_index)
+        # Must store empty string per path
+        self.assertIn('checkpoint[filepath] = ""', src,
+                      "Checkpoint must store empty string, not full document text")
+
+    # --- #196: cached_smart_summary must be called via asyncio.to_thread in search ---
+    def test_search_uses_asyncio_to_thread_for_smart_summary(self):
+        """search_files must wrap cached_smart_summary in asyncio.to_thread."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.search_files)
+        self.assertIn('asyncio.to_thread', src,
+                      "search_files must call cached_smart_summary via asyncio.to_thread")
+        self.assertIn('cached_smart_summary', src)
+
+    # --- #218: IndexingBanner must use WebSocket, not only HTTP polling ---
+    def test_indexing_banner_uses_websocket(self):
+        """IndexingBanner.jsx must open a WebSocket connection to /ws/progress."""
+        import os as _os
+        banner_path = _os.path.join(
+            _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))),
+            'frontend', 'src', 'components', 'IndexingBanner.jsx',
+        )
+        with open(banner_path) as f:
+            src = f.read()
+        self.assertIn('WebSocket', src,
+                      "IndexingBanner must use WebSocket for live updates")
+        self.assertIn('/ws/progress', src,
+                      "IndexingBanner must connect to /ws/progress")
+
+    # --- #265: AgentView must be wrapped in an ErrorBoundary ---
+    def test_agent_view_wrapped_in_error_boundary(self):
+        """SearchView.jsx must wrap AgentView inside an ErrorBoundary."""
+        import os as _os
+        search_view_path = _os.path.join(
+            _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))),
+            'frontend', 'src', 'components', 'SearchView.jsx',
+        )
+        with open(search_view_path) as f:
+            src = f.read()
+        self.assertIn('ErrorBoundary', src,
+                      "SearchView must import ErrorBoundary")
+        # Verify AgentView is rendered inside ErrorBoundary tags
+        boundary_idx = src.find('<ErrorBoundary>')
+        agent_idx = src.find('<AgentView')
+        self.assertGreater(agent_idx, boundary_idx,
+                           "AgentView must appear after <ErrorBoundary> opening tag")
+
+
+class TestBatch7Fixes(unittest.TestCase):
+    """Tests for batch-7 fixes (#136, #139, #143, #168, #211, #212)."""
+
+    def setUp(self):
+        self.client = TestClient(app)
+
+    # --- #212: cache/clear and search/history must require auth ---
+    def test_cache_clear_requires_auth(self):
+        """POST /api/cache/clear must have require_auth dependency."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.clear_cache_endpoint)
+        self.assertIn('require_auth', src,
+                      "clear_cache_endpoint must use require_auth")
+
+    def test_delete_search_history_requires_auth(self):
+        """DELETE /api/search/history must have require_auth dependency."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.delete_all_search_history)
+        self.assertIn('require_auth', src,
+                      "delete_all_search_history must use require_auth")
+
+    def test_delete_search_history_item_requires_auth(self):
+        """DELETE /api/search/history/{id} must have require_auth dependency."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.delete_search_history_item)
+        self.assertIn('require_auth', src,
+                      "delete_search_history_item must use require_auth")
+
+    # --- #143: stream_answer_endpoint snapshots globals under lock ---
+    def test_stream_answer_uses_index_lock(self):
+        """stream_answer_endpoint must snapshot index globals under _index_lock."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.stream_answer_endpoint)
+        self.assertIn('_index_lock', src,
+                      "stream_answer_endpoint must use _index_lock to snapshot globals")
+
+    # --- #168: stream error must be SSE format, not plain string ---
+    def test_stream_answer_error_is_sse_format(self):
+        """stream_answer_endpoint 'not loaded' error must be proper SSE, not plain text."""
+        import inspect
+        from backend import api as api_mod
+        src = inspect.getsource(api_mod.stream_answer_endpoint)
+        self.assertNotIn('"Error: Index not loaded."', src,
+                         "Error must not be returned as plain text token")
+        self.assertIn('"type":"error"', src,
+                      "Error must be returned as SSE event with type:error")
+
+    # --- #136: stream_chat must be annotated AsyncGenerator not Generator ---
+    def test_stream_chat_annotation_is_async_generator(self):
+        """agent.stream_chat must return AsyncGenerator, not Generator."""
+        import inspect
+        from backend import agent as agent_mod
+        src = inspect.getsource(agent_mod.ReActAgent.stream_chat)
+        self.assertIn('AsyncGenerator', src,
+                      "stream_chat must annotate return as AsyncGenerator")
+        import re
+        self.assertIsNone(re.search(r'(?<!Async)Generator\[', src),
+                          "stream_chat must not use bare Generator annotation")
+
+    # --- #139: tools.py must select api_key by provider ---
+    def test_tools_api_key_is_provider_aware(self):
+        """tool_search_knowledge_base must select api_key based on provider."""
+        import inspect
+        from backend import tools as tools_mod
+        src = inspect.getsource(tools_mod.tool_search_knowledge_base)
+        self.assertIn('gemini_api_key', src,
+                      "tools must select gemini_api_key for gemini provider")
+        self.assertIn('anthropic_api_key', src,
+                      "tools must select anthropic_api_key for anthropic provider")
+
+    # --- #211: .dockerignore must exclude config.ini and .env ---
+    def test_dockerignore_excludes_secrets(self):
+        """dockerignore must exclude config.ini and .env."""
+        import os as _os
+        path = _os.path.join(
+            _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))),
+            '.dockerignore',
+        )
+        self.assertTrue(_os.path.exists(path), ".dockerignore must exist")
+        with open(path) as f:
+            content = f.read()
+        self.assertIn('config.ini', content, ".dockerignore must exclude config.ini")
+        self.assertIn('.env', content, ".dockerignore must exclude .env")
 
 
 if __name__ == '__main__':

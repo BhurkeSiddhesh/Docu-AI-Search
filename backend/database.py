@@ -334,6 +334,35 @@ def get_file_by_path(path: str) -> Optional[Dict]:
     conn.close()
     return dict(row) if row else None
 
+def get_file_by_name(filename: str) -> Optional[Dict]:
+    """
+    Retrieve metadata for a specific file by its filename (basename).
+
+    Tries an exact match on the filename column first; if not found, falls
+    back to a path suffix match for files that may lack a populated filename
+    column.
+
+    Args:
+        filename (str): The basename of the file (e.g. 'resume.pdf').
+
+    Returns:
+        Optional[Dict]: The file details if found, else None.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            'SELECT * FROM files WHERE filename = ? LIMIT 1', (filename,)
+        ).fetchone()
+        if row:
+            return dict(row)
+        # Fallback: match by path suffix
+        row = conn.execute(
+            "SELECT * FROM files WHERE path LIKE ? LIMIT 1", (f"%/{filename}",)
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
 def get_file_by_faiss_index(idx: int) -> Optional[Dict]:
     """
     Find the file associated with a specific embedding index.
@@ -354,26 +383,6 @@ def get_file_by_faiss_index(idx: int) -> Optional[Dict]:
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
-
-def get_file_by_name(filename: str) -> Optional[Dict]:
-    """
-    Return the first file record whose basename matches filename.
-    
-    Args:
-        filename (str): The name of the file to search for.
-        
-    Returns:
-        Optional[Dict]: The file metadata dictionary if found, else None.
-    """
-    conn = get_connection()
-    try:
-        row = conn.execute(
-            "SELECT * FROM files WHERE path LIKE ? LIMIT 1",
-            (f"%/{filename}",)
-        ).fetchone()
-        return dict(row) if row else None
-    finally:
-        conn.close()
 
 def clear_files():
     """
@@ -678,11 +687,25 @@ def cache_response(query_hash: str, context_hash: str, model_id: str, response_t
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            INSERT OR REPLACE INTO response_cache 
+            INSERT OR REPLACE INTO response_cache
             (query_hash, context_hash, model_id, response_type, response_text, hit_count, last_accessed_at)
             VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
         """, (query_hash, context_hash, model_id, response_type, response_text))
         conn.commit()
+        # Evict least-recently-accessed entries when cache exceeds 1000 rows
+        cursor.execute("SELECT COUNT(*) FROM response_cache")
+        count = cursor.fetchone()[0]
+        if count > 1000:
+            cursor.execute("""
+                DELETE FROM response_cache
+                WHERE (query_hash, context_hash, model_id, response_type) IN (
+                    SELECT query_hash, context_hash, model_id, response_type
+                    FROM response_cache
+                    ORDER BY last_accessed_at ASC
+                    LIMIT ?
+                )
+            """, (count - 1000,))
+            conn.commit()
     except Exception as e:
         logger.exception("Cache storage failed")
     finally:
@@ -869,7 +892,7 @@ def cleanup_test_data() -> Dict[str, int]:
     return counts
 
 # N+1 Optimization for Search Metadata
-MAX_INDICES = 900  # SQLite limit is usually 999 vars, keeping safe margin
+MAX_INDICES = 499  # SQLite SQLITE_MAX_VARIABLE_NUMBER is 999; each index uses 2 params → max 499
 
 def get_files_by_faiss_indices(indices: list[int]) -> dict[int, dict]:
     """

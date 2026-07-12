@@ -19,6 +19,17 @@ from fastapi.security import HTTPAuthorizationCredentials
 class TestValidateToken(unittest.TestCase):
     """Tests for the _validate_token() helper."""
 
+    def setUp(self):
+        """Clear the module-level token cache before each test."""
+        import backend.auth as _auth
+        self._saved_hash = _auth._cached_token_hash
+        _auth._cached_token_hash = ""
+
+    def tearDown(self):
+        """Restore the token cache after each test."""
+        import backend.auth as _auth
+        _auth._cached_token_hash = self._saved_hash
+
     def _write_token_hash(self, config_path: str, token: str) -> None:
         config = configparser.ConfigParser()
         config.read(config_path)
@@ -86,6 +97,17 @@ class TestValidateToken(unittest.TestCase):
 
 class TestGetOrCreateToken(unittest.TestCase):
     """Tests for _get_or_create_token()."""
+
+    def setUp(self):
+        """Clear the module-level token cache before each test."""
+        import backend.auth as _auth
+        self._saved_hash = _auth._cached_token_hash
+        _auth._cached_token_hash = ""
+
+    def tearDown(self):
+        """Restore the token cache after each test to avoid inter-test pollution."""
+        import backend.auth as _auth
+        _auth._cached_token_hash = self._saved_hash
 
     def test_creates_token_when_none_exists(self):
         """A new token is generated and hash written to config.ini."""

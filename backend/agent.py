@@ -110,6 +110,8 @@ class ReActAgent:
         self.max_tokens = 384 if self.is_local else 512
         # Max chars of each observation to include in history (keeps context lean)
         self.obs_window = 350 if self.is_local else 800
+        # Per-step wall-clock timeout in seconds (prevents stalled provider from blocking indefinitely)
+        self.step_timeout = 60
 
     def _extract_final_answer(self, text: str) -> str | None:
         """
@@ -178,7 +180,7 @@ class ReActAgent:
             cleaned = user_query
         return "search_knowledge_base", cleaned
 
-    async def stream_chat(self, user_query: str) -> Generator[Dict[str, str], None, None]:
+    async def stream_chat(self, user_query: str) -> AsyncGenerator[Dict[str, str], None]:
         """
         Execute the iterative ReAct loop and stream status/answer events to the client.
 
@@ -203,22 +205,29 @@ class ReActAgent:
             user_content = "\n".join(history) + "\n\nThought:"
 
             try:
-                response_text = llm_integration.generate_ai_answer(
-                    context="",
-                    question=user_content,
-                    provider=self.provider,
-                    api_key=self.api_key,
-                    model_path=self.model_path,
-                    raw=True,
-                    system_instruction=self.system_prompt,
-                    stop=["Observation:", "Question:"],
-                    max_tokens=self.max_tokens,
-                    temperature=0.1
+                response_text = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        llm_integration.generate_ai_answer,
+                        context="",
+                        question=user_content,
+                        provider=self.provider,
+                        api_key=self.api_key,
+                        model_path=self.model_path,
+                        raw=True,
+                        system_instruction=self.system_prompt,
+                        stop=["Observation:", "Question:"],
+                        max_tokens=self.max_tokens,
+                        temperature=0.1,
+                    ),
+                    timeout=self.step_timeout,
                 )
 
                 if response_text.startswith("Error"):
                     raise Exception(response_text)
 
+            except asyncio.TimeoutError:
+                yield {"type": "error", "content": f"LLM step timed out after {self.step_timeout}s"}
+                return
             except Exception as e:
                 yield {"type": "error", "content": f"LLM Error: {e}"}
                 return

@@ -53,6 +53,48 @@ All remaining open fix-branch PRs carry P1 disposition (no auto-merge ever).
 
 ---
 
+## Fix Pass: 2026-06-07
+
+### Phase A — All 30 Open Issues (batch fix)
+
+| Issue | Label | File(s) | Fix |
+|-------|-------|---------|-----|
+| #221 | Critical Bug | `frontend/src/lib/logger.js` | Replace hardcoded `http://localhost:8000/api/logs` with relative `/api/logs` |
+| #222 | Logic Enhancement | `backend/api.py` | Protect `indexing_status` reads/writes under `_index_lock` |
+| #224 | Critical Bug | `backend/api.py` | Add `require_auth` to `POST/DELETE /api/system-prompts` |
+| #225 | Logic Enhancement | `backend/api.py` | Add `require_auth` to `DELETE /api/folders/history` endpoints |
+| #226 | Logic Enhancement | `backend/api.py` | Add Pydantic `Field` max_length constraints to `LogRequest` + level whitelist |
+| #228 | Critical Bug | `backend/database.py` | Add `get_file_by_name()` function |
+| #229 | Critical Bug | `backend/api.py` | Add `require_auth` to `GET /api/agent/chat` |
+| #230 | Critical Bug | `backend/api.py` | Wrap agentic search dicts in SSE `event_generator()` |
+| #231 | Logic Enhancement | `backend/search.py` | Use absolute path for `config.ini` read |
+| #232 | Logic Enhancement | `backend/indexing.py` | Already fixed in prior pass (verified) |
+| #233 | Developer Experience | `backend/search.py` | Replace all `print()` calls with `logger.*` |
+| #235 | Critical Bug | `backend/api.py`, `frontend/src/components/SettingsModal.jsx` | Mask `external_api_key` as boolean `external_api_key_set` |
+| #236 | Developer Experience | `.github/workflows/ci.yml` | Remove `\|\| true` from security scan steps |
+| #237 | Critical Bug | `backend/background.py` | Read `folders` key with `folder` legacy fallback |
+| #245 | Logic Enhancement | `backend/model_manager.py` | Add `threading.Lock` around all `download_status` mutations |
+| #246 | Logic Enhancement | `backend/api.py` | Add 300s idle timeout to `/ws/progress` WebSocket |
+| #247 | Developer Experience | `backend/clustering.py`, `backend/background.py` | Replace `print()` with `logger.*` |
+| #255 | Critical Bug | `backend/indexing.py` | Add `try/except` around RAPTOR cluster futures |
+| #263 | Critical Bug | `frontend/src/components/BenchmarkView.jsx` | Fix stale closure via `prevRunningRef` |
+| #264 | Critical Bug | `frontend/src/components/ModelManager.jsx` | Fix stale closure via `prevDownloadingRef` |
+| #265 | Logic Enhancement | `frontend/src/App.jsx` | Wrap each view in individual `<ErrorBoundary>` |
+| #266 | Developer Experience | `frontend/src/components/AgentView.jsx` | Log SSE parse errors via `console.warn` |
+| #298 | Critical Bug | `frontend/src/lib/api.js`, `frontend/src/App.jsx` | Add auth interceptor + token bootstrap on startup |
+| #304 | Critical Bug | `backend/websocket_manager.py` | Add `asyncio.Lock` + snapshot list before broadcast iteration |
+| #305 | Critical Bug | `backend/agent.py` | Wrap LLM call in `asyncio.wait_for(timeout=60)` |
+| #316 | Logic Enhancement | `backend/llm_integration.py` | Add retry with exponential backoff to `invoke()` and `stream()` |
+| #318 | Developer Experience | `backend/llm_integration.py` | Read `[LLM] model` from `config.ini`; update default model IDs |
+| #326 | Logic Enhancement | `frontend/src/components/SettingsModal.jsx` | Rollback optimistic folder state on `persistFolders` failure |
+| #327 | Logic Enhancement | `backend/indexing.py` | Add `_embed_with_retry` with 3-attempt exponential backoff |
+| #219 | Developer Experience | `backend/api.py` | Replace `detail=str(e)` with generic message in 5 endpoints |
+| #247 (agent.py) | Developer Experience | `backend/agent.py` | Remove `print()` calls |
+
+**Summary:** 30 issues fixed in a single batch commit on branch `claude/open-issues-resolution-5vEA6`
+
+---
+
 ## Fix Pass: 2026-06-08
 
 ### Phase A — Existing PRs
