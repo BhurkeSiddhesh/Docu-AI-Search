@@ -1205,8 +1205,10 @@ async def search_files(search_data: SearchRequest, request: Request, background_
             elif search_data.sort_by == "file_size":
                 # Pre-fetch sizes in a thread to avoid blocking the event loop
                 def _get_size(r):
+                    # Single syscall inside try/except — no exists() pre-check, so a
+                    # file deleted mid-sort (e.g. during re-index) can't 500 (#345).
                     try:
-                        return os.path.getsize(r.file_path) if r.file_path and os.path.exists(r.file_path) else 0
+                        return os.path.getsize(r.file_path) if r.file_path else 0
                     except OSError:
                         return 0
                 sizes = await asyncio.to_thread(lambda: [_get_size(r) for r in processed_results])
@@ -1214,7 +1216,7 @@ async def search_files(search_data: SearchRequest, request: Request, background_
             elif search_data.sort_by == "date":
                 def _get_mtime(r):
                     try:
-                        return os.path.getmtime(r.file_path) if r.file_path and os.path.exists(r.file_path) else 0
+                        return os.path.getmtime(r.file_path) if r.file_path else 0
                     except OSError:
                         return 0
                 mtimes = await asyncio.to_thread(lambda: [_get_mtime(r) for r in processed_results])
