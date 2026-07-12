@@ -1648,18 +1648,17 @@ def _resolve_indexed_path(user_path: str) -> Optional[str]:
     """Resolve a user-supplied path to its indexed canonical form.
 
     The return value is drawn from the database enumeration (never from the
-    request), so downstream filesystem access is not user-controlled.
+    request), so downstream filesystem access is not user-controlled. The
+    candidate is normalised with pure string operations only — no filesystem
+    call ever receives the raw request value.
     """
     try:
-        candidate = os.path.realpath(os.path.normpath(user_path))
-    except (ValueError, OSError):
+        candidate = os.path.normcase(os.path.abspath(os.path.normpath(user_path)))
+    except (ValueError, TypeError):
         return None
     for indexed in database.get_all_file_paths():
-        try:
-            if os.path.realpath(indexed) == candidate:
-                return indexed
-        except (ValueError, OSError):
-            continue
+        if os.path.normcase(os.path.abspath(indexed)) == candidate:
+            return indexed
     return None
 
 

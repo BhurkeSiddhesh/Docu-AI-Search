@@ -727,9 +727,10 @@ def delete_model(model_path):
 
     # Resolve against the directory listing so the path handed to os.remove
     # always originates from MODELS_DIR enumeration, not from the request.
+    # String-only normalisation: no filesystem call touches the raw input.
     try:
-        candidate = os.path.realpath(os.path.abspath(model_path))
-    except (ValueError, OSError):
+        candidate = os.path.normcase(os.path.abspath(os.path.normpath(model_path)))
+    except (ValueError, TypeError):
         return False
     try:
         entries = os.listdir(MODELS_DIR)
@@ -738,7 +739,7 @@ def delete_model(model_path):
         return False
     for name in entries:
         target = os.path.join(MODELS_DIR, name)
-        if os.path.realpath(target) == candidate:
+        if os.path.normcase(os.path.abspath(target)) == candidate:
             try:
                 os.remove(target)
                 return True
