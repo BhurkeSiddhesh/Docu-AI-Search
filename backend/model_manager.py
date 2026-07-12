@@ -562,7 +562,10 @@ def download_file(url, filename, model_id, total_bytes=0):
             headers["Range"] = f"bytes={downloaded}-"
             _logger.info("Resuming from byte %d", downloaded)
 
-        response = requests.get(url, stream=True, headers=headers, timeout=30)
+        # Retry transient connection/5xx failures; resume support above makes
+        # a retried request continue from the last byte rather than restart.
+        from backend.providers import _make_retry_session
+        response = _make_retry_session().get(url, stream=True, headers=headers, timeout=30)
         response.raise_for_status()
 
         # Get total size from headers
