@@ -8,6 +8,7 @@ from slowapi.middleware import SlowAPIASGIMiddleware
 from fastapi.responses import StreamingResponse
 import json
 import asyncio
+import re
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Tuple
@@ -672,8 +673,8 @@ async def delete_model(request: dict, req: Request, _=Depends(verify_local_reque
     Delete a downloaded model file from disk.
 
     Args:
-        request (dict): Body containing 'path' of the model to delete.
-        req (Request): The incoming request.
+        body (dict): Body containing 'path' of the model to delete.
+        request (Request): The incoming request.
 
     Returns:
         dict: Success status and message.
@@ -681,7 +682,7 @@ async def delete_model(request: dict, req: Request, _=Depends(verify_local_reque
     Raises:
         HTTPException: 400 if path is missing, 404 if file missing, 500 on error.
     """
-    model_path = request.get('path', '')
+    model_path = body.get('path', '')
     if not model_path:
         raise HTTPException(status_code=400, detail="Model path required")
     
@@ -1012,7 +1013,7 @@ async def update_config(config_data: ConfigModel, request: Request, _=Depends(ve
         'ollama_base_url': config_data.ollama_base_url or 'http://localhost:11434',
         'lmstudio_base_url': config_data.lmstudio_base_url or 'http://localhost:1234/v1',
         'external_model_name': config_data.external_model_name or '',
-        'external_api_key': config_data.external_api_key or '',
+        'external_api_key': _key(config_data.external_api_key, 'ExternalProviders', 'external_api_key'),
     }
     save_config_file(config)
     
@@ -1491,9 +1492,21 @@ class ProviderQueryRequest(BaseModel):
     base_url: Optional[str] = None
     api_key: Optional[str] = ""
 
+def _validate_local_provider_url(base_url: Optional[str]) -> None:
+    """Reject non-localhost or non-HTTP(S) base_url values to prevent SSRF."""
+    if not base_url:
+        return
+    from urllib.parse import urlparse
+    parsed = urlparse(base_url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="base_url must use http or https scheme")
+    if parsed.hostname not in ("localhost", "127.0.0.1", "::1"):
+        raise HTTPException(status_code=400, detail="base_url must point to localhost")
+
 @app.post("/api/providers/health")
 async def provider_health_check(body: ProviderQueryRequest, request: Request, _=Depends(verify_local_request)):
     """Check if an external LLM provider (Ollama / LM Studio) is reachable."""
+    _validate_local_provider_url(body.base_url)
     from backend.providers import get_provider
     try:
         provider = get_provider(body.provider_type, {
@@ -1510,6 +1523,7 @@ async def provider_health_check(body: ProviderQueryRequest, request: Request, _=
 @app.post("/api/providers/models")
 async def provider_list_models(body: ProviderQueryRequest, request: Request, _=Depends(verify_local_request)):
     """Fetch available models from an external LLM provider."""
+    _validate_local_provider_url(body.base_url)
     from backend.providers import get_provider
     try:
         provider = get_provider(body.provider_type, {
@@ -1656,7 +1670,13 @@ class LogRequest(BaseModel):
     source: Optional[str] = Field(default="Frontend", max_length=128)
     stack: Optional[str] = Field(default=None, max_length=8192)
 
+def _sanitize_log_field(value: str) -> str:
+    if not value:
+        return value
+    return value.replace('\x1b', '').replace('\r', '\\r').replace('\n', '\\n')
+
 @app.post("/api/logs")
+@limiter.limit("20/minute")
 async def receive_log(log: LogRequest, request: Request, _=Depends(verify_local_request)):
     """
     Receive logs from the frontend and pipe them to the backend logger.

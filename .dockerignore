@@ -30,3 +30,14 @@ Thumbs.db
 
 # Logs
 *.log
+# Virtual environments
+venv/
+venv_new/
+.venv/
+
+# Large binary artifacts
+**/*.gguf
+**/*.faiss
+**/*.pkl
+**/*.db
+

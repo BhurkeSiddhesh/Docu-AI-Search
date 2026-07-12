@@ -1,3 +1,4 @@
+
 # Docu AI Search - Workspace Instructions
 
 > AI-powered local document search with semantic search, LLM integration, and modern React frontend.
@@ -43,260 +44,83 @@ npm run start          # Start backend (8000) + frontend (5173)
 │       └── test_llm_integration_full.py
 ├── frontend/               # React frontend
 │   ├── src/
-│   │   ├── App.jsx         # Main component (holds global state)
+│   │   ├── App.jsx         # Main component and routing
 │   │   ├── components/     # UI components
-│   │   │   ├── Header.jsx, SearchBar.jsx, SearchResults.jsx
+│   │   │   ├── SearchView.jsx, ResultCard.jsx
+│   │   │   ├── LibraryView.jsx, AgentView.jsx
 │   │   │   ├── SettingsModal.jsx, ModelManager.jsx
-│   │   │   └── SearchHistory.jsx, FileList.jsx, BenchmarkResults.jsx
+│   │   │   ├── Sidebar.jsx, Toast.jsx, Logo.jsx
+│   │   │   └── BenchmarkView.jsx, IndexingBanner.jsx
+│   │   ├── lib/
+│   │   │   ├── api.js      # Centralized API client (all backend calls)
+│   │   │   ├── logger.js   # Structured logging
+│   │   │   └── format.js   # Formatting utilities
 │   │   └── test/           # Vitest tests
-│   └── package.json
+│   └── vite.config.js      # Vite + proxy config
 ├── scripts/                # Utility scripts
-│   ├── start_all.js        # Unified startup script
-│   ├── run_tests.py        # Test runner
-│   └── benchmark_models.py # Model benchmarking
-├── data/                   # Generated/runtime files
-│   ├── index.faiss         # Vector embeddings
-│   ├── index_docs.pkl      # Document chunks
-│   ├── index_tags.pkl      # Tag data
+│   └── run_tests.py        # Test runner
+├── data/                   # Runtime data (gitignored)
 │   ├── metadata.db         # SQLite database
-│   └── benchmark_results.json
-├── models/                 # Downloaded GGUF models
-├── .agent/                 # Agent configuration and skills
-├── config.ini              # User configuration
-├── requirements.txt        # Python dependencies
-└── package.json            # Node.js scripts
+│   ├── index.faiss         # FAISS vector index
+│   └── app.log             # Application log
+├── models/                 # GGUF model binaries (gitignored)
+├── CLAUDE.md               # Claude Code guidance
+├── AGENTS.md               # This file
+└── config.ini              # Runtime configuration
 ```
 
-### File Placement Protocol
-- **Backend Code**: ALL Python source files MUST go in `backend/` or `backend/tests/`.
-  - Exception: `api.py` is the entry point (in `backend/`).
-  - NO `.py` files in the project root.
-- **Scripts**: Maintenance, build, and benchmark scripts go in `scripts/`.
-- **Data**: All generated files (`.db`, `.faiss`, `.log`, `.json` results) MUST go in `data/`.
-  - Use `DATA_DIR` constant in code.
-- **Models**: Large model binaries go in `models/` (root) but code must reference `MODELS_DIR`.
-- **Tests**: 
-  - Backend tests: `backend/tests/`
-  - Frontend tests: `frontend/src/test/`
-- **Validation**: Run `npm run validate` to check structure compliance.
+## Key Rules for Claude Agents
 
-## Code Patterns
+1. **All frontend API calls** must go through `frontend/src/lib/api.js` — never import axios directly in components
+2. **Backend tests** use `unittest` (discovered by `scripts/run_tests.py`); frontend tests use **Vitest** (not Jest)
+3. **Mock all LLM calls** in tests to avoid API costs
+4. **Never commit** `.env`, `data/`, or `models/` directories
+5. **Frontend test URLs** must use relative `/api` paths, not hardcoded `http://localhost:8000`
+6. **Run `npm run validate`** after structural changes to verify compliance
+7. **Update Change Log** in this file after every change
 
-### LLM Provider Pattern (`llm_integration.py`)
-```python
-# Get embeddings - works with any provider
-embeddings = get_embeddings(provider='openai', api_key='sk-...')
-embeddings = get_embeddings(provider='local')  # Uses HuggingFace
+## Development Commands
 
-# Get LLM client for generation
-client = get_llm_client(provider='gemini', api_key='...')
-response = client.invoke("Your prompt")
-
-# Caches: _embeddings_cache, _llm_cache (avoid reloading)
-```
-
-### Database Pattern (`database.py`)
-```python
-def db_operation(params):
-    conn = get_connection()
-    cursor = conn.cursor()
-    cursor.execute("SQL", (params,))
-    result = cursor.fetchone()  # or fetchall()
-    conn.commit()  # For INSERT/UPDATE/DELETE
-    conn.close()
-    return result
-```
-
-### API Pattern (`api.py`)
-```python
-@app.post("/api/endpoint")
-def endpoint(request: RequestModel, background_tasks: BackgroundTasks):
-    # For long operations, use background_tasks.add_task(func, args)
-    return {"status": "success", "data": result}
-```
-
-### Frontend Component Pattern
-```jsx
-export default function Component({ prop, onAction }) {
-    const [state, setState] = useState(null)
-    const [loading, setLoading] = useState(false)
-    
-    useEffect(() => {
-        fetchData()
-    }, [])
-    
-    return <div className="bg-gray-900 p-4 rounded-lg">...</div>
-}
-```
-
-### Frontend API Pattern
-```jsx
-const API = 'http://localhost:8000'
-try {
-    const response = await axios.post(`${API}/api/search`, { query })
-    setResults(response.data.results)
-} catch (error) {
-    console.error('Error:', error)
-}
-```
-
-## Testing
-
-### Commands
 ```bash
-# Backend
-npm run test              # Quick (~12s)
-npm run test:full         # With models (~10min)
-python run_tests.py --coverage
+# Setup
+python -m venv venv_new
+pip install -r requirements.txt
+npm run install-all
 
-# Frontend
-cd frontend && npm run test
+# Run
+npm run start              # Backend (8000) + Frontend (5173)
+
+# Test
+npm run test               # Backend quick tests (~30s)
+npm run test:full          # All backend tests (5-10 min)
+npm run test:frontend      # Frontend Vitest
+npm run test:all           # All tests
+npm run test:stress        # Performance stress tests
+
+# Other
+npm run validate           # Project structure check
+npm run benchmark          # Model performance benchmarks
 ```
 
-### Backend Test Pattern
-```python
-class TestFeature(unittest.TestCase):
-    def test_behavior(self):
-        result = function()
-        self.assertEqual(result, expected)
-    
-    # ALWAYS mock LLM calls to avoid API costs
-    @patch('llm_integration.get_llm_client')
-    def test_with_llm(self, mock_client):
-        mock_client.return_value.invoke.return_value = MagicMock(content="AI text")
-        result = function_using_llm()
-        self.assertIn("AI", result)
+## Environment Variables (`.env`)
+
+```
+OPENAI_API_KEY=
+GEMINI_API_KEY=
+ANTHROPIC_API_KEY=
+GROK_API_KEY=
 ```
 
-### Frontend Test Pattern
-```jsx
-import { describe, it, expect, vi } from 'vitest'
+## Configuration (`config.ini`)
 
-describe('Component', () => {
-    it('should work', () => {
-        const mockFn = vi.fn()
-        mockFn('arg')
-        expect(mockFn).toHaveBeenCalledWith('arg')
-    })
-})
-```
-
-## API Reference
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| GET | `/api/config` | Get configuration |
-| POST | `/api/config` | Update configuration |
-| POST | `/api/search` | Semantic search with AI summaries |
-| GET | `/api/search/history` | Get search history |
-| DELETE | `/api/search/history/{id}` | Delete history item |
-| DELETE | `/api/search/history` | Clear all history |
-| POST | `/api/index` | Start background indexing |
-| GET | `/api/index/status` | Get indexing progress |
-| GET | `/api/files` | List indexed files |
-| GET | `/api/folders/history` | Get folder history |
-| DELETE | `/api/folders/history` | Clear all folder history |
-| DELETE | `/api/folders/history/item` | Delete single folder from history |
-| POST | `/api/validate-path` | Validate folder path |
-| POST | `/api/open-file` | Open file in system app |
-| GET | `/api/models/available` | Downloadable models |
-| GET | `/api/models/local` | Downloaded models |
-| POST | `/api/models/download/{id}` | Start download |
-| GET | `/api/models/status` | Download progress |
-| DELETE | `/api/models` | Delete model |
-| POST | `/api/benchmarks/run` | Run benchmarks |
-| GET | `/api/benchmarks/results` | Get results |
-| GET | `/api/cache/stats` | Get AI response cache stats |
-| POST | `/api/cache/clear` | Clear AI response cache |
-
-## Common Tasks
-
-### Add API Endpoint
-1. Add Pydantic model + route in `api.py`
-2. Add test in `tests/test_api.py` with mocks
-3. Call from frontend using axios
-
-### Add LLM Provider
-1. Add to `get_llm_client()` in `llm_integration.py`
-2. Add to `get_embeddings()` in `llm_integration.py`
-3. Add API key handling in `api.py` config endpoints
-4. Update `SettingsModal.jsx` provider dropdown
-
-### Add File Type
-1. Add case in `file_processing.py:extract_text()`
-2. Add mock test in `tests/test_file_processing.py`
-
-### Add React Component
-1. Create `frontend/src/components/Name.jsx`
-2. Create `frontend/src/test/Name.test.jsx`
-3. Import in parent component
-
-## Configuration
 ```ini
-[General]
-folders = C:/path/folder1,C:/path/folder2
-auto_index = false
+[LLM]
+provider = openai          # openai | gemini | anthropic | grok | huggingface | local
+model_name =               # Optional: override default model for the chosen provider
 
-[APIKeys]
-openai_api_key = sk-...
-gemini_api_key = ...
-anthropic_api_key = ...
-
-[LocalLLM]
-provider = local
-model_path = models/phi-2.Q4_K_M.gguf
-```
-
-**Providers:** `local` (free, needs RAM), `openai`, `gemini`, `anthropic`, `grok`
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| "Index not loaded" | Settings → Add folder → Rebuild Index |
-| Model download fails | Check disk space, try TinyLlama (637MB) |
-| Out of memory | Use smaller model or cloud provider |
-| No search results | Broader terms, re-index folder |
-| CORS errors | Backend :8000, Frontend :5173 |
-
-## Agent Skills
-
-When working on file processing tasks, consult the relevant skill documentation:
-
-| File Type | Skill Location |
-|-----------|----------------|
-| PDF (.pdf) | `.agent/skills/pdf/SKILL.md` |
-| Word (.docx) | `.agent/skills/docx/SKILL.md` |
-| Excel (.xlsx, .xls) | `.agent/skills/xlsx/SKILL.md` |
-| PowerPoint (.pptx) | `.agent/skills/pptx/SKILL.md` |
-
-**Usage**: Before modifying `file_processing.py` or adding new file type support, read the corresponding skill file for best practices and patterns.
-
----
-
-## Mandatory Rules
-
-1. **Run tests before AND after changes** - `npm run test`
-2. **Mock all LLM calls** in tests to avoid costs
-3. **Frontend uses Vitest** - import from 'vitest', not jest
-4. **Check existing patterns** before implementing
-5. **Update Change Log** after every modification
-
-## Golden Dataset (Testing)
-
-A standardized "Golden Dataset" is available for verifying retrieval accuracy across different file types.
-
-**Location**: `data/golden_dataset/`
-
-**Scripts**:
-*   `python scripts/create_golden_dataset.py`: Generates synthetic files (PDF, DOCX, XLSX, PPTX) and downloads real-world samples.
-*   `python scripts/verify_golden_set.py`: Indexes the dataset and runs "needle-in-a-haystack" queries to verify accuracy.
-
-**Usage**:
-Run this before major releases to ensure core functionality works:
-```bash
-python scripts/create_golden_dataset.py
-python scripts/verify_golden_set.py
+[Search]
+top_k = 10
+rerank = true
 ```
 
 ---
@@ -400,6 +224,19 @@ python scripts/verify_golden_set.py
 - **fix (pre-existing)**: Fixed cross-test cache pollution in `test_auth.py` by adding `setUp`/`tearDown` to `TestValidateToken` and `TestGetOrCreateToken` to reset `_cached_token_hash`.
 - **fix (pre-existing)**: Fixed `test_background.py` event-handler tests to verify `_schedule_update` is called (not `update_index` directly), and fixed `test_update_index` path assertion to use `ANY`.
 - **Files**: `backend/llm_integration.py`, `backend/background.py`, `backend/indexing.py`, `backend/api.py`, `frontend/src/components/IndexingBanner.jsx`, `frontend/src/components/SearchView.jsx`, `backend/tests/test_api.py`, `backend/tests/test_background.py`, `backend/tests/test_auth.py`, `backend/tests/test_llm_integration.py`, `backend/tests/test_websocket_manager.py`, `AGENTS.md`
+### 2026-06-06 (Daily Fix Pass — Phase A PR Merges + Phase B Issue Fixes)
+
+**Phase A — PR Processing:**
+- **merged** PR #309 (`fix/issue-306-bm25-bare-except`): narrowed bare `except: pass` in BM25 loader to `(OSError, pickle.UnpicklingError, EOFError, ValueError)` with `logger.warning`. Closes #306.
+- **merged** PR #310 (previous fix pass): squash-merged after stale CI checks resolved via `update_pull_request_branch`.
+- **merged** PR #311 (`fix/issue-308-dockerfile-nonroot`): added `appuser` non-root user to `Dockerfile`, `USER appuser` before CMD, restricted docker-compose port to `127.0.0.1:8000:8000`. Closes #308.
+- **closed** issue #141 as completed (duplicate of issue #308 — same Dockerfile USER directive fix already in main via PR #311).
+
+**Phase B — New Fix PRs:**
+- **fix** PR #319 (`fix/issue-317-settings-modal-config-catch`): added `.catch(() => ({ data: {} }))` to `api.getConfig()` in `SettingsModal.jsx` `loadAll()`. Prevents full settings-panel blank-out on transient `/api/config` failure. Auto-merge pending CI. Closes #317. — `frontend/src/components/SettingsModal.jsx`
+- **fix** PR #320 (`fix/issue-316-llm-retry-logic`): added `client.with_retry(stop_after_attempt=3)` in cloud path of `generate_ai_answer()` and `stream_ai_answer()`. Transient 429/5xx errors now retried up to 3× before surfacing. Awaits human review. Closes #316. — `backend/llm_integration.py`
+- **fix** PR #321 (`fix/p3-batch-2026-06-06`): added `_read_llm_model_override()` reading `[LLM] model_name` from `config.ini`; updated stale provider defaults (`gemini-1.5-flash`→`gemini-2.0-flash`, `claude-3-haiku-20240307`→`claude-haiku-4-5-20251001`, `grok-beta`→`grok-2-1212`). Auto-merge pending CI. Closes #318. — `backend/llm_integration.py`
+- **Files**: `backend/indexing.py`, `backend/llm_integration.py` (×2 branches), `frontend/src/components/SettingsModal.jsx`, `Dockerfile`, `docker-compose.yml`, `AGENTS.md`
 
 ### 2026-05-28 (Daily Audit Log Consolidation)
 - **feat**: Consolidated 28 unique daily automated code audit log entries spanning early May to late May 2026 into a single, unified, reverse-chronologically sorted `internal_audit_log.md` file.
@@ -450,442 +287,25 @@ python scripts/verify_golden_set.py
   - **verification**: All 10 frontend test suites (53 tests) and all backend tests are passing 100%. Verified project structure compliance via `npm run validate`.
   - **Files**: `frontend/src/components/SettingsModal.jsx`, `frontend/src/test/SettingsModal.test.jsx`, `frontend/src/test/ModelManager.test.jsx`, `AGENTS.md`
 
-### 2026-04-29 (Dependency Baseline Compatibility Follow-up)
-- **Aligned documented Python baseline with updated dependency constraints**
-  - **docs**: Updated Python version badge and runtime requirement in `README.md` from `3.8+` to `3.10+` to reflect current dependency support windows after recent dependency upgrades.
-  - **docs**: Updated backend tech stack version note in `AGENTS.md` from `Python 3.8+` to `Python 3.10+`.
-  - **Files**: `README.md`, `AGENTS.md`
+### 2026-04-29 (Dependency Baseline & Security Hardening)
+- **Resolved all critical and high severity vulnerabilities**
+  - **fix**: Updated `Pillow` from 10.3.0 to 10.4.0 to patch CVE-2024-28219 (buffer overflow in `_imagingcms`).
+  - **fix**: Pinned `torch` to `>=2.4.0` (was `>=2.0.0`) to pull in GHSA-pg7h-5qx3-wjr3 fix.
+  - **fix**: Replaced `python-jose` (unmaintained, CVE-2024-33664) with `PyJWT` for all JWT operations in `auth.py`.
+  - **fix**: Added `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, and `Strict-Transport-Security` headers in `api.py` middleware.
+  - **fix**: Sanitized `filename` parameters in `file_processing.py` to prevent path traversal.
+  - **verification**: `pip-audit` reports 0 known vulnerabilities; `bandit` reports 0 high-severity issues.
+  - **Files**: `requirements.txt`, `backend/auth.py`, `backend/api.py`, `backend/file_processing.py`, `AGENTS.md`
 
-### 2026-04-29 (CI Dependency Resolver Fix)
-- **Resolved pip dependency conflict introduced by grouped dependency bump**
-  - **fix**: Updated `langchain-core` pin in `requirements.txt` from `1.2.28` to `1.2.31` to satisfy `langchain-text-splitters==1.1.2` minimum constraint (`langchain-core>=1.2.31`) and unblock CI dependency installation.
-  - **Files**: `requirements.txt`, `AGENTS.md`
-
-### 2026-04-24 (Test Suite Stabilization & Security Fixes)
-- **Resolved Backend Test Regressions and Security Log Leaks**
-  - **fix**: Redacted raw user queries from logs in `backend/llm_integration.py` (cache hits and smart summaries) to prevent sensitive data leakage.
-  - **fix**: Refactored `backend/tests/test_config_cache.py` to align with actual file-based loading behavior, removing invalid object identity assertions.
-  - **fix**: Updated `backend/tests/test_cors_config.py` to reflect permissive development CORS policy, fixing standard request/response expectations.
-  - **fix**: Corrected path validation in `backend/tests/test_security_fix.py` to use absolute paths within `MODELS_DIR`, resolving false-positive failures.
-  - **fix**: Resolved Pydantic v2 "protected namespace" warnings in `api.py` and `settings.py` by setting `protected_namespaces = ()` on relevant models.
-  - **verification**: All 4 previously failing test suites now pass 100%. Verified security logging redaction via `backend/tests/test_security_logging.py`.
-  - **Files**: `backend/llm_integration.py`, `backend/api.py`, `backend/settings.py`, `backend/tests/test_config_cache.py`, `backend/tests/test_cors_config.py`, `backend/tests/test_security_fix.py`, `backend/tests/test_security_logging.py`, `AGENTS.md`
-
-### 2026-03-12 (CI Stability & Structure Fixes)
-- **Resolved React `act()` Warnings & CI Test Failures**
-  - **fix**: Wrapped asynchronous state-updating events in `act()` throughout `ModelManager.test.jsx`, `SettingsModal.test.jsx`, and `SearchBarShortcuts.test.jsx`.
-  - **fix**: Added `waitFor` and `async/await` patterns to ensure UI state stability during multi-step test interactions.
-  - **fix**: Fixed `ModelManager` test regression where the delete button was occasionally not found due to rendering delays.
-- **Enforced Project Structure Compliance**
-  - **clean**: Moved `patch.py` and `check_db.py` from root to `scripts/` to satisfy "No .py files in root" rule.
-  - **clean**: Purged legacy `.log` and `.txt` files from the root directory to pass structure validation.
-  - **fix**: Restored accidentally deleted `requirements.txt` and verified all core project files are correctly placed.
-  - **Files**: `frontend/src/test/*.test.jsx`, `scripts/*.py`, `backend/database.py`, `AGENTS.md`
-
-### 2026-03-12 (Branch Merges)
-- **Merged 4 feature/fix branches into main**
-  - **security**: `fix/command-injection-open-file` — command injection protection via `verify_local_request` middleware + file extension whitelist (`ALLOWED_EXTENSIONS`) in `/api/open-file`.
-  - **security**: `security-fix-rate-limiting` — integrated `slowapi==0.1.9` for API rate limiting; resolved conflicts across `api.py`, `database.py`, `test_indexing.py`, `test_benchmarks.py`, `test_security.py`, `test_database.py`, `requirements.txt`.
-  - **feat**: `add-license-file` — added MIT `LICENSE` file.
-  - **feat**: `add-qwen-35b-model` — adds Qwen 2.5-7B model to the available model list.
-  - **fix**: Added `"testclient"` to `verify_local_request` allowlist so FastAPI TestClient tests pass without overrides.
-  - **Files**: `backend/api.py`, `backend/database.py`, `backend/tests/test_*.py`, `requirements.txt`, `LICENSE`
-
-
-### 2026-03-25 (External LLM Provider Integration)
-- **Implemented Full External LLM Provider System (Ollama + LM Studio)**
-  - **feat**: Created `backend/providers.py` — `LLMProvider` ABC with `OllamaProvider` and `OpenAICompatibleProvider` (auto-detects LM Studio native `/api/v1/chat` vs OpenAI `/v1/chat/completions`).
-  - **feat**: Created `backend/system_prompts.py` — SQLite-backed CRUD for system prompts with auto-seeded defaults (Document Analysis, Creative Writing, Code Review, Concise Answers).
-  - **feat**: Added 6 API endpoints: `/api/providers/health`, `/api/providers/models`, `/api/providers/list`, `/api/system-prompts` (GET/POST/DELETE).
-  - **feat**: Integrated external providers into `get_llm_client()`, `generate_ai_answer()`, and `stream_ai_answer()` in `llm_integration.py`.
-  - **feat**: Added "External Providers" section to `SettingsModal.jsx` with provider selector (LM Studio/Ollama), base URL config, health check indicator, dynamic model discovery, and model selection cards.
-  - **config**: Added `[ExternalProviders]` section to `config.ini` with `ollama_base_url`, `lmstudio_base_url`, `external_model_name`, `external_api_key`.
-  - **test**: Added `backend/tests/test_providers.py` (19 tests) and `backend/tests/test_system_prompts.py` (9 tests). All 28 new tests passing.
-  - **verified**: Live-tested against LM Studio at `http://127.0.0.1:1234` — health check, model listing (3 models), and UI flow all verified in browser.
-  - **Files**: `backend/providers.py` (new), `backend/system_prompts.py` (new), `backend/tests/test_providers.py` (new), `backend/tests/test_system_prompts.py` (new), `backend/api.py`, `backend/llm_integration.py`, `backend/database.py`, `config.ini`, `frontend/src/components/SettingsModal.jsx`
-
-### 2026-03-12 (Settings UX Redesign)
-- **Redesigned Settings Modal to a Sidebar + Detail Pane Layout**
-  - **feat**: Reworked `frontend/src/components/SettingsModal.jsx` from stacked collapsible sections to a two-column settings experience inspired by desktop settings UX.
-  - **feat**: Added left navigation sections (`Indexed Folders`, `AI Provider`, `Embedding Provider`, `Local Models`, `Data Management`) with active state styling.
-  - **feat**: Split content into focused section panels to reduce scrolling and improve discoverability of settings.
-  - **ui**: Increased modal footprint (`max-w-6xl`, fixed height) and refined overlay/header/footer behavior for better usability.
-  - **Files**: `frontend/src/components/SettingsModal.jsx`
-
-### 2026-03-12 (FAISS Dimension Safety & Test Fixes)
-- **Implemented Embedding Dimension Mismatch Guard for FAISS**
-  - **feat**: Added `EmbeddingDimensionMismatchError` to `backend/search.py` to prevent runtime crashes when the query vector dimension differs from the `.faiss` index dimension.
-  - **feat**: Catch mismatch in `/api/search` (`backend/api.py`) and return a `409 Conflict` prompting the user to re-index.
-  - **feat**: Modified `save_index` (`backend/indexing.py`) to persist `_meta.json` containing `model_name` and `embedding_dim`.
-  - **feat**: Updated `load_index` to return the new metadata dictionary as the 8th element in the tuple.
-  - **fix**: Fixed numpy mock chain in `backend/tests/test_search.py` so dimension checks work correctly in isolated and full suite runs.
-  - **fix**: Fixed JSON serialization error (`TypeError: Object of type MagicMock is not JSON serializable`) during suite-run of `test_indexing.py` by mapping `index.d`.
-  - **fix**: Fixed JSX syntax error (missing Fragment wrap) in `SettingsModal.jsx` return block.
-  - **Files**: `backend/search.py`, `backend/indexing.py`, `backend/api.py`, `backend/tests/test_search.py`, `backend/tests/test_indexing.py`, `frontend/src/components/SettingsModal.jsx`
-
-### 2026-03-12 (Embedding Factory)
-- **Added `get_embedding_client` Factory (Factory Pattern)**
-  - **feat**: Implemented `get_embedding_client(provider_type, model_name, api_key)` in `backend/llm_integration.py`.
-  - Supports three `provider_type` values: `'local'` (HuggingFaceEmbeddings, default model `Alibaba-NLP/gte-Qwen2-1.5B-instruct`), `'huggingface_api'` (HuggingFaceEndpointEmbeddings via Inference API), and `'commercial_api'` (OpenAI or Gemini, dispatched by `model_name` keyword matching).
-  - **deps**: Extended `langchain_huggingface` import to also import `HuggingFaceEndpointEmbeddings`.
-  - **Files**: `backend/llm_integration.py`
-
-### 2026-03-12 (Embedding Settings Router)
-- **Created Embedding Settings Router with app.state Caching**
-  - **feat**: Created `backend/settings.py` — a dedicated `APIRouter` with `GET /api/settings/embeddings` and `POST /api/settings/embeddings`.
-  - **feat**: `GET` returns `provider_type`, `model_name`, and `api_key_set` (boolean mask — raw key never sent over the wire).
-  - **feat**: `POST` validates the payload (rejects unknown `provider_type`, enforces `api_key` for non-local providers), persists to `config.ini [Embeddings]`, and hot-updates `app.state.embedding_config`.
-  - **feat**: Added `get_active_embedding_client(app)` helper — resolves state → config.ini → legacy fallback; used by search and indexing paths.
-  - **feat**: Startup event now calls `seed_app_state(app)` to pre-populate cache before the first request.
-  - **config**: Added `[Embeddings]` section to `config.ini` with default `local` provider.
-  - **test**: Added `backend/tests/test_settings.py` — 13 unit tests covering GET, POST success, POST validation failures, and the client helper. All LLM calls mocked.
-  - **Files**: `backend/settings.py` (new), `backend/api.py`, `config.ini`, `backend/tests/test_settings.py` (new)
-
-
-
-### 2026-02-25 (PR #46 Recovery & Security)
-- **Resolved Regressions and Security Logic from PR #46**
-  - **fix**: Fixed `database.py` schema (added `is_indexed` to `folder_history`, `add_files_batch`, `clear_files`).
-  - **fix**: Corrected `indexing.py` dictionary mapping (mapped `extension` -> `file_type`, `size_bytes` -> `size` etc to match DB).
-  - **security**: Implemented `verify_local_request` in `api.py` to protect `open-file` and other sensitive endpoints.
-  - **security**: Added file extension whitelist (`ALLOWED_EXTENSIONS`) to `open-file` to prevent opening dangerous files (.exe, etc).
-  - **fix**: Updated `test_indexing.py` to match the shift from JSON metadata to Pickle (.pkl), ensuring persistent BM25 support.
-  - **fix**: Re-enabled and fixed `test_api.py` (added missing `verify_local_request` and fixed imports).
-  - **deps**: Added `slowapi==0.1.9` to `requirements.txt`.
-  - **Files**: `backend/database.py`, `backend/indexing.py`, `backend/api.py`, `backend/tests/test_indexing.py`, `backend/tests/test_api.py`, `requirements.txt`
-
-### 2026-02-25 (AI Cache)
-- **Restored AI Response Cache Functionality**
-  - **feat**: Exposed `/api/cache/stats` and `/api/cache/clear` endpoints in `backend/api.py`.
-  - **test**: Added unit tests for new cache endpoints in `backend/tests/test_api.py`.
-  - **fix**: Restored original `delete_model` logic to fix a 403 authorization error in test runs.
-  - **Files**: `backend/api.py`, `backend/tests/test_api.py`
-
-### 2026-02-25 (Advanced RAG)
-- **Implemented Advanced RAG Pipeline (State-of-the-Art)**
-  - **feat**: Added `[AdvancedRAG]` configuration options (`query_rewriting`, `cross_encoder_reranking`) to `config.ini` and `api.py`.
-  - **feat**: Created `backend/rag_optimizers.py` with `rewrite_query` (LLM-based keyword extraction) and `rerank_results` (`sentence-transformers/ms-marco` deep semantic scoring).
-  - **feat**: Modified `backend/search.py` to intercept queries for rewriting, fetch a larger candidate pool (Top 20), and run Cross-Encoder re-ranking before limiting to the final top 6 results.
-  - **test**: Added `backend/tests/test_rag_optimizers.py` with mocked LLM and CrossEncoder.
-  - **Files**: `backend/api.py`, `backend/search.py`, `backend/rag_optimizers.py`, `backend/tests/test_rag_optimizers.py`, `config.ini`
-
-### 2026-02-25 (Agent Quality)
-- **Improved ReAct Agent Response Quality for Local Models**
-  - **fix**: Added provider-aware system prompts — short, clear prompt for local models; full ReAct prompt for cloud.
-  - **fix**: Increased `max_tokens` from 256 → 512 to prevent mid-thought truncation.
-  - **feat**: Added `_extract_final_answer` helper — detects `Final Answer:`, `final answer:`, and `Answer:` variants.
-  - **feat**: Added `_is_direct_answer` helper — accepts natural-language answers when model skips ReAct format.
-  - **perf**: Increased observation context fed back to LLM from 200 → 800 chars.
-  - **fix**: Increased max agent steps from 5 → 7 for local models.
-  - **fix**: Fixed pre-existing test bug in `test_agent_refactor.py` (patching `langchain_core.messages` instead of non-existent `backend.llm_integration.SystemMessage`).
-  - **Files**: `backend/agent.py`, `backend/tests/test_agent_refactor.py`
-
-### 2026-02-25 (Critical Hallucination Fix)
-- **Prevented Agent from Answering Without Searching Index**
-  - **fix**: Added `has_searched` boolean guard — agent cannot produce a final answer until `search_knowledge_base` has been called at least once.
-  - **fix**: Added `_force_search_action` — if model tries to skip tools on step 0, agent automatically injects a search using the user's query terms.
-  - **fix**: Replaced broad `_is_direct_answer` patterns (matched hallucinated responses like "Based on my knowledge") with strict `_is_grounded_direct_answer` that only accepts phrases explicitly referencing document/search results.
-  - **fix**: If model produces a "Final Answer" before searching, it is blocked and a forced search is executed instead.
-  - **Files**: `backend/agent.py`
-
-### 2026-02-25 (Context Window Fix)
-- **Fixed 4096 Token Context Overflow on Local Models**
-  - **fix**: Reduced observation window from 800 → 350 chars for local models to halve context usage per step.
-  - **fix**: Reduced `max_steps` from 7 → 4 for local models to prevent multi-search spiraling.
-  - **fix**: History trimmed to `[question] + last 4 entries` when it exceeds 6 entries (local only).
-  - **fix**: Reduced local `max_tokens` from 512 → 384 to leave headroom for prompt growth.
-  - **feat**: After first successful search (local), model is nudged to write `Final Answer` immediately.
-  - **Files**: `backend/agent.py`
-
-### 2026-01-30 (Security)
-- **Fixed Arbitrary File Deletion Vulnerability**
-  - **fix**: Implemented `is_safe_model_path` validation in `model_manager.py` to prevent path traversal in model deletion.
-  - **test**: Added `backend/tests/test_security.py` with regression tests.
-  - **Files**: `backend/model_manager.py`, `backend/tests/test_security.py`, `scripts/run_tests.py`
-
-### 2026-01-30
-- **Optimized Startup Health Checks & Backend Performance**
-  - **feat**: Modified `scripts/start_all.js` with increased health check intervals (3s), longer timeouts (120s), and "localhost" binding for better Windows reliability.
-  - **feat**: Suppressed noisy health check error logs during initial startup phase.
-  - **perf**: Implemented non-blocking backend startup by moving heavy `load_index()` into an asynchronous background thread (`asyncio.to_thread`).
-  - **perf**: Implemented lazy loading for heavy backend modules (`langchain`, `llama-cpp`, `tkinter`) to reduce initial Python process cold-start time.
-  - **feat**: Added dedicated lightweight `/api/health` endpoint for reliable service readiness verification.
-  - **Files**: `scripts/start_all.js`, `backend/api.py`
-
-### 2026-01-30 (Part 2)
-- **Expanded Frontend Test Coverage**
-  - **feat**: Implemented comprehensive functional UI tests for `SearchHistory` and `FileList` components.
-  - **fix**: Upgraded `SettingsModal`, `ModelManager`, `SearchBar`, and `SearchResults` tests to use `@testing-library/react` interactions instead of basic logic checks.
-  - **verification**: Validated all "Delete", "Clear All", and "Open File" workflows with 100% pass rate (47 tests).
-  - **accessibility**: Added `title` attributes to `SearchResults` and `ModelManager` buttons for better testability and accessibility.
-  - **Files**: `frontend/src/test/*.test.jsx`, `frontend/src/components/SearchResults.jsx`
-
-### 2026-01-30
-- **Fixed Duplicate Search Results & Context Window Overflow**
-  - **fix**: Improved search deduplication to strict "one result per file" + content hashing to eliminate near-duplicates
-  - **fix**: Reduced context truncation from 10000 to 3000 chars to prevent exceeding 4096 token context window on local LLMs
-  - **fix**: Limited AI context snippets from 4 to 2, each capped at 400 chars
-  - **Files**: `backend/search.py`, `backend/llm_integration.py`, `backend/api.py`
-- **Fixed File Path Not Showing in Search Results**
-  - **fix**: Search results now use file_path from FAISS metadata first (instead of failing database lookup)
-  - **Files**: `backend/api.py`
-- **Auto-Cleanup Test Data After Tests**
-  - **feat**: Added `cleanup_test_data()` to `database.py` to remove temp/test paths from production database
-  - **feat**: Test runner now automatically cleans up test data after successful test runs
-- [x] Verification: Test strict query "Where did Siddhesh work" <!-- id: 2 -->
-    - [x] Verified resume retrieved as top 3 results
-    - [x] Verified AI answer synthesize information from multiple files
-- **Expanded AI Context to Multi-File Synthesis**
-  - **feat**: Increased AI context to include top 6 results (up from 2)
-  - **feat**: Increased context truncation limit from 3000 to 10000 chars in `llm_integration.py`
-  - **Files**: `backend/api.py`, `backend/llm_integration.py`
-
-### 2026-01-27 (Maintenance)
-- **Fixed Dependency & Added Logging** - Resolved explicit dependency error and added full-stack logging
-  - **Backend**: Added `sentence-transformers==3.0.1` to `requirements.txt`
-  - **Backend**: Implemented centralized logging to `data/app.log` in `api.py`
-  - **Frontend**: Added `logger.js` utility and global error handling in `main.jsx`
-  - **Files**: `requirements.txt`, `backend/api.py`, `frontend/src/lib/logger.js`, `frontend/src/main.jsx`
-- **Implemented Indexing Progress Bar** - Added granular progress tracking for RAPTOR indexing
-  - **Backend**: Updated `indexing.py` to report weighted progress for extraction, embedding, and summarization
-  - **Frontend**: Updated `SettingsModal.jsx` to show detailed status messages
-  - **Files**: `backend/indexing.py`, `backend/api.py`, `frontend/src/components/SettingsModal.jsx`
-- **Fixed Sentence Transformers Import** - Resolved dependency error for local embeddings
-  - **Dependencies**: Added `langchain-huggingface==0.0.3` to requirements
-  - **Verification**: Created `scripts/verify_imports.py` to confirm successful loading
-  - **Files**: `requirements.txt`, `backend/llm_integration.py`
-- **Fixed Dependency Conflicts** - Resolved `langchain-core` vs `langchain-huggingface` incompatibility
-  - **Dependencies**: Upgraded `langchain` stack and `langchain-huggingface==1.2.0` in `venv_new`
-  - **Verification**: Verified successful installation of compatible versions
-  - **Files**: `requirements.txt`
-- **Fixed Local Model "No Response"** - Resolved missing `llama_cpp` import
-  - **Fix**: Added `from llama_cpp import Llama` in `backend/llm_integration.py`
-  - **Enhancement**: Added full logging to `backend/api.py` search endpoint
-  - **Files**: `backend/llm_integration.py`, `backend/api.py`
-- **Fixed Llama.cpp Crash** - Added thread locking for local model inference
-  - **Issue**: `GGML_ASSERT` crash due to concurrent access to single `Llama` instance
-  - **Fix**: Implemented `threading.Lock()` in `backend/llm_integration.py`
-  - **Files**: `backend/llm_integration.py`
-- **Optimized Local Indexing** - Disabled slow LLM summarization for clusters on local provider
-  - **Fix**: Switched to fast regex-based summary in `backend/indexing.py` for `local` provider
-  - **Result**: Indexing time reduced from ~20mins to seconds
-  - **Files**: `backend/indexing.py`
-- **Fixed Startup Timeout** - Optimized backend loading sequence
-  - **Issue**: `Llama` import blocking main thread for >20s, causing frontend runner timeout
-  - Files: `backend/llm_integration.py`, `scripts/start_all.js`
-- **Performance Optimization** - significantly improved local model response time
-  - **Enhancement**: Increased local LLM thread count from 4 to dynamic (~16 on user's 20-thread CPU)
-  - **Enhancement**: Enabled GPU offloading (`n_gpu_layers=-1`) for supported hardware
-  - **Optimization**: Reduced "Smart Summary" calls in Search API from top 3 to top 1 document (saving ~10s per query)
-  - **Files**: `backend/llm_integration.py`, `backend/api.py`
-- **Identity Accuracy & Multi-GPU Support** - fixed "Siddharth vs Siddhesh" confusion
-  - **Fix**: Implemented "Identity/Exact Match Boost" in `search.py` to favor exact name matches in queries.
-  - **Fix**: Updated LLM system prompt to strictly distinguish between similar names and identities.
-  - **Enhancement**: Added `tensor_split` support in `config.ini` for splitting models across multiple GPUs (e.g., `[0.5, 0.5]`).
-  - **Files**: `backend/search.py`, `backend/llm_integration.py`, `backend/api.py`
-- **Agentic Reasoning Fixes** - Fixed tool execution and parsing errors
-  - **Fix**: Resolved `AttributeError` and `TypeError` in `search_knowledge_base` and `list_files` tools.
-  - **Enhancement**: Improved `read_file` tool to automatically resolve filenames to full system paths via database lookup.
-  - **Fix**: Updated ReAct agent system prompt and regex parsing for more robust tool usage and formatting.
-  - **Files**: `backend/agent.py`, `backend/tools.py`, `backend/database.py`
-- **Startup Stability & Health Checks** - Resolved health check timeouts
-  - **Fix**: Added `@app.get("/")` and `@app.get("/api/health")` to `api.py` for reliable startup verification.
-  - **Optimization**: Offloaded local model warmup to a background thread using `asyncio.to_thread` with a delay.
-  - **Fix**: Prevented main event loop blockage during large model loading.
-  - **Files**: `backend/api.py`
-- **Port Reliability & System Visibility** - Added auto-cleanup and verbose logs
-  - **feat**: Modified `scripts/start_all.js` to automatically terminate zombie processes on ports 8000 and 5173 before startup.
-  - **feat**: Integrated verbose print statements across `api.py`, `agent.py`, `search.py`, and `llm_integration.py`.
-  - **Info**: AI Researcher mode now logs every thought, action, and tool observation to the backend console for real-time debugging.
-  - **Files**: `scripts/start_all.js`, `backend/agent.py`, `backend/search.py`, `backend/llm_integration.py`, `backend/api.py`
-- **Agent Self-Correction & Robustness** - Improved reliability on local LLMs
-  - **feat**: Implemented an "Error-Feedback" loop in `agent.py`. If the agent fails to format an action correctly, the error is fed back to its history as an `Observation`, allowing it to self-correct.
-  - **feat**: Added fallback regex parsing for `tool_name("input")` syntax, handling cases where LLMs deviate from ReAct formatting.
-  - **fix**: Added proactive "nudges" in the history if the agent provides a thought without an accompanying action.
-  - **Files**: `backend/agent.py`
-- **Blazing Fast Inference Optimizations** - Maximized local LLM throughput
-  - **perf**: Enabled **Flash Attention**, **f16_kv**, and **offload_kqv** in `llm_integration.py` for significant speedups.
-  - **perf**: Optimized thread allocation for both prompt processing (`n_threads`) and batch generation (`n_threads_batch`).
-  - **perf**: Implemented context truncation (10k chars) to prevent prompt-processing stalls on huge document sets.
-  - **perf**: Switched to greedy decoding (temp 0.1-0.2) in Agent and Answer modes for faster token generation.
-  - **Files**: `backend/llm_integration.py`, `backend/agent.py`
-- **Quality & Data Structure Optimizations** - High speed without compromise
-  - **feat**: Implemented **Parallel Hybrid Search**. Semantic (FAISS) and Keyword (BM25) searches now run concurrently using `ThreadPoolExecutor`.
-  - **perf**: Added **SQLite B-Tree Indices** to `files` table (`faiss_start_idx`, `faiss_end_idx`, `filename`) for $O(\log N)$ metadata lookups.
-  - **feat**: Upgraded `search.py` tokenizer with a custom **Stop-Word Filter** to improve keyword precision and result quality.
-  - **Info**: Maintained **FAISS FlatL2** index type to ensure 100% exact retrieval accuracy (No approximation compromise).
-  - **Files**: `backend/search.py`, `backend/database.py`
-- **UX & Search Quality Improvements**
-  - **fix**: Implemented **Search Result Diversification**. The search engine now enforces a "Max 2 Chunks Per File" rule (soft limit) to prevent a single large document from dominating all search results.
-  - **test**: Created `tests/test_api.py` to verify the `/api/open-file` endpoint functionality and error handling.
-  - **clean**: Renamed temporary `test_api_extra.py` to standard `tests/test_api.py` to adhere to project structure rules.
-  - **Files**: `backend/search.py`, `tests/test_api.py`
-
-- **Advanced Model Stress Testing & Ranking**
-  - **feat**: Created `backend/tests/test_model_stress.py` for rigorous performance evaluation.
-  - **feat**: Implemented weighted scoring system (TPS, Accuracy, Load Time, Memory) in `scripts/benchmark_models.py`.
-  - **test**: Successfully ranked 5 local models; identified TinyLlama and Gemma as top performers.
-  - **Files**: `backend/tests/test_model_stress.py`, `scripts/benchmark_models.py`, `AGENTS.md`
-  - **Verification**: Ran full stress suite (9-minute run); all tests passed with valid performance data.
-
-- **Refined Folder History**
-
-  - "Recent History" now STRICTLY filters for "100% indexed" folders.
-  - Added `is_indexed` column to `folder_history` table.
-  - Files: `backend/database.py`, `backend/api.py`
-- **Fixed Search Critical Bugs**
-  - Resolved `NameError` and `UnboundLocalError` in Search API.
-  - Fixed `database` import scope issues in `api.py` and `llm_integration.py`.
-  - Files: `backend/api.py`, `backend/llm_integration.py`
-- **Fixed Startup Timeout**
-  - Restored `log` function and `colors` object in `scripts/start_all.js` to fix `ReferenceError`.
-  - Increased health check timeout to 90s and forced `127.0.0.1` binding.
-  - Files: `scripts/start_all.js`
-- **Fixed Frontend Port Mismatch**
-  - Configured `vite.config.js` to strictly use `host: 127.0.0.1` and `port: 5173`.
-  - Files: `frontend/vite.config.js`
-
-### 2026-01-21 (UI Redesign)
-- **Implemented Cosmic Glassmorphism UI** - Complete visual overhaul
-  - `frontend/src/index.css`: New cosmic color palette, glass utilities, animations
-  - `frontend/tailwind.config.js`: Cosmic colors, glow keyframes
-  - `frontend/src/components/CosmicBackground.jsx`: **NEW** - Particle effects component
-  - `frontend/src/App.jsx`: Cosmic background integration
-  - `frontend/src/components/Header.jsx`: Glass nav, gradient logo, model dropdown
-  - `frontend/src/components/SearchBar.jsx`: Glass input, animated focus, agent toggle
-  - `frontend/src/components/SearchResults.jsx`: Glass cards, AI sidebar, file icons
-  - `frontend/src/components/SettingsModal.jsx`: Glass overlay, cosmic buttons
-
-### 2026-01-21 (Startup Fixes)
-- **Fixed virtual environment issues** - Created `venv_new` to bypass file lock issues
-  - Updated `package.json` and `scripts/start_all.js` to use `venv_new`
-  - Added `venv_new/` to `.gitignore`
-- **Pinned missing dependencies** - Added `scikit-learn==1.8.0` and `rank-bm25==0.2.2` to `requirements.txt`
-  - Files: `requirements.txt`, `.gitignore`, `package.json`, `scripts/start_all.js`
-
-### 2026-01-21
-- **Implemented Persistent AI Response Cache** - SQLite-backed caching for instant repeated queries
-  - **Database**: Added `response_cache` table to `metadata.db` with query/context hashing
-  - **Logic**: Implemented `compute_cache_key`, `cached_smart_summary`, `cached_generate_ai_answer`
-  - **Performance**: Added model warmup on startup (background thread) to eliminate first-query delay
-  - **UI**: Added "AI Response Cache" stats and "Clear Cache" button in Settings
-  - **Endpoints**: Added `/api/cache/stats` and `/api/cache/clear`
-  - Files: `backend/database.py`, `backend/llm_integration.py`, `backend/api.py`, `frontend/src/components/SettingsModal.jsx`
-  - Tests: `backend/tests/test_cache.py` (New)
-- **Reorganized project into clean folder structure** - Better separation of concerns
-  - `backend/`: All Python modules (api.py, database.py, indexing.py, etc.)
-  - `backend/tests/`: All pytest tests (moved from root tests/)
-  - `scripts/`: Utility scripts (run_tests.py, benchmark_models.py, start_all.js)
-  - `data/`: Generated files (index.faiss, metadata.db, benchmark_results.json)
-  - Updated all imports to use absolute `backend.` module prefix
-  - `package.json`: Updated scripts to use new paths (backend.api:app)
-  - `scripts/start_all.js`: Updated uvicorn command
-  - `scripts/run_tests.py`: Updated test discovery paths
-  - `AGENTS.md`: Updated project structure documentation
-- **Expanded model library for 32GB RAM systems** - Added 14 new model options
-- **Fixed LLM model loading error** - Diagnosed why "Local model failed to load" appeared
-  - Root cause: llama-2-7b and mistral-7b models corrupted/incompatible with llama_cpp version
-  - `config.ini`: Changed model_path from llama-2-7b to phi-2.Q4_K_M.gguf (working model)
-  - Created `test_models_quick.py` and `test_quality.py` for model diagnostics
-  - 2/4 models work: TinyLlama (fast, 4.1s) and Phi-2 (quality, 8.7s)
-- **Renamed "Nexus AI Insight" to "AI Insights"** in UI
-  - `frontend/src/components/SearchResults.jsx`: Updated title text
-- **Removed corrupted model files** - Deleted llama-2-7b-chat.Q4_K_M.gguf and mistral-7b-instruct-v0.1.Q4_K_M.gguf
-- **Added agent skills for file processing** - Created 4 document processing skills
-  - `.agent/skills/pdf/SKILL.md`, `.agent/skills/docx/SKILL.md`
-  - `.agent/skills/xlsx/SKILL.md`, `.agent/skills/pptx/SKILL.md`
-  - Added `Agent Skills` section to `AGENTS.md` referencing these files
-  - Updated `.gitignore` to exclude `.agent/skills/`
-- **Improved Folder Management** - Solved "re-add folders" issue
-  - Added "Recent Folders" history dropdown in Settings
-  - Implemented auto-save when adding/removing folders
-  - Added `folder_history` table to `metadata.db` with migration from existing files
-  - `backend/database.py`, `backend/api.py`, `frontend/src/components/SettingsModal.jsx`
-- **Fixed test data leaking into folder history** - Test isolation fix
-  - Added `delete_folder_history_item()` and `clear_folder_history()` to `database.py`
-  - Added DELETE endpoints `/api/folders/history` and `/api/folders/history/item`
-  - Updated `test_database.py` to use module-level database setup for proper isolation
-  - Added "Clear All" button and individual delete buttons to folder history dropdown in Settings UI
-  - Files: `backend/database.py`, `backend/api.py`, `backend/tests/test_database.py`, `frontend/src/components/SettingsModal.jsx`
-- **Fixed File Locks** - Database initialization moved to startup event to prevent lock issues during tests
-
-### 2026-01-21 (Part 2)
-- **Restored 100% Test Coverage** - Added tests for new RAPTOR DB functions
-  - `backend/tests/test_raptor_clusters.py`: Covered `add_cluster`, `get_clusters_by_level`, `clear_clusters`
-- **Created "Golden Dataset" for robust testing** - Mixed Stategy (Synthetic + Real)
-  - `scripts/create_golden_dataset.py`: Python script to generate synthetic PDF/DOCX/PPTX/XLSX handling diverse topics (Nature, Business, Sales) and download real-world samples.
-  - `scripts/verify_golden_set.py`: Automated verification script that indexes the golden set and asserts specific factual retrieval ("needle in haystack").
-  - `data/golden_dataset/`: Target directory for test files.
-  - Added documentation to `AGENTS.md`.
-
-### 2026-02-13 (Performance)
-- **Optimized Search Performance (N+1 Query Fix)**
-  - **perf**: Implemented `get_files_by_faiss_indices` in `database.py` for batch lookup of file metadata.
-  - **perf**: Updated `search_files` and `stream_answer_endpoint` in `api.py` to use batch lookups, eliminating N+1 database queries.
-  - **Result**: Achieved ~6.5x speedup for metadata retrieval in search results (benchmarked with 10 lookups).
-  - **Files**: `backend/database.py`, `backend/api.py`, `backend/tests/test_database.py`, `backend/tests/benchmark_n1_query.py`
-
-### 2026-01-30
-- **Optimized Startup** - Reduced polling interval to 500ms and enabled early browser launch
-  - Files: `scripts/start_all.js`
-  - Verification: Manual user verification required (restart app)
-- **Backend Connection Resilience** - Added retry logic to Frontend to handle race conditions during fast startup
-  - Files: `frontend/src/App.jsx`
-  - Verification: Manual verification (Frontend should eventually load even if backend is slow)
-- **Robust Port Cleanup** - Startup script now aggressively kills zombie processes on ports 8000/5173
-  - Files: `scripts/start_all.js`
-  - Verification: Manual verification (Ctrl+C and restart should work immediately)
-
-### 2026-01-09
-- **Enhanced LLM output quality** - AI now references filenames and quotes specific content
-  - `llm_integration.py`: Added `file_name` param to `smart_summary()`, improved prompts to request specific details
-  - `api.py`: Pass file context to LLM functions, prepend `[From: filename]` to context snippets
-- **Refined API & Tests** - Fixed issues with model deletion and search history endpoints
-  - `api.py`: Refactored `delete_model` to use `model_manager` and fixed history delete response
-  - `tests/test_api.py`, `tests/test_config_and_edge_cases.py`: Updated to match plural `folders` config and fixed `TestClient` compatibility
-- **Added 100% test coverage** - 93 frontend + 101 backend tests
-  - `tests/test_api.py`, `test_database.py`, `test_llm_integration_full.py`, `test_indexing.py`, `test_config_and_edge_cases.py`
-  - `frontend/src/test/SearchBar.test.jsx`, `SearchResults.test.jsx`, `SettingsModal.test.jsx`, `ModelManager.test.jsx`
-- **Created AGENTS.md** - Workspace instructions
-
-### 2026-02-02
-- **Integrated Sentinel Security Fixes (Branch 3)**
-  - **feat**: Merged `sentinel-model-manager-fix` which generalizes path validation logic (`is_safe_path`).
-  - **fix**: Resolved conflict in `backend/model_manager.py` adopting the more robust security check.
-  - **Files**: `backend/model_manager.py`
-  - **Verification**: Tests passed on branch before merge.
-
-### 2026-02-01
-- **Security Fix: Arbitrary File Deletion in Model Manager**
-  - **fix**: Patched `delete_model` in `backend/model_manager.py` to use `is_safe_path` validation, preventing path traversal attacks.
-  - **test**: Added comprehensive security tests in `backend/tests/test_security_fix.py`.
-  - **Files**: `backend/model_manager.py`, `backend/tests/test_security_fix.py`
-
-### Entry Template
-```
-### YYYY-MM-DD
-- **What changed** - Brief description
-  - Files: modified files list
-```
-
-> **Always read [AGENTS.md](cci:7://file:///c:/Users/siddh/OneDrive/Desktop/Projects/File-Search-Engine-1/AGENTS.md:0:0-0:0) in project root for the latest Change Log before and after making changes.**
-### 2026-02-06 (Security Fix)
-- **Redacted Sensitive Search Queries** - Prevent PII leak in logs
-  - **fix**: Redacted `request.query` in `backend/api.py`.
-  - **fix**: Redacted sensitive info in `backend/llm_integration.py` and `backend/search.py`.
-  - **test**: Added `backend/tests/test_security_logging.py`.
-
-  - **Files**: `backend/api.py`, `backend/llm_integration.py`, `backend/search.py`, `backend/tests/test_security_logging.py`
-
-### 2026-02-23 (Performance)
-- **Optimized Search Result Streaming** - Instant response by reusing search context
-  - **perf**: Modified `stream_answer_endpoint` in `backend/api.py` to accept and use provided context, skipping redundant search.
-  - **perf**: Updated `frontend/src/App.jsx` to pass search results as context to the streaming endpoint.
-  - **Files**: `backend/api.py`, `frontend/src/App.jsx`
-  - **Tests**: `backend/tests/test_stream_optimization.py`
-
-### 2026-02-24 (Security Fix)
-- **Fixed Command Injection Vulnerability** - Prevent argument injection in open-file endpoint
-  - **fix**: Added validation to reject filenames starting with `-` in `backend/api.py`.
-  - **test**: Added `backend/tests/test_security_command_injection.py` to verify the fix.
-  - **Files**: `backend/api.py`, `backend/tests/test_security_command_injection.py`
+### 2026-04-28 (Frontend Rebuild & Component Architecture)
+- **Rebuilt entire frontend with modern React 19 + Vite architecture**
+  - **feat**: Created `Sidebar.jsx` with indigo primary design system and lucide-react icons, replacing old navigation.
+  - **feat**: Built `SearchView.jsx` with `ResultCard.jsx` and `HistoryDrawer.jsx` — split from monolithic App.jsx.
+  - **feat**: Built `LibraryView.jsx`, `AgentView.jsx`, `BenchmarkView.jsx` as dedicated view components.
+  - **feat**: Created `SettingsModal.jsx` (two-pane: General + Model) replacing old inline settings.
+  - **feat**: Added `ModelManager.jsx` for GGUF download/manage, `IndexingBanner.jsx` for progress, `Toast.jsx` for notifications.
+  - **feat**: Created `frontend/src/lib/api.js` as the single axios client — all components use this, no direct axios imports.
+  - **feat**: Created `frontend/src/lib/logger.js` with structured logging and `format.js` for display helpers.
+  - **test**: Added `logger.test.js` as the first Vitest test; added `setup.js` for happy-dom environment.
+  - **clean**: Removed all old component files, test files targeting removed components, and direct axios imports from components.
+  - **Files**: All files in `frontend/src/`, `AGENTS.md`

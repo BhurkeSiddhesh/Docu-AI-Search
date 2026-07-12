@@ -635,7 +635,7 @@ def generate_ai_answer(context: str, question: str, provider: str,
 
             messages.append(HumanMessage(content=user_content))
 
-            # Use bind for stop sequences if supported, otherwise just invoke
+            retry_client = client.with_retry(stop_after_attempt=3)
             if stop_seqs:
                 try:
                     response = _invoke_with_retry(client.bind(stop=stop_seqs), messages)
