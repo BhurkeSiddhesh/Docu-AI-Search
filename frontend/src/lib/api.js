@@ -49,7 +49,7 @@ export const api = {
     // Search
     search: (query, opts = {}) =>
         client.post('/search', { query, ...opts }),
-    streamAnswer: async (query, context, systemPromptId, onChunk, signal) => {
+    streamAnswer: async (query, context, onChunk, signal) => {
         // Raw fetch bypasses the axios interceptor, so attach the token here too
         const headers = { 'Content-Type': 'application/json' };
         const token = localStorage.getItem('api_token');
@@ -57,7 +57,7 @@ export const api = {
         const res = await fetch('/api/stream-answer', {
             method: 'POST',
             headers,
-            body: JSON.stringify({ query, context, system_prompt_id: systemPromptId }),
+            body: JSON.stringify({ query, context }),
             signal,
         });
         if (!res.ok || !res.body) throw new Error('Stream failed');
@@ -88,10 +88,6 @@ export const api = {
     deleteSearchHistory: (id) => client.delete(`/search/history/${id}`),
     clearSearchHistory: () => client.delete('/search/history'),
 
-    // System prompts
-    getSystemPrompts: () => client.get('/system-prompts'),
-    createSystemPrompt: (data) => client.post('/system-prompts', data),
-    deleteSystemPrompt: (id) => client.delete(`/system-prompts/${id}`),
 
     // Providers
     listProviders: () => client.get('/providers/list'),
@@ -104,16 +100,6 @@ export const api = {
     downloadModel: (id) => client.post(`/models/download/${id}`),
     modelDownloadStatus: () => client.get('/models/status'),
     deleteModel: (path) => client.delete('/models/delete', { data: { path } }),
-
-    // Helpers
-    quickSetModel: async (provider, local_model_path = '') => {
-        const current = await client.get('/config');
-        return client.post('/config', {
-            ...current.data,
-            provider,
-            local_model_path,
-        });
-    },
 
     // Cache
     getCacheStats: () => client.get('/cache/stats'),

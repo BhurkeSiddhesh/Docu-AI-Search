@@ -47,7 +47,6 @@ describe('api export shape', () => {
         'listFiles', 'previewFile', 'openFile',
         'search', 'streamAnswer',
         'getSearchHistory', 'deleteSearchHistory', 'clearSearchHistory',
-        'getSystemPrompts', 'createSystemPrompt', 'deleteSystemPrompt',
         'listProviders', 'providerHealth', 'providerModels',
         'listAvailableModels', 'listLocalModels', 'downloadModel', 'modelDownloadStatus', 'deleteModel',
         'getCacheStats', 'clearCache',
@@ -115,11 +114,6 @@ describe('GET endpoints', () => {
     it('getSearchHistory() calls GET /search/history', () => {
         api.getSearchHistory();
         expect(mockClient.get).toHaveBeenCalledWith('/search/history');
-    });
-
-    it('getSystemPrompts() calls GET /system-prompts', () => {
-        api.getSystemPrompts();
-        expect(mockClient.get).toHaveBeenCalledWith('/system-prompts');
     });
 
     it('listProviders() calls GET /providers/list', () => {
@@ -201,12 +195,6 @@ describe('POST endpoints', () => {
         expect(mockClient.post).toHaveBeenCalledWith('/search', { query: 'revenue' });
     });
 
-    it('createSystemPrompt(data) calls POST /system-prompts', () => {
-        const data = { name: 'My Prompt', content: 'Answer concisely.' };
-        api.createSystemPrompt(data);
-        expect(mockClient.post).toHaveBeenCalledWith('/system-prompts', data);
-    });
-
     it('providerHealth(data) calls POST /providers/health', () => {
         api.providerHealth({ provider: 'openai' });
         expect(mockClient.post).toHaveBeenCalledWith('/providers/health', { provider: 'openai' });
@@ -259,11 +247,6 @@ describe('DELETE endpoints', () => {
         expect(mockClient.delete).toHaveBeenCalledWith('/search/history');
     });
 
-    it('deleteSystemPrompt(id) calls DELETE /system-prompts/:id', () => {
-        api.deleteSystemPrompt(7);
-        expect(mockClient.delete).toHaveBeenCalledWith('/system-prompts/7');
-    });
-
     it('deleteModel(path) calls DELETE /models/delete with data', () => {
         api.deleteModel('/models/llama.gguf');
         expect(mockClient.delete).toHaveBeenCalledWith(
@@ -291,7 +274,7 @@ describe('streamAnswer', () => {
             body: stream,
         });
 
-        await api.streamAnswer('query', 'context', null, (chunk) => chunks.push(chunk));
+        await api.streamAnswer('query', 'context', (chunk) => chunks.push(chunk));
 
         expect(global.fetch).toHaveBeenCalledWith(
             '/api/stream-answer',
@@ -299,7 +282,7 @@ describe('streamAnswer', () => {
         );
     });
 
-    it('passes query, context, and system_prompt_id in the request body', async () => {
+    it('passes query and context in the request body', async () => {
         const encoder = new TextEncoder();
         const stream = new ReadableStream({
             start(controller) { controller.close(); }
@@ -307,18 +290,17 @@ describe('streamAnswer', () => {
 
         global.fetch = vi.fn().mockResolvedValue({ ok: true, body: stream });
 
-        await api.streamAnswer('my query', 'some context', 3, () => {});
+        await api.streamAnswer('my query', 'some context', () => {});
 
         const callArgs = global.fetch.mock.calls[0];
         const body = JSON.parse(callArgs[1].body);
         expect(body.query).toBe('my query');
         expect(body.context).toBe('some context');
-        expect(body.system_prompt_id).toBe(3);
     });
 
     it('throws when the response is not ok', async () => {
         global.fetch = vi.fn().mockResolvedValue({ ok: false, body: null });
-        await expect(api.streamAnswer('q', 'c', null, () => {})).rejects.toThrow('Stream failed');
+        await expect(api.streamAnswer('q', 'c', () => {})).rejects.toThrow('Stream failed');
     });
 
     it('calls onChunk for each streamed chunk', async () => {
@@ -334,7 +316,7 @@ describe('streamAnswer', () => {
 
         global.fetch = vi.fn().mockResolvedValue({ ok: true, body: stream });
 
-        await api.streamAnswer('q', 'c', null, (chunk) => chunks.push(chunk));
+        await api.streamAnswer('q', 'c', (chunk) => chunks.push(chunk));
 
         expect(chunks.length).toBeGreaterThan(0);
         expect(chunks.join('')).toContain('part1');

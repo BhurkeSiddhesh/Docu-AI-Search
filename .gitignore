@@ -57,9 +57,9 @@ file_index.pkl
 .idea/
 
 # Agent skill files (reference only)
-.agent/skills/
+.agent/
+.agents/
 test_*.txt
-.agent/workflows
 
-
-stitch_app_design_system
+# Frontend build output
+frontend/dist/

@@ -496,12 +496,6 @@ async def startup_event():
     # Seed embedding config cache from config.ini
     from backend.settings import seed_app_state
     seed_app_state(app)
-    # Seed default system prompts if table is empty
-    try:
-        from backend.system_prompts import seed_default_prompts
-        seed_default_prompts()
-    except Exception as e:
-        logger.warning("Failed to seed system prompts: %s", e)
     # Load index in background to not block health checks
     asyncio.create_task(load_initial_index())
     # Pre-warm the local LLM and embedding model in the background so the
@@ -850,7 +844,6 @@ class SearchRequest(BaseModel):
 
     query: str = Field(..., min_length=1, max_length=5000)
     context: Optional[List[str]] = None
-    system_prompt_id: Optional[int] = None
     provider_override: Optional[str] = None
     model_override: Optional[str] = None
     api_key_override: Optional[str] = None
@@ -1384,11 +1377,6 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
         return StreamingResponse(iter(["No relevant context found."]), media_type="text/event-stream")
 
     system_instruction = None
-    if getattr(search_data, 'system_prompt_id', None) is not None:
-        from backend.system_prompts import get_system_prompt_by_id
-        prompt_data = get_system_prompt_by_id(search_data.system_prompt_id)
-        if prompt_data:
-            system_instruction = prompt_data["content"]
 
     # ── Answer cache ───────────────────────────────────────────────────────
     # Repeat questions over the same context replay instantly instead of
@@ -1569,32 +1557,6 @@ async def list_providers(request: Request):
 # -------------------------------------------------------------------------
 # System Prompts endpoints
 # -------------------------------------------------------------------------
-
-class SystemPromptRequest(BaseModel):
-    name: str
-    content: str
-    category: str = "general"
-
-@app.get("/api/system-prompts")
-async def list_system_prompts(request: Request, category: Optional[str] = None):
-    """List all system prompts, optionally filtered by category."""
-    from backend.system_prompts import get_system_prompts
-    return get_system_prompts(category=category)
-
-@app.post("/api/system-prompts")
-async def create_system_prompt(body: SystemPromptRequest, request: Request, _auth=Depends(require_auth)):
-    """Create a new system prompt."""
-    from backend.system_prompts import add_system_prompt
-    prompt_id = add_system_prompt(body.name, body.content, body.category)
-    return {"status": "success", "id": prompt_id}
-
-@app.delete("/api/system-prompts/{prompt_id}")
-async def delete_system_prompt_endpoint(prompt_id: int, request: Request, _auth=Depends(require_auth)):
-    """Delete a system prompt by ID."""
-    from backend.system_prompts import delete_system_prompt
-    if delete_system_prompt(prompt_id):
-        return {"status": "success", "message": "Prompt deleted"}
-    raise HTTPException(status_code=404, detail="System prompt not found")
 
 @app.get("/api/search/history")
 async def get_search_history(request: Request, _auth=Depends(require_auth)):

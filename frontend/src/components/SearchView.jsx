@@ -113,10 +113,6 @@ export default function SearchView({ pendingQuery }) {
         return () => window.removeEventListener('keydown', handler);
     }, []);
 
-    useEffect(() => {
-        return () => streamAbortRef.current?.abort();
-    }, []);
-
     const selectModel = async (provider, modelPath = '') => {
         setSelectedProvider(provider);
         setSelectedModelPath(modelPath);
@@ -214,7 +210,7 @@ export default function SearchView({ pendingQuery }) {
                     // Keep the LLM prompt small: on CPU every extra snippet adds
                     // seconds before the first token appears.
                     const context = res.data.results.map((r) => r.summary || r.document).slice(0, 4);
-                    await api.streamAnswer(q, context, null, (chunk) => {
+                    await api.streamAnswer(q, context, (chunk) => {
                         if (controller.signal.aborted) return;
                         acc += chunk;
                         setAiAnswer(acc);
