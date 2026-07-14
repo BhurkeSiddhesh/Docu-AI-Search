@@ -603,13 +603,15 @@ def download_file(url, filename, model_id, total_bytes=0):
             }
 
     except Exception as e:
-        _logger.error("Download failed: %s", e)
+        _logger.error("Download failed: %s", e, exc_info=True)
         with _download_lock:
             download_status = {
                 "downloading": False,
                 "model_id": model_id,
                 "progress": 0,
-                "error": str(e),
+                # Generic message only — exception details (which can carry
+                # stack/internal info) stay in the server log.
+                "error": "Download failed. Check the server log for details.",
                 "bytes_downloaded": 0,
                 "total_bytes": 0
             }

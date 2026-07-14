@@ -129,6 +129,13 @@ rerank = true
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-07-14 (Security: model-path allow-list + generic download errors — resolves final 3 CodeQL alerts)
+- **security**: `get_local_llm` and the `provider='local'` client factory no longer touch the filesystem with a raw configured model path (`py/path-injection` ×2, high). `_resolve_model_path` normalizes with pure string ops and requires the result under an allowed root — `models/`, the home directory, or the new `DOCU_MODEL_ROOTS` env var (os.pathsep-separated).
+- **security**: Model-download failures now surface a generic error in `/api/models/download/status`; exception details go to the server log only (`py/stack-trace-exposure`, medium). — `backend/model_manager.py`
+- **test**: `TestResolveModelPath` (7 tests: models/ and home allowed, outside-root and deep-traversal rejected, empty/None rejected, env override, `get_local_llm` rejection). Fixed stale gemini default assertion (`gemini-2.0-flash`→`gemini-flash-latest`) in `test_llm_integration.py` — latent failure not caught by CI because the quick suite doesn't include this file.
+- **docs**: `DOCU_MODEL_ROOTS` documented in `.env.example`.
+- **Files**: `backend/llm_integration.py`, `backend/model_manager.py`, `backend/tests/test_llm_integration.py`, `.env.example`, `AGENTS.md`
+
 ### 2026-07-14 (Security: pip dependency bumps — replaces unmergeable Dependabot #393)
 - **security**: Bumped `python-multipart` 0.0.30→0.0.31, `langchain` 1.2.7→1.3.13, `langchain-anthropic` 1.3.1→1.4.8, `pytest` 8.3.4→9.0.3 — clears all four open pip Dependabot alerts. Unlike Dependabot PR #393, `langchain-core` is bumped in lockstep (1.3.3→1.4.9, required by langchain 1.3.13), so the set actually resolves; #393 failed CI on ResolutionImpossible.
 - **verification**: Fresh venv installs cleanly; backend quick suite green on the new versions (336 passed, 2 skipped).

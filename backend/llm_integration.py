@@ -342,15 +342,62 @@ def get_embedding_client(provider_type: str, model_name: str = None, api_key: st
     )
 
 
+def _allowed_model_roots() -> tuple:
+    """Directory roots a configured GGUF model path may live under.
+
+    The models/ download directory and the user's home directory by default;
+    extra roots can be granted via the DOCU_MODEL_ROOTS environment variable
+    (os.pathsep-separated). Roots are canonicalized and returned with a
+    trailing separator so a prefix match cannot leak into sibling directories.
+    """
+    from backend.model_manager import MODELS_DIR
+    candidates = [MODELS_DIR, os.path.expanduser("~")]
+    env_roots = os.environ.get('DOCU_MODEL_ROOTS', '')
+    candidates += [p.strip() for p in env_roots.split(os.pathsep) if p.strip()]
+    roots = []
+    for candidate in candidates:
+        try:
+            real = os.path.realpath(candidate)
+        except (ValueError, TypeError, OSError):
+            continue
+        if not real.endswith(os.sep):
+            real += os.sep
+        roots.append(real)
+    return tuple(roots)
+
+
+def _resolve_model_path(model_path: str) -> Optional[str]:
+    """Normalize a configured model path and require it under an allowed root.
+
+    Pure string normalization — no filesystem call sees the raw value. Returns
+    the normalized path, or None if the path is empty or escapes the allowed
+    roots (models/, home, DOCU_MODEL_ROOTS).
+    """
+    if not model_path:
+        return None
+    try:
+        normalized = os.path.abspath(os.path.normpath(model_path))
+    except (ValueError, TypeError):
+        return None
+    if normalized.startswith(_allowed_model_roots()):
+        return normalized
+    logger.warning(
+        "Configured model path is outside the allowed roots "
+        "(models/, home directory, DOCU_MODEL_ROOTS): %s", str(model_path).replace('\n', '\\n')
+    )
+    return None
+
+
 def get_local_llm(model_path: str, tensor_split: List[float] = None) -> Any:
     """
     Load and cache the GGUF model directly with LlamaCpp.
 
-    This function implements "blazing fast" inference settings for local models, 
+    This function implements "blazing fast" inference settings for local models,
     including GPU offloading and Flash Attention.
 
     Args:
         model_path (str): Absolute or relative path to the GGUF model file.
+            Must resolve under models/, the home directory, or DOCU_MODEL_ROOTS.
         tensor_split (List[float], optional): Distribution of model across multiple GPUs.
 
     Returns:
@@ -360,10 +407,11 @@ def get_local_llm(model_path: str, tensor_split: List[float] = None) -> Any:
         logger.warning("llama_cpp not installed")
         return None
 
-        
-    if not model_path or not os.path.exists(model_path):
+    resolved = _resolve_model_path(model_path)
+    if not resolved or not os.path.exists(resolved):
         logger.info(f"Model not found at {model_path}")
         return None
+    model_path = resolved
 
     if model_path in _llm_cache:
         return _llm_cache[model_path]
@@ -503,7 +551,8 @@ def get_llm_client(provider: str, api_key: str = None, model_path: str = None, b
         elif provider == 'local':
             # For local, we don't return a LangChain object because we are using llama-cpp-python directly
             # for better control over the 'create_completion' call in generate_ai_answer currently.
-            if not model_path or not os.path.exists(model_path):
+            checked_path = _resolve_model_path(model_path)
+            if not checked_path or not os.path.exists(checked_path):
                 model_path = _discover_local_gguf()
                 if not model_path:
                     logger.warning("Local model path missing and no GGUF found in models/")
