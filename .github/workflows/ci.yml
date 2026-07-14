@@ -40,7 +40,9 @@ jobs:
         python-version: '3.10'
 
     - name: Install security tools
-      run: pip install bandit pip-audit
+      # setuptools pinned >=83.0.0: the runner toolcache ships 79.0.1,
+      # which pip-audit flags (PYSEC-2026-3447) and fails the job.
+      run: pip install --upgrade "setuptools>=83.0.0" bandit pip-audit
 
     - name: Run Bandit (static security analysis)
       run: bandit -r backend -f json -o bandit-report.json -ll

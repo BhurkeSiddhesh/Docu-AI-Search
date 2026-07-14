@@ -134,6 +134,7 @@ rerank = true
 - **security**: Model-download failures now surface a generic error in `/api/models/download/status`; exception details go to the server log only (`py/stack-trace-exposure`, medium). — `backend/model_manager.py`
 - **test**: `TestResolveModelPath` (7 tests: models/ and home allowed, outside-root and deep-traversal rejected, empty/None rejected, env override, `get_local_llm` rejection). Fixed stale gemini default assertion (`gemini-2.0-flash`→`gemini-flash-latest`) in `test_llm_integration.py` — latent failure not caught by CI because the quick suite doesn't include this file.
 - **docs**: `DOCU_MODEL_ROOTS` documented in `.env.example`.
+- **ci**: security-scan job upgrades `setuptools>=83.0.0` before pip-audit — the runner toolcache ships 79.0.1, newly flagged by PYSEC-2026-3447, which failed the job on every PR.
 - **Files**: `backend/llm_integration.py`, `backend/model_manager.py`, `backend/tests/test_llm_integration.py`, `.env.example`, `AGENTS.md`
 
 ### 2026-07-14 (Security: pip dependency bumps — replaces unmergeable Dependabot #393)
