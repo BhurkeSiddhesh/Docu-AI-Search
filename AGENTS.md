@@ -139,7 +139,6 @@ rerank = true
 - **test**: Updated existing validate-path tests to patch `_allowed_index_roots`; added coverage for outside-root rejection (no filesystem call made), `..` traversal escaping the root, home-directory default, and the `DOCU_INDEX_ROOTS` override.
 - **docs**: Documented `DOCU_INDEX_ROOTS` in `.env.example`.
 - **Files**: `backend/api.py`, `backend/tests/test_api.py`, `.env.example`, `AGENTS.md`
->>>>>>> origin/main
 
 ### 2026-07-12 (Final release: branch consolidation, issue fixes, feature pruning, UI polish)
 - **merge**: Consolidated every open work branch into one lineage. `fix-frontend-design` (Vercel UI overhaul + model selector, previously unmerged) is now the base; PR branches #329, #330, #331, #333, #343, #351, #352, #323, both Dependabot bumps, and the test-coverage branch were git-merged on top with conflicts resolved in favour of the newest architecture while porting each PR's surviving intent (embedding-batch retry, stream abort hardening, auth header on raw stream fetch, decoder tail flush, `/api/logs` rate limit, `subprocess` timeouts, hashed cache keys).
