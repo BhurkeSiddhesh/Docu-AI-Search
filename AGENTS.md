@@ -129,6 +129,11 @@ rerank = true
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-07-14 (Security: pip dependency bumps — replaces unmergeable Dependabot #393)
+- **security**: Bumped `python-multipart` 0.0.30→0.0.31, `langchain` 1.2.7→1.3.13, `langchain-anthropic` 1.3.1→1.4.8, `pytest` 8.3.4→9.0.3 — clears all four open pip Dependabot alerts. Unlike Dependabot PR #393, `langchain-core` is bumped in lockstep (1.3.3→1.4.9, required by langchain 1.3.13), so the set actually resolves; #393 failed CI on ResolutionImpossible.
+- **verification**: Fresh venv installs cleanly; backend quick suite green on the new versions (336 passed, 2 skipped).
+- **Files**: `requirements.txt`, `AGENTS.md`
+
 ### 2026-07-12 (Final release: branch consolidation, issue fixes, feature pruning, UI polish)
 - **merge**: Consolidated every open work branch into one lineage. `fix-frontend-design` (Vercel UI overhaul + model selector, previously unmerged) is now the base; PR branches #329, #330, #331, #333, #343, #351, #352, #323, both Dependabot bumps, and the test-coverage branch were git-merged on top with conflicts resolved in favour of the newest architecture while porting each PR's surviving intent (embedding-batch retry, stream abort hardening, auth header on raw stream fetch, decoder tail flush, `/api/logs` rate limit, `subprocess` timeouts, hashed cache keys).
 - **fix (issues)**: #344 logger.js relative `/api/logs` (via overhaul) · #345 atomic stat in search sort (no TOCTOU 500s) · #346 full AbortSignal plumbing incl. unmount cleanup and reader cancel · #348 HTTP retry for Ollama/OpenAI-compatible providers and model downloads (`_make_retry_session`).
