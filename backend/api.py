@@ -1914,6 +1914,40 @@ async def delete_folder_history_item(request: dict, req: Request, _auth=Depends(
         logger.error("Error deleting folder history item: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="An internal error occurred. Check server logs.")
 
+def _allowed_index_roots() -> tuple:
+    """Directory roots under which /api/validate-path may touch the filesystem.
+
+    Allow-list: the user's home directory, folders already configured for
+    indexing in config.ini, and any extra roots granted via the
+    DOCU_INDEX_ROOTS environment variable (os.pathsep-separated). Every root
+    is canonicalized and returned with a trailing separator so a prefix match
+    cannot leak into sibling directories (/home/user vs /home/user2).
+    """
+    candidates = [os.path.expanduser("~")]
+    try:
+        config = load_config()
+        folders_str = config.get('General', 'folders', fallback='')
+        candidates += [f.strip() for f in folders_str.split(',') if f.strip()]
+        single = config.get('General', 'folder', fallback='')
+        if single:
+            candidates.append(single)
+    except Exception as e:
+        logger.warning("[validate-path] Could not read configured folders: %s", e)
+    env_roots = os.environ.get('DOCU_INDEX_ROOTS', '')
+    candidates += [p.strip() for p in env_roots.split(os.pathsep) if p.strip()]
+
+    roots = []
+    for candidate in candidates:
+        try:
+            real = os.path.realpath(candidate)
+        except (ValueError, TypeError, OSError):
+            continue
+        if not real.endswith(os.sep):
+            real += os.sep
+        roots.append(real)
+    return tuple(roots)
+
+
 @app.post("/api/validate-path")
 async def validate_path(body: dict, request: Request, _=Depends(verify_local_request)):
     """
@@ -1930,12 +1964,25 @@ async def validate_path(body: dict, request: Request, _=Depends(verify_local_req
     if not path:
         return {"valid": False, "error": "Path is required"}
 
-    # Normalize to prevent path traversal tricks
-    import pathlib
+    # Normalize with pure string operations (no filesystem call sees the raw
+    # request value), then require the result to sit under an allowed root.
     try:
-        normalized = str(pathlib.Path(path).resolve())
-    except (ValueError, OSError):
+        normalized = os.path.abspath(os.path.normpath(path))
+    except (ValueError, TypeError):
         return {"valid": False, "error": "Invalid path"}
+    if not normalized.endswith(os.sep):
+        normalized += os.sep
+
+    allowed_roots = _allowed_index_roots()
+    if not normalized.startswith(allowed_roots):
+        return {
+            "valid": False,
+            "error": "Path is outside the allowed index roots (home directory and configured folders). "
+                     "Set the DOCU_INDEX_ROOTS environment variable to allow additional locations.",
+        }
+    # Drop the trailing separator again — exists()/isdir() treat "file.pdf/"
+    # as nonexistent on POSIX.
+    normalized = os.path.normpath(normalized)
 
     # Reject system directories
     _FORBIDDEN_PREFIXES = [
