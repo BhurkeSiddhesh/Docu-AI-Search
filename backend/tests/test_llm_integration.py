@@ -23,7 +23,7 @@ class TestLLMIntegrationV2(unittest.TestCase):
         """Test getting Gemini client."""
         client = get_llm_client('gemini', api_key='AIza-test')
         self.assertIsNotNone(client)
-        mock_gemini.assert_called_with(google_api_key='AIza-test', model='gemini-2.0-flash', temperature=0.3)
+        mock_gemini.assert_called_with(google_api_key='AIza-test', model='gemini-flash-latest', temperature=0.3)
 
     @patch('backend.llm_integration.ChatAnthropic')
     def test_get_llm_client_anthropic(self, mock_anthropic):
@@ -130,6 +130,50 @@ class TestInvokeWithRetry(unittest.TestCase):
         # backoff: 2**0=1, 2**1=2
         sleep_calls = [c[0][0] for c in mock_sleep.call_args_list]
         self.assertEqual(sleep_calls, [1, 2])
+
+
+class TestResolveModelPath(unittest.TestCase):
+    """Model paths must resolve under an allowed root (models/, home, DOCU_MODEL_ROOTS)."""
+
+    def test_path_under_models_dir_allowed(self):
+        from backend.llm_integration import _resolve_model_path
+        from backend.model_manager import MODELS_DIR
+        path = os.path.join(MODELS_DIR, "test.gguf")
+        self.assertEqual(_resolve_model_path(path), os.path.abspath(path))
+
+    def test_path_under_home_allowed(self):
+        from backend.llm_integration import _resolve_model_path
+        path = os.path.join(os.path.expanduser("~"), "my-models", "test.gguf")
+        self.assertEqual(_resolve_model_path(path), os.path.abspath(path))
+
+    def test_path_outside_roots_rejected(self):
+        from backend.llm_integration import _resolve_model_path
+        self.assertIsNone(_resolve_model_path("/etc/passwd"))
+
+    def test_traversal_escaping_root_rejected(self):
+        from backend.llm_integration import _resolve_model_path
+        from backend.model_manager import MODELS_DIR
+        sneaky = os.path.join(MODELS_DIR, *([".."] * 12), "etc", "passwd")
+        self.assertIsNone(_resolve_model_path(sneaky))
+
+    def test_empty_path_rejected(self):
+        from backend.llm_integration import _resolve_model_path
+        self.assertIsNone(_resolve_model_path(""))
+        self.assertIsNone(_resolve_model_path(None))
+
+    def test_env_override_grants_extra_root(self):
+        from backend.llm_integration import _resolve_model_path
+        with patch.dict(os.environ, {"DOCU_MODEL_ROOTS": "/srv/gguf"}):
+            self.assertEqual(
+                _resolve_model_path("/srv/gguf/model.gguf"), "/srv/gguf/model.gguf"
+            )
+
+    def test_get_local_llm_rejects_out_of_root_path(self):
+        import backend.llm_integration as llm_mod
+        if llm_mod.Llama is None:
+            self.skipTest("llama_cpp not installed")
+        with patch("os.path.exists", return_value=True):
+            self.assertIsNone(llm_mod.get_local_llm("/etc/passwd"))
 
 
 if __name__ == '__main__':
