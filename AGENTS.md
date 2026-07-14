@@ -129,6 +129,12 @@ rerank = true
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-07-14 (Repo maintenance: audit-log consolidation, PR/branch cleanup)
+- **chore (logs)**: Consolidated the 2026-07-14 daily-audit entry (from bot branch `audit-2026-07-14-…`) into `internal_audit_log.md` on main — another `gh`-auth failure in the external audit bot's sandbox (recurring since early May; the audit runs in Google Jules' environment, not in-repo CI, so it can't be fixed from the repo — the Jules↔GitHub integration must be re-authorized).
+- **chore (PRs)**: Closed auto-generated ECC agent-tooling bundle PR #392 (`.claude/`/`.codex/`/`.agents/` scaffolding) — same dormant-scaffolding class the final release removed; would have re-introduced it, and was behind main.
+- **chore (branches)**: Pruned ~100 stale bot branches (all `audit-*`, `audit/*`, `audit-log-*`, `chore/*`, `daily-audit-*`, `claude/*`, `docs/*`, `fix/*`, `fix-*`, `ecc-tools/*` with no open PR) whose content was already consolidated into main by the final release. Deleted-branch SHAs recorded for restore.
+- **Files**: `internal_audit_log.md`, `AGENTS.md`
+
 ### 2026-07-14 (Security: model-path allow-list + generic download errors — resolves final 3 CodeQL alerts)
 - **security**: `get_local_llm` and the `provider='local'` client factory no longer touch the filesystem with a raw configured model path (`py/path-injection` ×2, high). `_resolve_model_path` normalizes with pure string ops and requires the result under an allowed root — `models/`, the home directory, or the new `DOCU_MODEL_ROOTS` env var (os.pathsep-separated).
 - **security**: Model-download failures now surface a generic error in `/api/models/download/status`; exception details go to the server log only (`py/stack-trace-exposure`, medium). — `backend/model_manager.py`
