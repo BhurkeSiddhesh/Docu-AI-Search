@@ -129,6 +129,11 @@ rerank = true
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-07-14 (Security: pip dependency bumps — replaces unmergeable Dependabot #393)
+- **security**: Bumped `python-multipart` 0.0.30→0.0.31, `langchain` 1.2.7→1.3.13, `langchain-anthropic` 1.3.1→1.4.8, `pytest` 8.3.4→9.0.3 — clears all four open pip Dependabot alerts. Unlike Dependabot PR #393, `langchain-core` is bumped in lockstep (1.3.3→1.4.9, required by langchain 1.3.13), so the set actually resolves; #393 failed CI on ResolutionImpossible.
+- **verification**: Fresh venv installs cleanly; backend quick suite green on the new versions (336 passed, 2 skipped).
+- **Files**: `requirements.txt`, `AGENTS.md`
+
 ### 2026-07-14 (Security: allow-list roots for /api/validate-path — resolves 3 CodeQL path-injection alerts)
 - **security**: `/api/validate-path` no longer touches the filesystem with a raw request value. The path is canonicalized with `os.path.realpath` and must sit under an allow-listed root — the user's home directory, folders already configured in `config.ini` (`General.folders`/`General.folder`), or extra roots granted via the new `DOCU_INDEX_ROOTS` env var (os.pathsep-separated). Roots are compared with trailing separators so a prefix match can't leak into sibling directories. This replaces the deny-list-only check that CodeQL flagged as 3 high-severity `py/path-injection` alerts on PR #391 (`Path.resolve()`, `os.path.exists`, `os.path.isdir` on user input); the system-directory deny-list is kept as defense in depth.
 - **test**: Updated existing validate-path tests to patch `_allowed_index_roots`; added coverage for outside-root rejection (no filesystem call made), `..` traversal escaping the root, home-directory default, and the `DOCU_INDEX_ROOTS` override.
