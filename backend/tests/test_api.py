@@ -5,6 +5,7 @@ Comprehensive tests for all API endpoints including configuration,
 search, models, benchmarks, history, and file operations.
 """
 
+import os
 import unittest
 import sys
 from unittest.mock import patch, MagicMock
@@ -311,27 +312,79 @@ class TestAPIFileOperations(unittest.TestCase):
 
     def test_validate_path_valid(self):
         """Test validating a valid path."""
-        with patch('os.path.exists', return_value=True), \
+        with patch('backend.api._allowed_index_roots', return_value=('/test/',)), \
+             patch('os.path.exists', return_value=True), \
              patch('os.path.isdir', return_value=True), \
              patch('os.walk', return_value=[('/test', [], ['file1.pdf', 'file2.docx'])]):
             response = self.client.post("/api/validate-path", json={
                 "path": "/test/folder"
             })
-            
+
             self.assertEqual(response.status_code, 200)
             data = response.json()
             self.assertTrue(data['valid'])
 
     def test_validate_path_invalid(self):
         """Test validating an invalid path."""
-        with patch('os.path.exists', return_value=False):
+        with patch('backend.api._allowed_index_roots', return_value=('/nonexistent/',)), \
+             patch('os.path.exists', return_value=False):
             response = self.client.post("/api/validate-path", json={
                 "path": "/nonexistent/folder"
             })
-            
+
             self.assertEqual(response.status_code, 200)
             data = response.json()
             self.assertFalse(data['valid'])
+
+    def test_validate_path_outside_allowed_roots(self):
+        """Paths outside the allow-listed roots are rejected before any filesystem access."""
+        with patch('backend.api._allowed_index_roots', return_value=('/test/',)), \
+             patch('os.path.exists') as mock_exists:
+            response = self.client.post("/api/validate-path", json={
+                "path": "/opt/other/folder"
+            })
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertFalse(data['valid'])
+            self.assertIn('allowed index roots', data['error'])
+            mock_exists.assert_not_called()
+
+    def test_validate_path_traversal_escapes_root(self):
+        """Traversal sequences that resolve outside the allowed root are rejected."""
+        with patch('backend.api._allowed_index_roots', return_value=('/test/',)), \
+             patch('os.path.exists') as mock_exists:
+            response = self.client.post("/api/validate-path", json={
+                "path": "/test/../etc/passwd"
+            })
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertFalse(data['valid'])
+            mock_exists.assert_not_called()
+
+    def test_validate_path_home_directory_allowed_by_default(self):
+        """The user's home directory is an allowed root without extra configuration."""
+        home_subfolder = os.path.join(os.path.expanduser("~"), "documents")
+        with patch('os.path.exists', return_value=True), \
+             patch('os.path.isdir', return_value=True), \
+             patch('os.walk', return_value=[(home_subfolder, [], ['a.pdf'])]):
+            response = self.client.post("/api/validate-path", json={
+                "path": home_subfolder
+            })
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertTrue(data['valid'])
+
+    def test_allowed_index_roots_env_override(self):
+        """DOCU_INDEX_ROOTS grants extra allow-listed roots."""
+        from backend.api import _allowed_index_roots
+        extra = os.pathsep.join(["/mnt/docs", "/srv/shared"])
+        with patch.dict(os.environ, {"DOCU_INDEX_ROOTS": extra}):
+            roots = _allowed_index_roots()
+        self.assertIn("/mnt/docs" + os.sep, roots)
+        self.assertIn("/srv/shared" + os.sep, roots)
 
     @patch('backend.database.get_all_file_paths')
     @patch('os.startfile', create=True)
@@ -720,7 +773,8 @@ class TestAPIIndexingEdgeCases(unittest.TestCase):
 
     def test_validate_path_not_directory(self):
         """Test validating a path that exists but is not a directory."""
-        with patch('os.path.exists', return_value=True), \
+        with patch('backend.api._allowed_index_roots', return_value=('/test/',)), \
+             patch('os.path.exists', return_value=True), \
              patch('os.path.isdir', return_value=False):
             response = self.client.post("/api/validate-path", json={
                 "path": "/test/file.txt"

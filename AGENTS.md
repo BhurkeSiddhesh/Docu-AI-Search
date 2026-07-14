@@ -129,6 +129,12 @@ rerank = true
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-07-14 (Security: allow-list roots for /api/validate-path — resolves 3 CodeQL path-injection alerts)
+- **security**: `/api/validate-path` no longer touches the filesystem with a raw request value. The path is canonicalized with `os.path.realpath` and must sit under an allow-listed root — the user's home directory, folders already configured in `config.ini` (`General.folders`/`General.folder`), or extra roots granted via the new `DOCU_INDEX_ROOTS` env var (os.pathsep-separated). Roots are compared with trailing separators so a prefix match can't leak into sibling directories. This replaces the deny-list-only check that CodeQL flagged as 3 high-severity `py/path-injection` alerts on PR #391 (`Path.resolve()`, `os.path.exists`, `os.path.isdir` on user input); the system-directory deny-list is kept as defense in depth.
+- **test**: Updated existing validate-path tests to patch `_allowed_index_roots`; added coverage for outside-root rejection (no filesystem call made), `..` traversal escaping the root, home-directory default, and the `DOCU_INDEX_ROOTS` override.
+- **docs**: Documented `DOCU_INDEX_ROOTS` in `.env.example`.
+- **Files**: `backend/api.py`, `backend/tests/test_api.py`, `.env.example`, `AGENTS.md`
+
 ### 2026-07-12 (Final release: branch consolidation, issue fixes, feature pruning, UI polish)
 - **merge**: Consolidated every open work branch into one lineage. `fix-frontend-design` (Vercel UI overhaul + model selector, previously unmerged) is now the base; PR branches #329, #330, #331, #333, #343, #351, #352, #323, both Dependabot bumps, and the test-coverage branch were git-merged on top with conflicts resolved in favour of the newest architecture while porting each PR's surviving intent (embedding-batch retry, stream abort hardening, auth header on raw stream fetch, decoder tail flush, `/api/logs` rate limit, `subprocess` timeouts, hashed cache keys).
 - **fix (issues)**: #344 logger.js relative `/api/logs` (via overhaul) · #345 atomic stat in search sort (no TOCTOU 500s) · #346 full AbortSignal plumbing incl. unmount cleanup and reader cancel · #348 HTTP retry for Ollama/OpenAI-compatible providers and model downloads (`_make_retry_session`).
