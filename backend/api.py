@@ -14,10 +14,18 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Tuple
 import uvicorn
 import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import time
 import configparser
 from dotenv import load_dotenv
 load_dotenv()
+
+# Force IPv4 globally to prevent hanging on broken IPv6 routes (common on Windows)
+import socket
+orig_getaddrinfo = socket.getaddrinfo
+def getaddrinfo_ipv4_only(host, port, family=0, type=0, proto=0, flags=0):
+    return orig_getaddrinfo(host, port, socket.AF_INET, type, proto, flags)
+socket.getaddrinfo = getaddrinfo_ipv4_only
 
 # Path configuration for new folder structure
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -349,16 +357,13 @@ from backend.settings import router as embedding_router
 app.include_router(embedding_router, dependencies=[Depends(require_auth)])
 
 # Enable CORS for frontend
-_default_origins = "http://localhost:5173,http://localhost:3000,http://localhost:5175,http://localhost:5174,http://localhost:5000"
-ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.rstrip("/") for o in ALLOWED_ORIGINS],
+    allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
-
 # Global state
 import threading
 index = None
