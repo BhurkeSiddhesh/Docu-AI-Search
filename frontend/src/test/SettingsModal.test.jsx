@@ -122,6 +122,20 @@ describe('SettingsModal Component', () => {
         expect(onClose).not.toHaveBeenCalled()
     })
 
+    it('shows error toast if API fails to load settings', async () => {
+        // Force one of the initialization endpoints to fail
+        axios.get.mockImplementation((url) => {
+            if (url.includes('folders/history')) return Promise.reject(new Error('Network Error'))
+            return Promise.resolve({ data: {} })
+        })
+        const mockOnClose = vi.fn()
+        render(<SettingsModal isOpen={true} onClose={mockOnClose} onSave={vi.fn()} activeModel="" />)
+        
+        await waitFor(() => {
+            expect(screen.getByText('Could not load settings')).toBeDefined()
+        })
+    })
+
     // ── Data management ─────────────────────────────────────────────────────
 
     it('clears search history when button is clicked', async () => {

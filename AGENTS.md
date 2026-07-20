@@ -129,6 +129,15 @@ rerank = true
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-07-20 (Fix Model Download IPv6 Hang)
+- **fix**: Forced IPv4 globally by monkeypatching `socket.getaddrinfo` in `backend/api.py`. Previously, model downloads and any external requests to HuggingFace were hanging silently for minutes before timing out because `requests` (via `urllib3`) would attempt to connect to broken IPv6 addresses returned by the DNS resolver. The Windows networking stack would blackhole these, causing a ~21 second TCP SYN timeout for each of the 8 AAAA records per redirect.
+- **Files**: `backend/api.py`, `AGENTS.md`
+
+### 2026-07-20 (Fix Settings Modal Load Failure and UI clarification)
+- **fix (critical)**: `/api/folders/history` returned 500 on legacy databases because `folder_history` table was missing `last_accessed_at` column. Added schema migration to `init_database` in `backend/database.py` (drops and rebuilds the table when columns mismatch, safely recovering from legacy states).
+- **test (frontend)**: Added explicit test coverage in `SettingsModal.test.jsx` for the loading failure mode to verify that when initialization endpoints (like `/api/folders/history`) fail, the UI correctly displays the "Could not load settings" error state rather than hanging.
+- **Files**: `backend/database.py`, `frontend/src/test/SettingsModal.test.jsx`, `AGENTS.md`
+
 ### 2026-07-14 (Repo maintenance: audit-log consolidation, PR/branch cleanup)
 - **chore (logs)**: Consolidated the 2026-07-14 daily-audit entry (from bot branch `audit-2026-07-14-…`) into `internal_audit_log.md` on main — another `gh`-auth failure in the external audit bot's sandbox (recurring since early May; the audit runs in Google Jules' environment, not in-repo CI, so it can't be fixed from the repo — the Jules↔GitHub integration must be re-authorized).
 - **chore (PRs)**: Closed auto-generated ECC agent-tooling bundle PR #392 (`.claude/`/`.codex/`/`.agents/` scaffolding) — same dormant-scaffolding class the final release removed; would have re-introduced it, and was behind main.

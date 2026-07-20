@@ -159,6 +159,22 @@ def init_database():
         )
     ''')
 
+    cursor.execute("PRAGMA table_info(folder_history)")
+    existing_fh_columns = {col[1] for col in cursor.fetchall()}
+    required_fh_columns = {'path', 'added_at', 'last_accessed_at', 'is_indexed'}
+    if not required_fh_columns.issubset(existing_fh_columns):
+        logger.warning("[DB] folder_history table schema outdated; rebuilding.")
+        cursor.execute('DROP TABLE folder_history')
+        cursor.execute('''
+            CREATE TABLE folder_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT UNIQUE NOT NULL,
+                added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                is_indexed BOOLEAN DEFAULT 0
+            )
+        ''')
+
     # User preferences table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS preferences (
