@@ -9,6 +9,7 @@ import unittest
 import os
 import tempfile
 import shutil
+import sqlite3
 from backend import database
 
 # Initialize database for unittest execution
@@ -777,6 +778,97 @@ class TestDatabaseEdgeCases(unittest.TestCase):
         file_info = database.get_file_by_path(special_path)
         self.assertIsNotNone(file_info)
         self.assertEqual(file_info['path'], special_path)
+
+
+class TestFolderHistoryMigration(unittest.TestCase):
+    """Test that init_database rebuilds legacy folder_history tables."""
+
+    def test_legacy_folder_history_table_is_rebuilt(self):
+        """A folder_history table missing last_accessed_at should be rebuilt."""
+        import tempfile
+        orig_path = database.DATABASE_PATH
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+        tmp.close()
+        try:
+            database.DATABASE_PATH = tmp.name
+            # Create a legacy table missing 'last_accessed_at'
+            conn = sqlite3.connect(tmp.name)
+            conn.execute('''
+                CREATE TABLE folder_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    path TEXT UNIQUE NOT NULL,
+                    added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.execute("INSERT INTO folder_history (path) VALUES ('/old/path')")
+            conn.commit()
+            conn.close()
+
+            # Force a fresh thread-local connection
+            if hasattr(database.thread_local, 'connection'):
+                database.thread_local.connection.close()
+                del database.thread_local.connection
+
+            # init_database should detect the missing column and rebuild
+            database.init_database()
+
+            conn = sqlite3.connect(tmp.name)
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(folder_history)")
+            columns = {col[1] for col in cursor.fetchall()}
+            conn.close()
+
+            self.assertIn('last_accessed_at', columns)
+            self.assertIn('is_indexed', columns)
+        finally:
+            database.DATABASE_PATH = orig_path
+            if hasattr(database.thread_local, 'connection'):
+                database.thread_local.connection.close()
+                del database.thread_local.connection
+            os.unlink(tmp.name)
+
+    def test_correct_folder_history_table_is_not_rebuilt(self):
+        """A folder_history table with all required columns should not be dropped."""
+        import tempfile
+        orig_path = database.DATABASE_PATH
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.db')
+        tmp.close()
+        try:
+            database.DATABASE_PATH = tmp.name
+            # Create a correct table with data
+            conn = sqlite3.connect(tmp.name)
+            conn.execute('''
+                CREATE TABLE folder_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    path TEXT UNIQUE NOT NULL,
+                    added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    last_accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    is_indexed BOOLEAN DEFAULT 0
+                )
+            ''')
+            conn.execute("INSERT INTO folder_history (path) VALUES ('/preserved/path')")
+            conn.commit()
+            conn.close()
+
+            if hasattr(database.thread_local, 'connection'):
+                database.thread_local.connection.close()
+                del database.thread_local.connection
+
+            database.init_database()
+
+            # Data should be preserved (table was not rebuilt)
+            conn = sqlite3.connect(tmp.name)
+            rows = conn.execute("SELECT path FROM folder_history").fetchall()
+            conn.close()
+
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0][0], '/preserved/path')
+        finally:
+            database.DATABASE_PATH = orig_path
+            if hasattr(database.thread_local, 'connection'):
+                database.thread_local.connection.close()
+                del database.thread_local.connection
+            os.unlink(tmp.name)
 
 
 if __name__ == '__main__':

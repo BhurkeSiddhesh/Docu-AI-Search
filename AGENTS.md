@@ -129,6 +129,17 @@ rerank = true
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-07-20 (Fix Add Folder + Comprehensive Test Coverage)
+- **fix**: `/api/validate-path` hung for 10+ seconds on large directories (e.g. Desktop with 5,000+ files) because `os.walk` walked the entire tree. Added a 10,000 file cap and a 5-second `asyncio.wait_for` timeout; returns `file_count: -1` on timeout (path still valid).
+- **ui**: Added `validatingFolder` loading state to `SettingsModal.jsx` — the "Add folder" button now shows "Validating…" while the path is being checked, and is disabled to prevent duplicate requests.
+- **test (backend)**: Added `TestFolderHistoryMigration` (2 tests: legacy table rebuilt, correct table preserved) in `test_database.py`. Added `TestValidatePathTimeout` (file count cap, timeout returns valid) and `TestIPv4Monkeypatch` (verifies only AF_INET results) in `test_api.py`.
+- **test (frontend)**: Added 4 new tests in `SettingsModal.test.jsx`: validating loading state, successful folder add, invalid path error toast, empty path guard.
+- **Files**: `backend/api.py`, `frontend/src/components/SettingsModal.jsx`, `backend/tests/test_database.py`, `backend/tests/test_api.py`, `frontend/src/test/SettingsModal.test.jsx`, `AGENTS.md`
+
+### 2026-07-20 (UI Update: Reorder Model Selection)
+- **ui**: Moved the "Local GGUF" model category to the very top of the model selection dropdown in `SearchView.jsx` so that local models take precedence over Cloud and External providers when they are available.
+- **Files**: `frontend/src/components/SearchView.jsx`, `AGENTS.md`
+
 ### 2026-07-20 (Fix Model Download IPv6 Hang)
 - **fix**: Forced IPv4 globally by monkeypatching `socket.getaddrinfo` in `backend/api.py`. Previously, model downloads and any external requests to HuggingFace were hanging silently for minutes before timing out because `requests` (via `urllib3`) would attempt to connect to broken IPv6 addresses returned by the DNS resolver. The Windows networking stack would blackhole these, causing a ~21 second TCP SYN timeout for each of the 8 AAAA records per redirect.
 - **Files**: `backend/api.py`, `AGENTS.md`
