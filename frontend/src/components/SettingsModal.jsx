@@ -21,6 +21,7 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
     const [newFolder, setNewFolder] = useState('');
     const [folderHistory, setFolderHistory] = useState([]);
     const [showFolderHistory, setShowFolderHistory] = useState(false);
+    const [validatingFolder, setValidatingFolder] = useState(false);
     const toast = useToast();
 
     useEffect(() => {
@@ -77,6 +78,7 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
 
     const addFolder = async (path = newFolder) => {
         if (!path) return;
+        setValidatingFolder(true);
         try {
             const res = await api.validatePath(path);
             if (res.data && res.data.valid === false) {
@@ -91,6 +93,8 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
             setShowFolderHistory(false);
         } catch (e) {
             toast.error(e.response?.data?.detail || 'Invalid folder path');
+        } finally {
+            setValidatingFolder(false);
         }
     };
 
@@ -200,8 +204,8 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                                                         onChange={(e) => setNewFolder(e.target.value)}
                                                         onKeyDown={(e) => e.key === 'Enter' && addFolder()}
                                                     />
-                                                    <button onClick={() => addFolder(newFolder)} className="btn-secondary whitespace-nowrap">
-                                                        Add folder
+                                                    <button onClick={() => addFolder(newFolder)} disabled={validatingFolder} className="btn-secondary whitespace-nowrap disabled:opacity-50">
+                                                        {validatingFolder ? 'Validating…' : 'Add folder'}
                                                     </button>
                                                     {folderHistory.length > 0 && (
                                                         <button 

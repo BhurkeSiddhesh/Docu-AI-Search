@@ -2005,8 +2005,11 @@ async def validate_path(body: dict, request: Request, _=Depends(verify_local_req
 
     path = normalized
 
-    # Count supported files — run in thread to avoid blocking the event loop
+    # Count supported files — run in thread to avoid blocking the event loop.
+    # Cap at 10 000 to avoid very long walks on huge directory trees.
     from backend.file_processing import SUPPORTED_EXTENSIONS as supported_extensions
+
+    _FILE_COUNT_CAP = 10_000
 
     def _count_files(folder: str) -> int:
         count = 0
@@ -2014,9 +2017,17 @@ async def validate_path(body: dict, request: Request, _=Depends(verify_local_req
             for filename in filenames:
                 if os.path.splitext(filename)[1].lower() in supported_extensions:
                     count += 1
+                    if count >= _FILE_COUNT_CAP:
+                        return count
         return count
 
-    file_count = await asyncio.to_thread(_count_files, path)
+    try:
+        file_count = await asyncio.wait_for(
+            asyncio.to_thread(_count_files, path), timeout=5.0
+        )
+    except asyncio.TimeoutError:
+        # Still valid, just too many files to count quickly
+        file_count = -1
 
     return {"valid": True, "file_count": file_count}
 
