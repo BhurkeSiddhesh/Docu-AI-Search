@@ -302,6 +302,38 @@ class OpenAICompatibleProvider(LLMProvider):
         # Auto-detect API format: if URL ends with /v1, use OpenAI format
         self._use_openai_format = self.base_url.endswith("/v1")
         self._session = _make_retry_session()
+        # Cache for a model auto-resolved from the server (see _resolve_model)
+        self._resolved_model: str = ""
+
+    def _resolve_model(self) -> str:
+        """Return the model identifier to send in requests.
+
+        LM Studio (and most OpenAI-compatible servers) reject an empty ``model``
+        field with ``404 model_not_found`` — they do NOT fall back to the loaded
+        model. So when no model name is configured, query the server's model list
+        and use the first available one. The result is cached to avoid an extra
+        round-trip on every request.
+
+        Raises:
+            RuntimeError: If no model is configured and none can be discovered
+                (e.g. no model is loaded in LM Studio).
+        """
+        if self.model and self.model.strip():
+            return self.model.strip()
+        if self._resolved_model:
+            return self._resolved_model
+
+        models = self.list_models()
+        if models:
+            self._resolved_model = models[0].get("id") or ""
+        if not self._resolved_model:
+            raise RuntimeError(
+                f"No model is configured and none could be found loaded at "
+                f"{self.base_url}. Load a model in LM Studio (or set the target "
+                f"model name in Settings → External Providers) and try again."
+            )
+        logger.info("Auto-selected LM Studio model '%s' (none configured).", self._resolved_model)
+        return self._resolved_model
 
     def _headers(self) -> dict:
         return {
@@ -342,7 +374,7 @@ class OpenAICompatibleProvider(LLMProvider):
         `/v1/chat/completions` endpoint for those.
         """
         payload: Dict[str, Any] = {
-            "model": self.model,
+            "model": self._resolve_model(),
             "input": prompt,
             "stream": False,
         }
@@ -375,7 +407,7 @@ class OpenAICompatibleProvider(LLMProvider):
     def _generate_openai(self, prompt, *, system_prompt=None, max_tokens=512, temperature=0.3, stop=None) -> str:
         """OpenAI-compatible API: POST /chat/completions"""
         payload: Dict[str, Any] = {
-            "model": self.model,
+            "model": self._resolve_model(),
             "messages": self._build_messages(prompt, system_prompt),
             "max_tokens": max_tokens,
             "temperature": temperature,
@@ -424,8 +456,13 @@ class OpenAICompatibleProvider(LLMProvider):
 
     def _stream_native(self, prompt, *, system_prompt=None, max_tokens=512, temperature=0.3, stop=None):
         """LM Studio native streaming: POST /api/v1/chat with stream=True"""
+        try:
+            model = self._resolve_model()
+        except RuntimeError as e:
+            yield f"[Error] {e}"
+            return
         payload: Dict[str, Any] = {
-            "model": self.model,
+            "model": model,
             "input": prompt,
             "stream": True,
         }
@@ -465,8 +502,13 @@ class OpenAICompatibleProvider(LLMProvider):
 
     def _stream_openai(self, prompt, *, system_prompt=None, max_tokens=512, temperature=0.3, stop=None):
         """OpenAI-compatible streaming: POST /chat/completions with stream=True"""
+        try:
+            model = self._resolve_model()
+        except RuntimeError as e:
+            yield f"[Error] {e}"
+            return
         payload: Dict[str, Any] = {
-            "model": self.model,
+            "model": model,
             "messages": self._build_messages(prompt, system_prompt),
             "max_tokens": max_tokens,
             "temperature": temperature,
