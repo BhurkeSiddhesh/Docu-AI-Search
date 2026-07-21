@@ -312,7 +312,8 @@ class TestAPIFileOperations(unittest.TestCase):
 
     def test_validate_path_valid(self):
         """Test validating a valid path."""
-        with patch('backend.api._allowed_index_roots', return_value=('/test/',)), \
+        test_root = os.path.realpath("/test") + os.sep
+        with patch('backend.api._allowed_index_roots', return_value=(test_root,)), \
              patch('os.path.exists', return_value=True), \
              patch('os.path.isdir', return_value=True), \
              patch('os.walk', return_value=[('/test', [], ['file1.pdf', 'file2.docx'])]):
@@ -383,8 +384,8 @@ class TestAPIFileOperations(unittest.TestCase):
         extra = os.pathsep.join(["/mnt/docs", "/srv/shared"])
         with patch.dict(os.environ, {"DOCU_INDEX_ROOTS": extra}):
             roots = _allowed_index_roots()
-        self.assertIn("/mnt/docs" + os.sep, roots)
-        self.assertIn("/srv/shared" + os.sep, roots)
+        self.assertIn(os.path.realpath("/mnt/docs") + os.sep, roots)
+        self.assertIn(os.path.realpath("/srv/shared") + os.sep, roots)
 
     @patch('backend.database.get_all_file_paths')
     @patch('os.startfile', create=True)

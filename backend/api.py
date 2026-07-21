@@ -356,11 +356,13 @@ async def global_exception_handler(request: Request, exc: Exception):
 from backend.settings import router as embedding_router
 app.include_router(embedding_router, dependencies=[Depends(require_auth)])
 
+ALLOWED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://127.0.0.1:3000"]
+
 # Enable CORS for frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -1092,7 +1094,7 @@ async def search_files(search_data: SearchRequest, request: Request, background_
 
         # Run Search — use the active embedding client from settings state
         from backend.search import EmbeddingDimensionMismatchError
-        _search_timeout = int(os.getenv("SEARCH_TIMEOUT_SECONDS", "30"))
+        _search_timeout = int(os.getenv("SEARCH_TIMEOUT_SECONDS", "60"))
         try:
             results, _context_snippets = await asyncio.wait_for(
                 asyncio.to_thread(
@@ -1307,7 +1309,7 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
         # FAISS/BM25, which are CPU-bound and would otherwise stall all
         # concurrent requests.
         from backend.search import EmbeddingDimensionMismatchError
-        _search_timeout = int(os.getenv("SEARCH_TIMEOUT_SECONDS", "30"))
+        _search_timeout = int(os.getenv("SEARCH_TIMEOUT_SECONDS", "60"))
         try:
             results, _ = await asyncio.wait_for(
                 asyncio.to_thread(

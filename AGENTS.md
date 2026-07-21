@@ -129,6 +129,17 @@ rerank = true
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-07-21 (Fix 504 Gateway Timeout during initial Cross-Encoder load)
+- **fix**: The `/api/search` endpoint timed out and returned a 504 Gateway Timeout if the Cross-Encoder model (`ms-marco-MiniLM-L-6-v2`) took longer than 30 seconds to download and load during the first search.
+- **backend**: Increased `SEARCH_TIMEOUT_SECONDS` default from 30 to 60 seconds in `backend/api.py`.
+- **frontend**: Increased axios client timeout from 60000ms to 90000ms in `frontend/src/lib/api.js` to ensure the frontend waits out the full backend timeout.
+- **Files**: `backend/api.py`, `frontend/src/lib/api.js`, `AGENTS.md`
+
+### 2026-07-21 (Add Browse button and display folders in Library)
+- **ui**: Added a "Browse" button in `SettingsModal.jsx` next to the "Add folder" input, which calls the existing native folder browser dialog endpoint `/api/browse`. The selected folder is automatically added.
+- **ui**: `LibraryView.jsx` now fetches and displays the list of currently indexed folders at the top of the page, making it immediately obvious to the user which directories are being scanned without needing to open the Settings modal.
+- **Files**: `frontend/src/components/SettingsModal.jsx`, `frontend/src/components/LibraryView.jsx`, `AGENTS.md`
+
 ### 2026-07-20 (Fix Add Folder + Comprehensive Test Coverage)
 - **fix**: `/api/validate-path` hung for 10+ seconds on large directories (e.g. Desktop with 5,000+ files) because `os.walk` walked the entire tree. Added a 10,000 file cap and a 5-second `asyncio.wait_for` timeout; returns `file_count: -1` on timeout (path still valid).
 - **ui**: Added `validatingFolder` loading state to `SettingsModal.jsx` — the "Add folder" button now shows "Validating…" while the path is being checked, and is disabled to prevent duplicate requests.

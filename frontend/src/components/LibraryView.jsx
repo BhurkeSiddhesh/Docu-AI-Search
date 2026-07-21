@@ -21,15 +21,20 @@ export default function LibraryView({ onOpenSettings }) {
     const [offset, setOffset] = useState(0);
     const [loading, setLoading] = useState(true);
     const [reindexing, setReindexing] = useState(false);
+    const [folders, setFolders] = useState([]);
     const toast = useToast();
 
     const load = async (off = 0) => {
         setLoading(true);
         try {
-            const res = await api.listFiles(PAGE_SIZE, off);
+            const [res, configRes] = await Promise.all([
+                api.listFiles(PAGE_SIZE, off),
+                api.getConfig()
+            ]);
             setFiles(res.data.files || []);
             setTotal(res.data.total || 0);
             setOffset(off);
+            setFolders(configRes.data.folders || []);
         } catch (e) {
             toast.error(e.response?.data?.detail || 'Failed to load files');
         } finally {
@@ -72,7 +77,17 @@ export default function LibraryView({ onOpenSettings }) {
                     <h1 className="text-display-lg text-ink dark:text-[#ededed] mb-1">Library</h1>
                     <p className="text-body dark:text-[#888]">
                         {total === 0 ? 'No documents indexed yet.' : `${total} indexed document${total === 1 ? '' : 's'}`}
+                        {folders.length > 0 && ` across ${folders.length} folder${folders.length === 1 ? '' : 's'}.`}
                     </p>
+                    {folders.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                            {folders.map(f => (
+                                <span key={f} className="inline-block px-2 py-0.5 bg-canvas-soft-2 dark:bg-[rgba(255,255,255,0.06)] border border-hairline dark:border-[rgba(255,255,255,0.08)] rounded text-[11px] font-mono text-mute truncate max-w-xs" title={f}>
+                                    {f}
+                                </span>
+                            ))}
+                        </div>
+                    )}
                 </div>
                 <div className="flex items-center gap-2">
                     <button onClick={onOpenSettings} className="btn-secondary">
