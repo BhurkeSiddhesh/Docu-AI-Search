@@ -1,0 +1,6 @@
+interface:
+  display_name: "Docu AI Search"
+  short_description: "Repo-specific patterns and workflows for Docu-AI-Search"
+  default_prompt: "Use the Docu-AI-Search repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
