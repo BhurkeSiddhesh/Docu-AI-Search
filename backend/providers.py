@@ -458,7 +458,10 @@ class OpenAICompatibleProvider(LLMProvider):
         """LM Studio native streaming: POST /api/v1/chat with stream=True"""
         try:
             model = self._resolve_model()
-        except RuntimeError as e:
+        except (RuntimeError, ConnectionError) as e:
+            # ConnectionError (from list_models when the server is offline) is an
+            # OSError subclass, not a RuntimeError — catch both so an offline
+            # server with no configured model yields a clean token, not a crash.
             yield f"[Error] {e}"
             return
         payload: Dict[str, Any] = {
@@ -504,7 +507,10 @@ class OpenAICompatibleProvider(LLMProvider):
         """OpenAI-compatible streaming: POST /chat/completions with stream=True"""
         try:
             model = self._resolve_model()
-        except RuntimeError as e:
+        except (RuntimeError, ConnectionError) as e:
+            # ConnectionError (from list_models when the server is offline) is an
+            # OSError subclass, not a RuntimeError — catch both so an offline
+            # server with no configured model yields a clean token, not a crash.
             yield f"[Error] {e}"
             return
         payload: Dict[str, Any] = {

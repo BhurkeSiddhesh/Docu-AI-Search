@@ -280,6 +280,17 @@ class TestOpenAICompatibleProvider(unittest.TestCase):
         self.assertEqual(len(tokens), 1)
         self.assertIn("[Error]", tokens[0])
 
+    def test_stream_yields_error_when_server_offline_and_no_model(self):
+        """Streaming must not crash when the server is offline and no model is
+        configured: list_models() raises the built-in ConnectionError (an
+        OSError subclass, not RuntimeError), which the stream path must catch."""
+        import requests
+        provider = OpenAICompatibleProvider(base_url="http://localhost:1234/v1", model="")
+        with patch.object(provider._session, "get", side_effect=requests.ConnectionError("refused")):
+            tokens = list(provider.stream("Hello"))
+        self.assertEqual(len(tokens), 1)
+        self.assertIn("[Error]", tokens[0])
+
     def test_configured_model_is_used_verbatim(self):
         """A non-empty configured model is sent as-is and skips discovery."""
         provider = OpenAICompatibleProvider(base_url="http://localhost:1234/v1", model="my-model")
