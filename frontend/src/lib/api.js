@@ -2,7 +2,7 @@ import axios from 'axios';
 
 const client = axios.create({
     baseURL: '/api',
-    timeout: 60000,
+    timeout: 90000,
 });
 
 // Inject stored Bearer token if AUTH_ENABLED=true on the backend

@@ -354,8 +354,34 @@ export default function SearchView({ pendingQuery }) {
 
                         {showModelPicker && (
                             <div className="absolute left-0 top-full mt-1 z-50 w-72 bg-canvas dark:bg-[#171717] border border-hairline dark:border-[rgba(255,255,255,0.1)] rounded-v-md shadow-v-5 dark:shadow-v-dark-5 p-1 animate-slide-up">
+                                {/* Local models */}
+                                {localModels.length > 0 && (
+                                    <>
+                                        <div className="px-2 pt-1.5 pb-1">
+                                            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-mute">Local GGUF</div>
+                                        </div>
+                                        {localModels.map((m, i) => {
+                                            const isActive = selectedProvider === 'local' && norm(m.path) === norm(selectedModelPath);
+                                            return (
+                                                <button
+                                                    key={i}
+                                                    onClick={() => selectModel('local', m.path)}
+                                                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-v-sm text-sm transition ${
+                                                        isActive
+                                                            ? 'bg-ink dark:bg-[#ededed] text-white dark:text-ink font-medium'
+                                                            : 'text-ink dark:text-[#ededed] hover:bg-canvas-soft-2 dark:hover:bg-[rgba(255,255,255,0.06)]'
+                                                    }`}
+                                                >
+                                                    <Cpu className="w-3.5 h-3.5 flex-shrink-0" />
+                                                    <span className="flex-1 text-left truncate">{m.name || m.filename}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </>
+                                )}
+
                                 {/* Cloud providers */}
-                                <div className="px-2 pt-1.5 pb-1">
+                                <div className={`px-2 ${localModels.length > 0 ? 'pt-2.5' : 'pt-1.5'} pb-1`}>
                                     <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-mute">Cloud</div>
                                 </div>
                                 {CLOUD_PROVIDERS.map((p) => {
@@ -400,32 +426,6 @@ export default function SearchView({ pendingQuery }) {
                                         <span className="flex-1 text-left">{id === 'ollama' ? 'Ollama' : 'LM Studio'}</span>
                                     </button>
                                 ))}
-
-                                {/* Local models */}
-                                {localModels.length > 0 && (
-                                    <>
-                                        <div className="px-2 pt-2.5 pb-1">
-                                            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-mute">Local GGUF</div>
-                                        </div>
-                                        {localModels.map((m, i) => {
-                                            const isActive = selectedProvider === 'local' && norm(m.path) === norm(selectedModelPath);
-                                            return (
-                                                <button
-                                                    key={i}
-                                                    onClick={() => selectModel('local', m.path)}
-                                                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-v-sm text-sm transition ${
-                                                        isActive
-                                                            ? 'bg-ink dark:bg-[#ededed] text-white dark:text-ink font-medium'
-                                                            : 'text-ink dark:text-[#ededed] hover:bg-canvas-soft-2 dark:hover:bg-[rgba(255,255,255,0.06)]'
-                                                    }`}
-                                                >
-                                                    <Cpu className="w-3.5 h-3.5 flex-shrink-0" />
-                                                    <span className="flex-1 text-left truncate">{m.name || m.filename}</span>
-                                                </button>
-                                            );
-                                        })}
-                                    </>
-                                )}
                             </div>
                         )}
                     </div>

@@ -159,6 +159,22 @@ def init_database():
         )
     ''')
 
+    cursor.execute("PRAGMA table_info(folder_history)")
+    existing_fh_columns = {col[1] for col in cursor.fetchall()}
+    required_fh_columns = {'path', 'added_at', 'last_accessed_at', 'is_indexed'}
+    if not required_fh_columns.issubset(existing_fh_columns):
+        logger.warning("[DB] folder_history table schema outdated; rebuilding.")
+        cursor.execute('DROP TABLE folder_history')
+        cursor.execute('''
+            CREATE TABLE folder_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                path TEXT UNIQUE NOT NULL,
+                added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                is_indexed BOOLEAN DEFAULT 0
+            )
+        ''')
+
     # User preferences table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS preferences (
@@ -507,6 +523,14 @@ def delete_all_search_history() -> int:
 # Folder History Operations
 # -----------------------------------------------------------------------------
 
+def _normalize_folder_path(path: str) -> str:
+    """Canonicalize a folder path so history rows match regardless of trailing
+    slashes or surrounding whitespace (a mismatch here left folders stuck at
+    is_indexed=0 and absent from the Settings "Indexed Folders" list)."""
+    if not path:
+        return path
+    return os.path.normpath(path.strip())
+
 def add_folder_to_history(path: str):
     """
     Add a folder to the path history or update its last accessed time.
@@ -514,6 +538,7 @@ def add_folder_to_history(path: str):
     Args:
         path (str): The directory path.
     """
+    path = _normalize_folder_path(path)
     conn = get_connection()
     cursor = conn.cursor()
     try:
@@ -531,18 +556,23 @@ def add_folder_to_history(path: str):
 
 def mark_folder_indexed(path: str):
     """
-    Update a folder's status to indicate it has been indexed.
+    Mark a folder as indexed, inserting it if it isn't in the history yet.
+
+    Uses an upsert (rather than a bare UPDATE) so folders configured directly
+    in config.ini — which were never passed through add_folder_to_history —
+    still flip to is_indexed=1 and show up under Settings' indexed folders.
 
     Args:
         path (str): The directory path.
     """
+    path = _normalize_folder_path(path)
     conn = get_connection()
     cursor = conn.cursor()
     try:
         cursor.execute('''
-            UPDATE folder_history
-            SET is_indexed = 1
-            WHERE path = ?
+            INSERT INTO folder_history (path, last_accessed_at, is_indexed)
+            VALUES (?, CURRENT_TIMESTAMP, 1)
+            ON CONFLICT(path) DO UPDATE SET is_indexed = 1
         ''', (path,))
         conn.commit()
     except Exception as e:

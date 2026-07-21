@@ -32,6 +32,24 @@ from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
+
+def _http_error_token(base_url: str, err: "requests.HTTPError") -> str:
+    """Build a user-visible error token from a failed HTTP response.
+
+    A bad model id yields HTTP 400/404 here; without this the stream would
+    end silently (empty answer). Surface the status + a short body snippet so
+    the cause (e.g. "model not found") is visible in the UI.
+    """
+    status = getattr(getattr(err, "response", None), "status_code", "?")
+    body = ""
+    try:
+        body = (err.response.text or "").strip().replace("\n", " ")[:300]
+    except Exception:
+        pass
+    detail = f": {body}" if body else ""
+    return f"[Error] Server at {base_url} returned HTTP {status}{detail}"
+
+
 # ---------------------------------------------------------------------------
 # Retry helpers
 # ---------------------------------------------------------------------------
@@ -276,7 +294,7 @@ class OpenAICompatibleProvider(LLMProvider):
     Default endpoint: ``http://127.0.0.1:1234`` (LM Studio default).
     """
 
-    def __init__(self, base_url: str = "http://127.0.0.1:1234", model: str = "", api_key: str = "lm-studio"):
+    def __init__(self, base_url: str = "http://127.0.0.1:1234/v1", model: str = "", api_key: str = "lm-studio"):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.api_key = api_key or "lm-studio"
@@ -284,6 +302,38 @@ class OpenAICompatibleProvider(LLMProvider):
         # Auto-detect API format: if URL ends with /v1, use OpenAI format
         self._use_openai_format = self.base_url.endswith("/v1")
         self._session = _make_retry_session()
+        # Cache for a model auto-resolved from the server (see _resolve_model)
+        self._resolved_model: str = ""
+
+    def _resolve_model(self) -> str:
+        """Return the model identifier to send in requests.
+
+        LM Studio (and most OpenAI-compatible servers) reject an empty ``model``
+        field with ``404 model_not_found`` — they do NOT fall back to the loaded
+        model. So when no model name is configured, query the server's model list
+        and use the first available one. The result is cached to avoid an extra
+        round-trip on every request.
+
+        Raises:
+            RuntimeError: If no model is configured and none can be discovered
+                (e.g. no model is loaded in LM Studio).
+        """
+        if self.model and self.model.strip():
+            return self.model.strip()
+        if self._resolved_model:
+            return self._resolved_model
+
+        models = self.list_models()
+        if models:
+            self._resolved_model = models[0].get("id") or ""
+        if not self._resolved_model:
+            raise RuntimeError(
+                f"No model is configured and none could be found loaded at "
+                f"{self.base_url}. Load a model in LM Studio (or set the target "
+                f"model name in Settings → External Providers) and try again."
+            )
+        logger.info("Auto-selected LM Studio model '%s' (none configured).", self._resolved_model)
+        return self._resolved_model
 
     def _headers(self) -> dict:
         return {
@@ -324,7 +374,7 @@ class OpenAICompatibleProvider(LLMProvider):
         `/v1/chat/completions` endpoint for those.
         """
         payload: Dict[str, Any] = {
-            "model": self.model,
+            "model": self._resolve_model(),
             "input": prompt,
             "stream": False,
         }
@@ -357,7 +407,7 @@ class OpenAICompatibleProvider(LLMProvider):
     def _generate_openai(self, prompt, *, system_prompt=None, max_tokens=512, temperature=0.3, stop=None) -> str:
         """OpenAI-compatible API: POST /chat/completions"""
         payload: Dict[str, Any] = {
-            "model": self.model,
+            "model": self._resolve_model(),
             "messages": self._build_messages(prompt, system_prompt),
             "max_tokens": max_tokens,
             "temperature": temperature,
@@ -406,8 +456,16 @@ class OpenAICompatibleProvider(LLMProvider):
 
     def _stream_native(self, prompt, *, system_prompt=None, max_tokens=512, temperature=0.3, stop=None):
         """LM Studio native streaming: POST /api/v1/chat with stream=True"""
+        try:
+            model = self._resolve_model()
+        except (RuntimeError, ConnectionError) as e:
+            # ConnectionError (from list_models when the server is offline) is an
+            # OSError subclass, not a RuntimeError — catch both so an offline
+            # server with no configured model yields a clean token, not a crash.
+            yield f"[Error] {e}"
+            return
         payload: Dict[str, Any] = {
-            "model": self.model,
+            "model": model,
             "input": prompt,
             "stream": True,
         }
@@ -440,11 +498,23 @@ class OpenAICompatibleProvider(LLMProvider):
                         continue
         except requests.ConnectionError:
             yield f"[Error] Cannot connect to LM Studio at {self.base_url}. Is it running?"
+        except requests.HTTPError as e:
+            yield _http_error_token(self.base_url, e)
+        except requests.RequestException as e:
+            yield f"[Error] Request to LM Studio at {self.base_url} failed: {e}"
 
     def _stream_openai(self, prompt, *, system_prompt=None, max_tokens=512, temperature=0.3, stop=None):
         """OpenAI-compatible streaming: POST /chat/completions with stream=True"""
+        try:
+            model = self._resolve_model()
+        except (RuntimeError, ConnectionError) as e:
+            # ConnectionError (from list_models when the server is offline) is an
+            # OSError subclass, not a RuntimeError — catch both so an offline
+            # server with no configured model yields a clean token, not a crash.
+            yield f"[Error] {e}"
+            return
         payload: Dict[str, Any] = {
-            "model": self.model,
+            "model": model,
             "messages": self._build_messages(prompt, system_prompt),
             "max_tokens": max_tokens,
             "temperature": temperature,
@@ -479,6 +549,10 @@ class OpenAICompatibleProvider(LLMProvider):
                         continue
         except requests.ConnectionError:
             yield f"[Error] Cannot connect to server at {self.base_url}. Is it running?"
+        except requests.HTTPError as e:
+            yield _http_error_token(self.base_url, e)
+        except requests.RequestException as e:
+            yield f"[Error] Request to server at {self.base_url} failed: {e}"
 
     # -- list_models --------------------------------------------------------
 
@@ -555,7 +629,10 @@ PROVIDER_OPENAI_COMPAT = "openai_compatible"
 
 # Default endpoint URLs
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
-DEFAULT_LMSTUDIO_URL = "http://127.0.0.1:1234"
+# Include the /v1 suffix so the OpenAI-compatible format is selected (matches
+# the http://localhost:1234/v1 default used across the API/config/UI). Without
+# it, "test connection" and "actual answer" could pick different API formats.
+DEFAULT_LMSTUDIO_URL = "http://127.0.0.1:1234/v1"
 
 # Provider cache to avoid re-creating instances
 _provider_cache: Dict[str, LLMProvider] = {}

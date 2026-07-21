@@ -312,7 +312,8 @@ class TestAPIFileOperations(unittest.TestCase):
 
     def test_validate_path_valid(self):
         """Test validating a valid path."""
-        with patch('backend.api._allowed_index_roots', return_value=('/test/',)), \
+        test_root = os.path.realpath("/test") + os.sep
+        with patch('backend.api._allowed_index_roots', return_value=(test_root,)), \
              patch('os.path.exists', return_value=True), \
              patch('os.path.isdir', return_value=True), \
              patch('os.walk', return_value=[('/test', [], ['file1.pdf', 'file2.docx'])]):
@@ -383,8 +384,8 @@ class TestAPIFileOperations(unittest.TestCase):
         extra = os.pathsep.join(["/mnt/docs", "/srv/shared"])
         with patch.dict(os.environ, {"DOCU_INDEX_ROOTS": extra}):
             roots = _allowed_index_roots()
-        self.assertIn("/mnt/docs" + os.sep, roots)
-        self.assertIn("/srv/shared" + os.sep, roots)
+        self.assertIn(os.path.realpath("/mnt/docs") + os.sep, roots)
+        self.assertIn(os.path.realpath("/srv/shared") + os.sep, roots)
 
     @patch('backend.database.get_all_file_paths')
     @patch('os.startfile', create=True)
@@ -1904,5 +1905,68 @@ class TestBatch7Fixes(unittest.TestCase):
         self.assertIn('.env', content, ".dockerignore must exclude .env")
 
 
+class TestValidatePathTimeout(unittest.TestCase):
+    """Tests for validate-path timeout and file count cap."""
+
+    def setUp(self):
+        self.client = TestClient(app)
+
+    def test_validate_path_caps_file_count(self):
+        """File count should stop at 10,000 and not walk further."""
+        home_subfolder = os.path.join(os.path.expanduser("~"), "test_folder")
+        # Simulate a directory with 20,000 supported files
+        huge_file_list = [f"file_{i}.pdf" for i in range(20_000)]
+        with patch('backend.api._allowed_index_roots', return_value=(os.path.expanduser("~") + os.sep,)), \
+             patch('os.path.exists', return_value=True), \
+             patch('os.path.isdir', return_value=True), \
+             patch('os.walk', return_value=[(home_subfolder, [], huge_file_list)]):
+            response = self.client.post("/api/validate-path", json={
+                "path": home_subfolder
+            })
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertTrue(data['valid'])
+            # Should be capped at 10,000
+            self.assertEqual(data['file_count'], 10_000)
+
+    def test_validate_path_returns_valid_on_timeout(self):
+        """If file counting times out, the path is still valid with file_count=-1."""
+        import asyncio
+        home_subfolder = os.path.join(os.path.expanduser("~"), "slow_folder")
+
+        def slow_walk(folder):
+            """Simulate a very slow os.walk."""
+            import time
+            time.sleep(10)
+            return []
+
+        with patch('backend.api._allowed_index_roots', return_value=(os.path.expanduser("~") + os.sep,)), \
+             patch('os.path.exists', return_value=True), \
+             patch('os.path.isdir', return_value=True), \
+             patch('os.walk', side_effect=slow_walk):
+            response = self.client.post("/api/validate-path", json={
+                "path": home_subfolder
+            })
+
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertTrue(data['valid'])
+            self.assertEqual(data['file_count'], -1)
+
+
+class TestIPv4Monkeypatch(unittest.TestCase):
+    """Test that the IPv4 socket monkeypatch is active."""
+
+    def test_socket_getaddrinfo_returns_only_ipv4(self):
+        """socket.getaddrinfo should only return AF_INET (IPv4) after monkeypatch."""
+        import socket
+        results = socket.getaddrinfo('localhost', 80)
+        for result in results:
+            family = result[0]
+            self.assertEqual(family, socket.AF_INET,
+                             f"Expected AF_INET but got {family} — IPv4 monkeypatch not active")
+
+
 if __name__ == '__main__':
-    unittest.main()
+    unittest.main()

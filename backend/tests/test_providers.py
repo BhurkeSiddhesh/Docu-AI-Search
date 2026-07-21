@@ -226,6 +226,85 @@ class TestOpenAICompatibleProvider(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["models_available"], 1)
 
+    # -- model auto-resolution (empty model name) --
+    #
+    # These tests patch the provider's requests.Session directly (not the
+    # module-level requests.post/get), because the provider issues HTTP calls
+    # through a pooled retry Session — patching requests.post would not
+    # intercept them.
+
+    def test_generate_auto_resolves_model_when_empty(self):
+        """With no configured model, generate() discovers the loaded model and
+        sends it instead of an empty identifier (which LM Studio rejects)."""
+        provider = OpenAICompatibleProvider(base_url="http://localhost:1234/v1", model="")
+
+        get_resp = MagicMock()
+        get_resp.json.return_value = {"data": [{"id": "gemma-3-4b"}]}
+        get_resp.raise_for_status = MagicMock()
+
+        post_resp = MagicMock()
+        post_resp.json.return_value = {"choices": [{"message": {"content": "hi"}}]}
+        post_resp.raise_for_status = MagicMock()
+
+        with patch.object(provider._session, "get", return_value=get_resp), \
+             patch.object(provider._session, "post", return_value=post_resp) as mock_post:
+            result = provider.generate("Test prompt")
+
+        self.assertEqual(result, "hi")
+        # The model field in the request body must be the discovered id, not "".
+        sent_payload = mock_post.call_args.kwargs["json"]
+        self.assertEqual(sent_payload["model"], "gemma-3-4b")
+
+    def test_generate_errors_when_no_model_available(self):
+        """With no configured model and none loaded, a clear error is raised
+        rather than sending an empty identifier."""
+        provider = OpenAICompatibleProvider(base_url="http://localhost:1234/v1", model="")
+        get_resp = MagicMock()
+        get_resp.json.return_value = {"data": []}
+        get_resp.raise_for_status = MagicMock()
+
+        with patch.object(provider._session, "get", return_value=get_resp):
+            with self.assertRaises(RuntimeError) as ctx:
+                provider.generate("Hello")
+        self.assertIn("no model", str(ctx.exception).lower())
+
+    def test_stream_yields_error_when_no_model_available(self):
+        """Streaming path degrades to an [Error] token instead of raising."""
+        provider = OpenAICompatibleProvider(base_url="http://localhost:1234/v1", model="")
+        get_resp = MagicMock()
+        get_resp.json.return_value = {"data": []}
+        get_resp.raise_for_status = MagicMock()
+
+        with patch.object(provider._session, "get", return_value=get_resp):
+            tokens = list(provider.stream("Hello"))
+        self.assertEqual(len(tokens), 1)
+        self.assertIn("[Error]", tokens[0])
+
+    def test_stream_yields_error_when_server_offline_and_no_model(self):
+        """Streaming must not crash when the server is offline and no model is
+        configured: list_models() raises the built-in ConnectionError (an
+        OSError subclass, not RuntimeError), which the stream path must catch."""
+        import requests
+        provider = OpenAICompatibleProvider(base_url="http://localhost:1234/v1", model="")
+        with patch.object(provider._session, "get", side_effect=requests.ConnectionError("refused")):
+            tokens = list(provider.stream("Hello"))
+        self.assertEqual(len(tokens), 1)
+        self.assertIn("[Error]", tokens[0])
+
+    def test_configured_model_is_used_verbatim(self):
+        """A non-empty configured model is sent as-is and skips discovery."""
+        provider = OpenAICompatibleProvider(base_url="http://localhost:1234/v1", model="my-model")
+        post_resp = MagicMock()
+        post_resp.json.return_value = {"choices": [{"message": {"content": "ok"}}]}
+        post_resp.raise_for_status = MagicMock()
+
+        with patch.object(provider._session, "get") as mock_get, \
+             patch.object(provider._session, "post", return_value=post_resp) as mock_post:
+            provider.generate("Test prompt")
+
+        mock_get.assert_not_called()  # no model discovery needed
+        self.assertEqual(mock_post.call_args.kwargs["json"]["model"], "my-model")
+
 
 class TestProviderFactory(unittest.TestCase):
     """Tests for the get_provider() factory function."""
