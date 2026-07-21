@@ -32,6 +32,24 @@ from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
+
+def _http_error_token(base_url: str, err: "requests.HTTPError") -> str:
+    """Build a user-visible error token from a failed HTTP response.
+
+    A bad model id yields HTTP 400/404 here; without this the stream would
+    end silently (empty answer). Surface the status + a short body snippet so
+    the cause (e.g. "model not found") is visible in the UI.
+    """
+    status = getattr(getattr(err, "response", None), "status_code", "?")
+    body = ""
+    try:
+        body = (err.response.text or "").strip().replace("\n", " ")[:300]
+    except Exception:
+        pass
+    detail = f": {body}" if body else ""
+    return f"[Error] Server at {base_url} returned HTTP {status}{detail}"
+
+
 # ---------------------------------------------------------------------------
 # Retry helpers
 # ---------------------------------------------------------------------------
@@ -276,7 +294,7 @@ class OpenAICompatibleProvider(LLMProvider):
     Default endpoint: ``http://127.0.0.1:1234`` (LM Studio default).
     """
 
-    def __init__(self, base_url: str = "http://127.0.0.1:1234", model: str = "", api_key: str = "lm-studio"):
+    def __init__(self, base_url: str = "http://127.0.0.1:1234/v1", model: str = "", api_key: str = "lm-studio"):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.api_key = api_key or "lm-studio"
@@ -440,6 +458,10 @@ class OpenAICompatibleProvider(LLMProvider):
                         continue
         except requests.ConnectionError:
             yield f"[Error] Cannot connect to LM Studio at {self.base_url}. Is it running?"
+        except requests.HTTPError as e:
+            yield _http_error_token(self.base_url, e)
+        except requests.RequestException as e:
+            yield f"[Error] Request to LM Studio at {self.base_url} failed: {e}"
 
     def _stream_openai(self, prompt, *, system_prompt=None, max_tokens=512, temperature=0.3, stop=None):
         """OpenAI-compatible streaming: POST /chat/completions with stream=True"""
@@ -479,6 +501,10 @@ class OpenAICompatibleProvider(LLMProvider):
                         continue
         except requests.ConnectionError:
             yield f"[Error] Cannot connect to server at {self.base_url}. Is it running?"
+        except requests.HTTPError as e:
+            yield _http_error_token(self.base_url, e)
+        except requests.RequestException as e:
+            yield f"[Error] Request to server at {self.base_url} failed: {e}"
 
     # -- list_models --------------------------------------------------------
 
@@ -555,7 +581,10 @@ PROVIDER_OPENAI_COMPAT = "openai_compatible"
 
 # Default endpoint URLs
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
-DEFAULT_LMSTUDIO_URL = "http://127.0.0.1:1234"
+# Include the /v1 suffix so the OpenAI-compatible format is selected (matches
+# the http://localhost:1234/v1 default used across the API/config/UI). Without
+# it, "test connection" and "actual answer" could pick different API formats.
+DEFAULT_LMSTUDIO_URL = "http://127.0.0.1:1234/v1"
 
 # Provider cache to avoid re-creating instances
 _provider_cache: Dict[str, LLMProvider] = {}

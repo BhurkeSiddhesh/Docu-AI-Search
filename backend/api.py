@@ -376,6 +376,9 @@ cluster_summaries = []
 cluster_map = None
 bm25 = None
 _index_lock = threading.Lock()
+# Serializes on-demand index reloads so concurrent requests don't each spawn a
+# blocking load. Lazily bound to the running loop on first use.
+_index_load_lock = asyncio.Lock()
 
 @app.get("/")
 async def root(request: Request):
@@ -414,7 +417,22 @@ async def health_check(request: Request):
         )
     with _index_lock:
         idx_loaded = index is not None
-    return {"status": "ok", "database": db_status, "index_loaded": idx_loaded}
+    # An on-disk index that isn't in memory yet means "loading/available", not
+    # "absent" — lets the UI distinguish a warming index from a truly empty one.
+    index_on_disk = os.path.exists(INDEX_PATH)
+    if idx_loaded:
+        index_state = "loaded"
+    elif index_on_disk:
+        index_state = "available"  # present on disk, will load on next request
+    else:
+        index_state = "absent"
+    return {
+        "status": "ok",
+        "database": db_status,
+        "index_loaded": idx_loaded,
+        "index_on_disk": index_on_disk,
+        "index_state": index_state,
+    }
 
 
 @app.get("/api/auth/token")
@@ -574,6 +592,35 @@ async def load_initial_index():
                 cluster_summaries = []
                 cluster_map = None
                 bm25 = None
+
+
+async def ensure_index_loaded() -> bool:
+    """Guarantee the in-memory index reflects what's on disk.
+
+    The `index` global lives only in the current process, so `uvicorn --reload`
+    (and any restart) wipes it while `data/index.faiss` stays on disk — Search
+    would then report "not indexed" for a fully-indexed corpus. Callers invoke
+    this before deciding an index is missing: it lazily reloads from disk when
+    the in-memory copy is gone but the file exists.
+
+    Returns:
+        bool: True if an index is loaded in memory (already or after reload),
+              False if no index exists on disk (genuinely not indexed).
+    """
+    with _index_lock:
+        if index is not None:
+            return True
+    if not os.path.exists(INDEX_PATH):
+        return False
+    async with _index_load_lock:
+        # Re-check under the load lock: another request may have just loaded it.
+        with _index_lock:
+            if index is not None:
+                return True
+        await load_initial_index()
+    with _index_lock:
+        return index is not None
+
 
 @app.get("/api/browse")
 async def browse_folder(request: Request):
@@ -1050,6 +1097,9 @@ async def search_files(search_data: SearchRequest, request: Request, background_
     Raises:
         HTTPException: 400 if index not loaded, 409 if embedding dimension mismatch.
     """
+    # Reload the on-disk index if this process lost it (e.g. after --reload)
+    # before concluding nothing is indexed.
+    await ensure_index_loaded()
     with _index_lock:
         index_snap, docs_snap, tags_snap = index, docs, tags
         isumm_snap, csumm_snap, cmap_snap, bm25_snap = index_summaries, cluster_summaries, cluster_map, bm25
@@ -1272,6 +1322,10 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
     Returns:
         StreamingResponse: A server-sent event stream of AI response tokens.
     """
+    # Only pay the reload cost when we actually need the index (no caller
+    # context supplied). Recovers the on-disk index after a --reload.
+    if not search_data.context:
+        await ensure_index_loaded()
     with _index_lock:
         index_snap, docs_snap, tags_snap = index, docs, tags
         isumm_snap, csumm_snap, cmap_snap, bm25_snap = index_summaries, cluster_summaries, cluster_map, bm25
@@ -1296,7 +1350,14 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
         elif provider in ('ollama', 'lmstudio'):
             api_key = config.get('ExternalProviders', 'external_api_key', fallback=api_key)
 
-    model_path = search_data.model_override or config.get('LocalLLM', 'model_path', fallback=None)
+    if provider in ('ollama', 'lmstudio'):
+        # External servers identify models by NAME, not a local .gguf path.
+        # Passing the LocalLLM path here made LM Studio receive a filesystem
+        # path as its model id and return an empty stream. An empty string
+        # lets the server fall back to its currently-loaded model.
+        model_path = search_data.model_override or config.get('ExternalProviders', 'external_model_name', fallback='')
+    else:
+        model_path = search_data.model_override or config.get('LocalLLM', 'model_path', fallback=None)
     tensor_split = _parse_tensor_split(config)
 
     final_context_snippets = []
@@ -2132,6 +2193,22 @@ def indexing_progress_callback(current, total, message=None):
         except RuntimeError:
             pass  # loop shutting down
 
+
+def _broadcast_indexing_event(message: dict):
+    """Push a terminal indexing event (complete/error) to WebSocket clients.
+
+    Runs from the background indexing worker thread, so it schedules the
+    coroutine onto the main loop captured at startup. The IndexingBanner
+    depends on `indexing_complete` / `error` messages to stop the progress
+    bar — without these it hangs at the last reported percent.
+    """
+    if _main_event_loop is not None and not _main_event_loop.is_closed():
+        try:
+            asyncio.run_coroutine_threadsafe(ws_manager.broadcast(message), _main_event_loop)
+        except RuntimeError:
+            pass  # loop shutting down
+
+
 class AgentChatRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=5000)
 
@@ -2262,21 +2339,25 @@ def run_indexing(config, folders):
                 indexing_status["running"] = False
                 indexing_status["progress"] = 100
                 indexing_status["current_file"] = "Complete"
-            
+
             # Mark folders as successfully indexed for history
             for folder in folders:
                 database.mark_folder_indexed(folder)
+            _broadcast_indexing_event({"type": "indexing_complete", "percent": 100})
         else:
             logger.error("Indexing failed or no documents found.")
+            _err = "No documents found or processed"
             with _index_lock:
                 indexing_status["running"] = False
-                indexing_status["error"] = "No documents found or processed"
+                indexing_status["error"] = _err
+            _broadcast_indexing_event({"type": "error", "message": _err})
     except Exception as e:
         import traceback
         logger.error(f"Error during indexing: {e}")
         logger.error(f"Traceback: {traceback.format_exc()}")
         indexing_status["running"] = False
         indexing_status["error"] = str(e)
+        _broadcast_indexing_event({"type": "error", "message": str(e)})
 
 @app.websocket("/ws/progress")
 async def websocket_progress(websocket: WebSocket):
