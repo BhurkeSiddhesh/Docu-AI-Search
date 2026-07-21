@@ -407,7 +407,7 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                                                         value={config.external_model_name || ''}
                                                         onChange={(e) => setConfig({ ...config, external_model_name: e.target.value })}
                                                     />
-                                                    <p className="text-[11px] text-mute mt-1">Model name/tag to request (e.g. the model loaded in LM Studio, or an Ollama tag). Leave empty to let the server use its currently loaded model.</p>
+                                                    <p className="text-[11px] text-mute mt-1">Model name/tag to request (e.g. the model loaded in LM Studio, or an Ollama tag). If left empty, the first model loaded on the server is used automatically — but LM Studio must have a model loaded, or requests fail with "model_not_found".</p>
                                                 </div>
                                             </div>
                                         </div>

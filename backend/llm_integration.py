@@ -598,10 +598,17 @@ def get_llm_client(provider: str, api_key: str = None, model_path: str = None, b
             try:
                 ext_config = _build_external_provider_config(provider, base_url, model_path)
                 ext_provider = get_ext_provider(provider, ext_config)
-                # Return a marker to distinguish from LangChain clients
-                client = f"EXTERNAL:{provider}"
+                # Return a marker to distinguish from LangChain clients. The
+                # instance is stashed under the FULL cache_key (which includes
+                # the model name), and that key is embedded in the marker so the
+                # generate/stream sites retrieve the exact instance for this
+                # model. A per-provider slot would be clobbered by any other
+                # call for the same provider with a different (e.g. empty) model
+                # — such as the settings "Test Connection" — causing a stale
+                # empty-model instance to serve a correctly-configured request.
+                client = f"EXTERNAL:{provider}\x1f{cache_key}"
                 # Stash the provider instance for reuse in generate/stream
-                _llm_client_cache[f"__ext_instance__{provider}"] = ext_provider
+                _llm_client_cache[f"__ext_instance__{cache_key}"] = ext_provider
             except Exception as e:
                 logger.error(f"Error initializing external provider '{provider}': {e}")
                 return None
@@ -691,7 +698,8 @@ def generate_ai_answer(context: str, question: str, provider: str,
     try:
         # Handle External Providers (Ollama, LM Studio)
         if isinstance(client, str) and client.startswith("EXTERNAL:"):
-            ext_provider = _llm_client_cache.get(f"__ext_instance__{provider}")
+            _, _, _ext_key = client.partition("\x1f")
+            ext_provider = _llm_client_cache.get(f"__ext_instance__{_ext_key}")
             if not ext_provider:
                 return "Error: External provider not initialised. Check settings."
             return ext_provider.generate(
@@ -801,7 +809,8 @@ def stream_ai_answer(context: str, question: str, provider: str,
     try:
         # Handle External Providers (Ollama, LM Studio)
         if isinstance(client, str) and client.startswith("EXTERNAL:"):
-            ext_provider = _llm_client_cache.get(f"__ext_instance__{provider}")
+            _, _, _ext_key = client.partition("\x1f")
+            ext_provider = _llm_client_cache.get(f"__ext_instance__{_ext_key}")
             if not ext_provider:
                 yield "Error: External provider not initialised. Check settings."
                 return

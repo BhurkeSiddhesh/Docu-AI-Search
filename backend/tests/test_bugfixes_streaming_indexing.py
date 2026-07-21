@@ -98,6 +98,52 @@ class TestExternalConfigModelName(unittest.TestCase):
         self.assertEqual(cfg["base_url"], "http://localhost:1234/v1")
 
 
+class TestExternalInstanceCacheIsModelScoped(unittest.TestCase):
+    """The stashed external-provider instance must be keyed by model, not just
+    by provider name.
+
+    Regression: an empty-model call (e.g. the settings "Test Connection", or a
+    health check) used to overwrite a single per-provider slot, so a later
+    correctly-configured request retrieved the stale empty-model instance and
+    sent ``model=""`` to LM Studio (HTTP 404 model_not_found) — even though the
+    user had set a model.
+    """
+
+    def setUp(self):
+        llm_integration._llm_client_cache.clear()
+
+    def tearDown(self):
+        llm_integration._llm_client_cache.clear()
+
+    def _make_provider(self, provider_type, config):
+        """Stand-in for providers.get_provider that records the model it was
+        built with, so the test can assert which instance is retrieved."""
+        inst = MagicMock()
+        inst.model = config.get("model", "")
+        return inst
+
+    def test_empty_model_call_does_not_poison_configured_call(self):
+        # get_llm_client imports get_provider locally from backend.providers,
+        # so patch it at its source.
+        with patch("backend.providers.get_provider", side_effect=self._make_provider):
+            # 1. Empty-model call first (simulates "Test Connection").
+            marker_empty = llm_integration.get_llm_client("lmstudio", api_key="k", model_path="")
+            # 2. Now the user has a model configured; a real search runs.
+            marker_real = llm_integration.get_llm_client("lmstudio", api_key="k", model_path="gemma-3-4b")
+
+        # Both are external markers but must point at different instances.
+        self.assertTrue(marker_empty.startswith("EXTERNAL:"))
+        self.assertTrue(marker_real.startswith("EXTERNAL:"))
+        self.assertNotEqual(marker_empty, marker_real)
+
+        _, _, key_real = marker_real.partition("\x1f")
+        inst_real = llm_integration._llm_client_cache.get(f"__ext_instance__{key_real}")
+        self.assertIsNotNone(inst_real)
+        # The retrieved instance for the configured call must carry the real
+        # model — not the empty one from the first call.
+        self.assertEqual(inst_real.model, "gemma-3-4b")
+
+
 class TestExternalStreamHttpError(unittest.TestCase):
     """A bad model id (HTTP 4xx) must surface as an [Error] token, not silence."""
 
