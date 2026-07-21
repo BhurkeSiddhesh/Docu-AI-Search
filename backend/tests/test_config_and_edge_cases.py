@@ -40,7 +40,7 @@ class TestConfiguration(unittest.TestCase):
         provider = config.get('LocalLLM', 'provider', fallback='local')
         
         self.assertIsInstance(folder, str)
-        self.assertIn(provider, ['local', 'openai', ''])
+        self.assertIn(provider, ['local', 'openai', 'gemini', 'anthropic', 'grok', 'huggingface', 'ollama', 'lmstudio', ''])
     
     def test_save_config(self):
         """Test saving configuration."""

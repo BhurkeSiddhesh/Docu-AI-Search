@@ -261,9 +261,11 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
             logger.info(f"[Index] Incremental: reusing chunks+vectors for "
                         f"{len(reuse_map)}/{len(all_files)} unchanged files.")
 
-    # 4. Clear Database (rebuilt below from reused + fresh files)
-    database.clear_files()
-    database.clear_clusters()
+    # 4. NOTE: the previous DB is intentionally NOT cleared here. Extraction
+    # (the slowest, most failure-prone stage) runs first; if it throws, the
+    # prior index/metadata stay intact instead of leaving an empty files table
+    # that makes the Library read "not indexed". The clear happens just before
+    # the first new rows are written (step 6, below).
 
     # Define stage weights
     # Extraction: 20%, Chunking: 5%, Embedding: 40%, Clustering: 5%, Summarization: 25%, Finalizing: 5%
@@ -338,6 +340,12 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
 
     extracted_texts = dict(valid_docs)
     current_faiss_idx = 0
+
+    # Now that text is in hand and we're about to write the rebuilt metadata,
+    # clear the old rows. Deferring the clear to here means a failure during
+    # extraction leaves the previously-good index untouched.
+    database.clear_files()
+    database.clear_clusters()
 
     files_to_add = []
     for filepath in all_files:

@@ -21,6 +21,7 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
     const [newFolder, setNewFolder] = useState('');
     const [folderHistory, setFolderHistory] = useState([]);
     const [showFolderHistory, setShowFolderHistory] = useState(false);
+    const [validatingFolder, setValidatingFolder] = useState(false);
     const toast = useToast();
 
     useEffect(() => {
@@ -77,6 +78,7 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
 
     const addFolder = async (path = newFolder) => {
         if (!path) return;
+        setValidatingFolder(true);
         try {
             const res = await api.validatePath(path);
             if (res.data && res.data.valid === false) {
@@ -91,6 +93,20 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
             setShowFolderHistory(false);
         } catch (e) {
             toast.error(e.response?.data?.detail || 'Invalid folder path');
+        } finally {
+            setValidatingFolder(false);
+        }
+    };
+
+    const handleBrowse = async () => {
+        try {
+            const res = await api.browse();
+            if (res.data && res.data.folder) {
+                // If they picked a folder, add it automatically
+                addFolder(res.data.folder);
+            }
+        } catch (e) {
+            toast.error('Could not open folder browser');
         }
     };
 
@@ -200,8 +216,11 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                                                         onChange={(e) => setNewFolder(e.target.value)}
                                                         onKeyDown={(e) => e.key === 'Enter' && addFolder()}
                                                     />
-                                                    <button onClick={() => addFolder(newFolder)} className="btn-secondary whitespace-nowrap">
-                                                        Add folder
+                                                    <button onClick={handleBrowse} type="button" className="btn-ghost whitespace-nowrap">
+                                                        Browse
+                                                    </button>
+                                                    <button onClick={() => addFolder(newFolder)} disabled={validatingFolder} className="btn-secondary whitespace-nowrap disabled:opacity-50">
+                                                        {validatingFolder ? 'Validating…' : 'Add folder'}
                                                     </button>
                                                     {folderHistory.length > 0 && (
                                                         <button 
@@ -388,7 +407,7 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                                                         value={config.external_model_name || ''}
                                                         onChange={(e) => setConfig({ ...config, external_model_name: e.target.value })}
                                                     />
-                                                    <p className="text-[11px] text-mute mt-1">Leave empty to use the provider's default model.</p>
+                                                    <p className="text-[11px] text-mute mt-1">Model name/tag to request (e.g. the model loaded in LM Studio, or an Ollama tag). If left empty, the first model loaded on the server is used automatically — but LM Studio must have a model loaded, or requests fail with "model_not_found".</p>
                                                 </div>
                                             </div>
                                         </div>

@@ -122,6 +122,20 @@ describe('SettingsModal Component', () => {
         expect(onClose).not.toHaveBeenCalled()
     })
 
+    it('shows error toast if API fails to load settings', async () => {
+        // Force one of the initialization endpoints to fail
+        axios.get.mockImplementation((url) => {
+            if (url.includes('folders/history')) return Promise.reject(new Error('Network Error'))
+            return Promise.resolve({ data: {} })
+        })
+        const mockOnClose = vi.fn()
+        render(<SettingsModal isOpen={true} onClose={mockOnClose} onSave={vi.fn()} activeModel="" />)
+        
+        await waitFor(() => {
+            expect(screen.getByText('Could not load settings')).toBeDefined()
+        })
+    })
+
     // ── Data management ─────────────────────────────────────────────────────
 
     it('clears search history when button is clicked', async () => {
@@ -251,5 +265,104 @@ describe('SettingsModal Component', () => {
         await waitFor(() => {
             expect(screen.getByText('api_key is required for huggingface_api')).toBeDefined()
         })
+    })
+
+    // ── Add folder ──────────────────────────────────────────────────────────
+
+    it('shows "Validating…" while validating a folder path', async () => {
+        // Make validatePath hang for a bit
+        let resolveValidate
+        axios.post.mockImplementation((url) => {
+            if (url.includes('validate-path')) {
+                return new Promise((resolve) => { resolveValidate = resolve })
+            }
+            return Promise.resolve({ data: { status: 'success' } })
+        })
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('C:/Users/test/Documents'))
+
+        const input = screen.getByPlaceholderText(/Documents/i)
+        await act(async () => {
+            fireEvent.change(input, { target: { value: 'C:/Users/test/NewFolder' } })
+        })
+        await act(async () => {
+            fireEvent.click(screen.getByText('Add folder'))
+        })
+
+        // Button should show "Validating…" while waiting
+        expect(screen.getByText('Validating…')).toBeDefined()
+
+        // Resolve the validation
+        await act(async () => {
+            resolveValidate({ data: { valid: true, file_count: 5 } })
+        })
+
+        // Button should revert back
+        await waitFor(() => {
+            expect(screen.getByText('Add folder')).toBeDefined()
+        })
+    })
+
+    it('adds a valid folder to the list after validation', async () => {
+        axios.post.mockImplementation((url, data) => {
+            if (url.includes('validate-path')) {
+                return Promise.resolve({ data: { valid: true, file_count: 3 } })
+            }
+            return Promise.resolve({ data: { status: 'success' } })
+        })
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('C:/Users/test/Documents'))
+
+        const input = screen.getByPlaceholderText(/Documents/i)
+        await act(async () => {
+            fireEvent.change(input, { target: { value: 'C:/Users/test/NewFolder' } })
+        })
+        await act(async () => {
+            fireEvent.click(screen.getByText('Add folder'))
+        })
+
+        await waitFor(() => {
+            expect(screen.getByText('C:/Users/test/NewFolder')).toBeDefined()
+        })
+    })
+
+    it('shows error toast for an invalid folder path', async () => {
+        axios.post.mockImplementation((url) => {
+            if (url.includes('validate-path')) {
+                return Promise.resolve({ data: { valid: false, error: 'Path does not exist' } })
+            }
+            return Promise.resolve({ data: { status: 'success' } })
+        })
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('C:/Users/test/Documents'))
+
+        const input = screen.getByPlaceholderText(/Documents/i)
+        await act(async () => {
+            fireEvent.change(input, { target: { value: 'C:/nonexistent/path' } })
+        })
+        await act(async () => {
+            fireEvent.click(screen.getByText('Add folder'))
+        })
+
+        await waitFor(() => {
+            expect(screen.getByText('Path does not exist')).toBeDefined()
+        })
+    })
+
+    it('does not call API when adding an empty folder path', async () => {
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('C:/Users/test/Documents'))
+
+        // Input is empty by default, click Add folder
+        await act(async () => {
+            fireEvent.click(screen.getByText('Add folder'))
+        })
+
+        // validatePath should NOT have been called
+        const validateCalls = axios.post.mock.calls.filter(c => c[0]?.includes('validate-path'))
+        expect(validateCalls.length).toBe(0)
     })
 })

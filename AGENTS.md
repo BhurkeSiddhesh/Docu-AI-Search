@@ -129,6 +129,54 @@ rerank = true
 
 > **CRITICAL: Add entry here after EVERY change with date, description, and files.**
 
+### 2026-07-21 (Fix LM Studio "Invalid model identifier" / model_not_found)
+- **fix (root cause — stale empty-model provider instance)**: `get_llm_client` stashed the external provider instance in a **single slot keyed only by provider name** (`__ext_instance__lmstudio`) while returning a cached `"EXTERNAL:..."` marker early on a cache hit. Any other call for the same provider with a different (typically **empty**) model — the settings "Test Connection", a health check, or a concurrent request — overwrote that shared slot, so a correctly-configured search then retrieved the stale `model=""` instance and sent it to LM Studio → `404 model_not_found`. This is why setting the model in Settings appeared to have no effect. The instance is now stashed and retrieved under the **full cache key** (which includes the model), embedded in the marker string; each model gets its own instance. Fixed in `get_llm_client`, `generate_ai_answer`, and `stream_ai_answer`.
+- **fix (LM Studio empty model → HTTP 404)**: As a second layer, when the target model name is genuinely blank, `OpenAICompatibleProvider` used to send `"model": ""`, which LM Studio rejects (it does **not** fall back to the loaded model, contrary to the old Settings hint). Added `_resolve_model()`: if no model is configured, it discovers the first model from the server's `/v1/models` list and caches it; all four request builders (`_generate_native`, `_generate_openai`, `_stream_native`, `_stream_openai`) use it. If none is loaded, generate raises a clear `RuntimeError` and streaming yields a single `[Error] ...` token instead of an opaque 404.
+- **fix (misleading UI copy)**: The External Providers hint promised "Leave empty to let the server use its currently loaded model" — now accurate, and warns that LM Studio must have a model loaded or requests fail with `model_not_found`.
+- **test (backend)**: `test_bugfixes_streaming_indexing.py` gains a regression test proving an empty-model call no longer poisons a subsequent configured call. `test_providers.py` gains auto-resolution tests (empty model auto-discovers loaded model and sends it verbatim; clear error when none available; streaming degrades to `[Error]` token; configured model skips discovery). These patch the provider's retry `Session` directly rather than the module-level `requests.post`, which does not intercept `Session` calls.
+- **Files**: `backend/llm_integration.py`, `backend/providers.py`, `frontend/src/components/SettingsModal.jsx`, `backend/tests/test_providers.py`, `backend/tests/test_bugfixes_streaming_indexing.py`, `AGENTS.md`
+
+### 2026-07-21 (Fix no answers, empty local/LM Studio responses, and false "not indexed")
+- **fix (local/Gemma empty answer)**: `stream_ai_answer` treated a successful-but-empty local chat stream (`chat_tokens == []`) as success via `is not None`, so nothing was yielded — the answer box stayed blank. Now falls back to a raw completion on empty output and emits a visible sentinel when both paths produce nothing. `generate_ai_answer` (RAG, `raw=False`) and `smart_summary` now prefer the model's chat template with a raw fallback; `raw=True` (ReAct agent) still uses a plain completion.
+- **fix (Gemma)**: Gemma has no `system` role — added `_build_local_chat_messages` to fold the system prompt into the first user turn for Gemma, `chat_format="gemma"` in `get_local_llm`, and disabled `flash_attn` for Gemma (soft-capping produced degenerate output). `n_gpu_layers` is now overridable via `LLAMA_N_GPU_LAYERS`.
+- **fix (LM Studio streams nothing)**: `/api/stream-answer` passed the local `.gguf` path as the LM Studio *model id*. For `ollama`/`lmstudio` the model now resolves from `ExternalProviders.external_model_name` (empty = server's loaded model). `agent.py` reads `ExternalProviders.external_api_key`/`external_model_name` for external providers instead of non-existent `APIKeys.<provider>_api_key`.
+- **fix (silent LM Studio errors)**: `providers.py` streaming now catches `HTTPError`/`RequestException` (not just `ConnectionError`) and yields a clear `[Error] ... HTTP <status>` token. Reconciled `DEFAULT_LMSTUDIO_URL` to include `/v1` so the OpenAI-compatible format is chosen consistently.
+- **fix (already-indexed shows "not indexed")**: the in-memory `index` global is wiped by `uvicorn --reload`. Added `ensure_index_loaded()` — `/api/search`, `/api/stream-answer`, and `/health` now lazily reload the on-disk index instead of reporting "not indexed". `/health` reports `index_state` (loaded/available/absent).
+- **fix (indexing wipes library on failure)**: `indexing.py` deferred `clear_files()`/`clear_clusters()` to after text extraction, so a mid-run failure no longer leaves an empty `files` table. `run_indexing` now broadcasts `indexing_complete`/`error` over WebSocket so the banner stops hanging. `database.mark_folder_indexed` upserts and normalizes paths so config.ini-defined folders show under indexed folders.
+- **test (backend)**: Added `test_bugfixes_streaming_indexing.py` (Gemma message building, empty-stream fallback + sentinel, external model-name resolution, HTTP-error surfacing, `mark_folder_indexed` upsert/normalize). Updated `test_smart_summary_local` for the chat-first behavior. `raw=True` stays a plain completion, so the existing `test_generate_ai_answer_raw_local` passes unchanged.
+- **Files**: `backend/llm_integration.py`, `backend/providers.py`, `backend/api.py`, `backend/indexing.py`, `backend/database.py`, `backend/agent.py`, `frontend/src/components/SettingsModal.jsx`, `backend/tests/test_bugfixes_streaming_indexing.py`, `backend/tests/test_llm_integration.py`, `AGENTS.md`
+
+### 2026-07-21 (Fix 504 Gateway Timeout during initial Cross-Encoder load)
+- **fix**: The `/api/search` endpoint timed out and returned a 504 Gateway Timeout if the Cross-Encoder model (`ms-marco-MiniLM-L-6-v2`) took longer than 30 seconds to download and load during the first search.
+- **backend**: Increased `SEARCH_TIMEOUT_SECONDS` default from 30 to 60 seconds in `backend/api.py`.
+- **frontend**: Increased axios client timeout from 60000ms to 90000ms in `frontend/src/lib/api.js` to ensure the frontend waits out the full backend timeout.
+- **Files**: `backend/api.py`, `frontend/src/lib/api.js`, `AGENTS.md`
+
+### 2026-07-21 (Add Browse button and display folders in Library)
+- **ui**: Added a "Browse" button in `SettingsModal.jsx` next to the "Add folder" input, which calls the existing native folder browser dialog endpoint `/api/browse`. The selected folder is automatically added.
+- **ui**: `LibraryView.jsx` now fetches and displays the list of currently indexed folders at the top of the page, making it immediately obvious to the user which directories are being scanned without needing to open the Settings modal.
+- **Files**: `frontend/src/components/SettingsModal.jsx`, `frontend/src/components/LibraryView.jsx`, `AGENTS.md`
+
+### 2026-07-20 (Fix Add Folder + Comprehensive Test Coverage)
+- **fix**: `/api/validate-path` hung for 10+ seconds on large directories (e.g. Desktop with 5,000+ files) because `os.walk` walked the entire tree. Added a 10,000 file cap and a 5-second `asyncio.wait_for` timeout; returns `file_count: -1` on timeout (path still valid).
+- **ui**: Added `validatingFolder` loading state to `SettingsModal.jsx` — the "Add folder" button now shows "Validating…" while the path is being checked, and is disabled to prevent duplicate requests.
+- **test (backend)**: Added `TestFolderHistoryMigration` (2 tests: legacy table rebuilt, correct table preserved) in `test_database.py`. Added `TestValidatePathTimeout` (file count cap, timeout returns valid) and `TestIPv4Monkeypatch` (verifies only AF_INET results) in `test_api.py`.
+- **test (frontend)**: Added 4 new tests in `SettingsModal.test.jsx`: validating loading state, successful folder add, invalid path error toast, empty path guard.
+- **Files**: `backend/api.py`, `frontend/src/components/SettingsModal.jsx`, `backend/tests/test_database.py`, `backend/tests/test_api.py`, `frontend/src/test/SettingsModal.test.jsx`, `AGENTS.md`
+
+### 2026-07-20 (UI Update: Reorder Model Selection)
+- **ui**: Moved the "Local GGUF" model category to the very top of the model selection dropdown in `SearchView.jsx` so that local models take precedence over Cloud and External providers when they are available.
+- **Files**: `frontend/src/components/SearchView.jsx`, `AGENTS.md`
+
+### 2026-07-20 (Fix Model Download IPv6 Hang)
+- **fix**: Forced IPv4 globally by monkeypatching `socket.getaddrinfo` in `backend/api.py`. Previously, model downloads and any external requests to HuggingFace were hanging silently for minutes before timing out because `requests` (via `urllib3`) would attempt to connect to broken IPv6 addresses returned by the DNS resolver. The Windows networking stack would blackhole these, causing a ~21 second TCP SYN timeout for each of the 8 AAAA records per redirect.
+- **Files**: `backend/api.py`, `AGENTS.md`
+
+### 2026-07-20 (Fix Settings Modal Load Failure and UI clarification)
+- **fix (critical)**: `/api/folders/history` returned 500 on legacy databases because `folder_history` table was missing `last_accessed_at` column. Added schema migration to `init_database` in `backend/database.py` (drops and rebuilds the table when columns mismatch, safely recovering from legacy states).
+- **test (frontend)**: Added explicit test coverage in `SettingsModal.test.jsx` for the loading failure mode to verify that when initialization endpoints (like `/api/folders/history`) fail, the UI correctly displays the "Could not load settings" error state rather than hanging.
+- **Files**: `backend/database.py`, `frontend/src/test/SettingsModal.test.jsx`, `AGENTS.md`
+
 ### 2026-07-14 (Repo maintenance: audit-log consolidation, PR/branch cleanup)
 - **chore (logs)**: Consolidated the 2026-07-14 daily-audit entry (from bot branch `audit-2026-07-14-…`) into `internal_audit_log.md` on main — another `gh`-auth failure in the external audit bot's sandbox (recurring since early May; the audit runs in Google Jules' environment, not in-repo CI, so it can't be fixed from the repo — the Jules↔GitHub integration must be re-authorized).
 - **chore (PRs)**: Closed auto-generated ECC agent-tooling bundle PR #392 (`.claude/`/`.codex/`/`.agents/` scaffolding) — same dormant-scaffolding class the final release removed; would have re-introduced it, and was behind main.

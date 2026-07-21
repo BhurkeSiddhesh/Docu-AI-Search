@@ -388,6 +388,28 @@ def _resolve_model_path(model_path: str) -> Optional[str]:
     return None
 
 
+def _is_gemma_model(model_path: str) -> bool:
+    """True if the GGUF filename looks like a Gemma model (e.g. gemma-2-2b-it)."""
+    return bool(model_path) and 'gemma' in os.path.basename(model_path).lower()
+
+
+def _build_local_chat_messages(system_prompt: str, user_content: str, model_path: str) -> list:
+    """
+    Build the messages list for llama-cpp create_chat_completion.
+
+    Gemma's chat template has no `system` role — passing one either raises or
+    is dropped, and often triggers an immediate EOS (empty answer). For Gemma
+    we fold the system prompt into the first user turn instead.
+    """
+    if system_prompt and _is_gemma_model(model_path):
+        return [{"role": "user", "content": f"{system_prompt}\n\n{user_content}"}]
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": user_content})
+    return messages
+
+
 def get_local_llm(model_path: str, tensor_split: List[float] = None) -> Any:
     """
     Load and cache the GGUF model directly with LlamaCpp.
@@ -417,22 +439,32 @@ def get_local_llm(model_path: str, tensor_split: List[float] = None) -> Any:
         return _llm_cache[model_path]
 
     logger.info(f"Loading Local LLM from {model_path}...")
+    is_gemma = _is_gemma_model(model_path)
     try:
         # Load with reasonable defaults for CPU inference
         # Advanced performance tuning for "blazing fast" inference
-        llm = Llama(
+        llama_kwargs = dict(
             model_path=model_path,
             n_ctx=4096,           # Context window
             n_threads=max(multiprocessing.cpu_count() - 2, 1), # Use more cores for prompt processing
             n_threads_batch=multiprocessing.cpu_count(),       # Max threads for batch processing
-            n_gpu_layers=-1,      # Full GPU offload
+            n_gpu_layers=int(os.getenv("LLAMA_N_GPU_LAYERS", "-1")),  # Full GPU offload by default
             n_batch=512,          # Batch size for prompt processing
             f16_kv=True,          # Use FP16 for KV cache (faster/less VRAM)
-            flash_attn=True,      # Enable Flash Attention (Blazing fast sequences)
+            # Gemma 2 uses attention logit soft-capping that several llama-cpp
+            # builds mishandle under flash-attention, yielding degenerate/empty
+            # output. Disable flash-attn for Gemma; keep it for everything else.
+            flash_attn=(False if is_gemma else True),
             offload_kqv=True,     # Offload KQV to GPU
             tensor_split=tensor_split,
             verbose=False         # Disable verbose logs for cleaner console unless debugging
         )
+        # Prefer the model's own embedded chat template, but pin Gemma's
+        # explicitly so a GGUF lacking template metadata still formats turns
+        # correctly (bare prompts make Gemma emit an immediate EOS → "").
+        if is_gemma:
+            llama_kwargs["chat_format"] = "gemma"
+        llm = Llama(**llama_kwargs)
         # Prompt prefix cache: consecutive calls sharing a prompt prefix
         # (static system prompt, or a follow-up question over the same
         # document context) restore the KV state instead of re-evaluating
@@ -566,10 +598,17 @@ def get_llm_client(provider: str, api_key: str = None, model_path: str = None, b
             try:
                 ext_config = _build_external_provider_config(provider, base_url, model_path)
                 ext_provider = get_ext_provider(provider, ext_config)
-                # Return a marker to distinguish from LangChain clients
-                client = f"EXTERNAL:{provider}"
+                # Return a marker to distinguish from LangChain clients. The
+                # instance is stashed under the FULL cache_key (which includes
+                # the model name), and that key is embedded in the marker so the
+                # generate/stream sites retrieve the exact instance for this
+                # model. A per-provider slot would be clobbered by any other
+                # call for the same provider with a different (e.g. empty) model
+                # — such as the settings "Test Connection" — causing a stale
+                # empty-model instance to serve a correctly-configured request.
+                client = f"EXTERNAL:{provider}\x1f{cache_key}"
                 # Stash the provider instance for reuse in generate/stream
-                _llm_client_cache[f"__ext_instance__{provider}"] = ext_provider
+                _llm_client_cache[f"__ext_instance__{cache_key}"] = ext_provider
             except Exception as e:
                 logger.error(f"Error initializing external provider '{provider}': {e}")
                 return None
@@ -659,7 +698,8 @@ def generate_ai_answer(context: str, question: str, provider: str,
     try:
         # Handle External Providers (Ollama, LM Studio)
         if isinstance(client, str) and client.startswith("EXTERNAL:"):
-            ext_provider = _llm_client_cache.get(f"__ext_instance__{provider}")
+            _, _, _ext_key = client.partition("\x1f")
+            ext_provider = _llm_client_cache.get(f"__ext_instance__{_ext_key}")
             if not ext_provider:
                 return "Error: External provider not initialised. Check settings."
             return ext_provider.generate(
@@ -677,22 +717,39 @@ def generate_ai_answer(context: str, question: str, provider: str,
             if not llm:
                 return "Error: Local model failed to load."
 
-            # Construct full prompt string for completion
-            if system_prompt:
-                full_prompt = f"{system_prompt}\n\n{user_content}"
-            else:
-                full_prompt = user_content
-
+            # For RAG answers (raw=False) prefer the model's chat template:
+            # correct turn tokens make instruct models actually answer instead
+            # of emitting an immediate EOS. In raw mode the caller (e.g. the
+            # ReAct agent) has hand-built a scaffolded prompt with its own stop
+            # sequences, so a plain completion is intentional there.
+            answer = ""
             with _local_llm_lock:
-                output = llm.create_completion(
-                    full_prompt,
-                    max_tokens=max_tokens,
-                    stop=stop_seqs,
-                    echo=False,
-                    temperature=temperature,
-                    repeat_penalty=1.1
-                )
-            return output['choices'][0]['text'].strip()
+                if not raw:
+                    try:
+                        output = llm.create_chat_completion(
+                            messages=_build_local_chat_messages(
+                                system_prompt, user_content, real_model_path
+                            ),
+                            max_tokens=max_tokens,
+                            temperature=temperature,
+                            repeat_penalty=1.1,
+                        )
+                        answer = (output['choices'][0].get('message', {}).get('content') or "").strip()
+                    except Exception as chat_err:
+                        logger.info(f"[LLM] Chat template unavailable ({chat_err}); falling back to raw completion.")
+
+                if not answer:
+                    full_prompt = f"{system_prompt}\n\n{user_content}" if system_prompt else user_content
+                    output = llm.create_completion(
+                        full_prompt,
+                        max_tokens=max_tokens,
+                        stop=stop_seqs,
+                        echo=False,
+                        temperature=temperature,
+                        repeat_penalty=1.1
+                    )
+                    answer = output['choices'][0]['text'].strip()
+            return answer
 
         # Handle LangChain Clients (Cloud)
         else:
@@ -752,7 +809,8 @@ def stream_ai_answer(context: str, question: str, provider: str,
     try:
         # Handle External Providers (Ollama, LM Studio)
         if isinstance(client, str) and client.startswith("EXTERNAL:"):
-            ext_provider = _llm_client_cache.get(f"__ext_instance__{provider}")
+            _, _, _ext_key = client.partition("\x1f")
+            ext_provider = _llm_client_cache.get(f"__ext_instance__{_ext_key}")
             if not ext_provider:
                 yield "Error: External provider not initialised. Check settings."
                 return
@@ -791,10 +849,9 @@ def stream_ai_answer(context: str, question: str, provider: str,
                 chat_tokens = None
                 try:
                     stream = llm.create_chat_completion(
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_content},
-                        ],
+                        messages=_build_local_chat_messages(
+                            system_prompt, user_content, real_model_path
+                        ),
                         max_tokens=320,
                         temperature=0.2,
                         repeat_penalty=1.1,
@@ -807,15 +864,20 @@ def stream_ai_answer(context: str, question: str, provider: str,
                         if token:
                             chat_tokens.append(token)
                 except Exception as chat_err:
-                    # Only fall back when chat generation produced nothing —
-                    # otherwise the client would receive a duplicated answer.
+                    # Only keep partial tokens if some content actually reached
+                    # us — otherwise fall back to a raw completion below.
                     if chat_tokens:
                         logger.warning("[LLM] Chat stream failed mid-answer: %s", chat_err)
                     else:
                         logger.info(f"[LLM] Chat template unavailable ({chat_err}); falling back to raw completion.")
                         chat_tokens = None
 
-                if chat_tokens is not None:
+                # A successful-but-empty chat generation (chat_tokens == [])
+                # must also trigger the raw fallback — Gemma & co. frequently
+                # emit zero content tokens with a system turn or under
+                # soft-capping. Truthiness (not `is not None`) covers both the
+                # exception (None) and empty-output ([]) cases.
+                if chat_tokens:
                     tokens = chat_tokens
                 else:
                     full_prompt = f"{system_prompt}\n\n{user_content}"
@@ -830,8 +892,16 @@ def stream_ai_answer(context: str, question: str, provider: str,
                     )
                     tokens = [output['choices'][0]['text'] for output in stream]
 
+            emitted = False
             for token in tokens:
+                if token:
+                    emitted = True
                 yield token
+            if not emitted:
+                # Both chat and raw completion produced nothing — never leave
+                # the user staring at a silent blank answer box.
+                yield ("[No answer generated — the local model returned no output. "
+                       "Try a different model or a shorter query.]")
 
         # Handle LangChain Clients (Cloud)
         else:
@@ -1036,15 +1106,27 @@ Key findings:"""
             if not llm:
                 return summarize(text, provider, api_key, model_path, query)
 
+            result = ""
             with _local_llm_lock:
-                output = llm.create_completion(
-                    prompt_text,
-                    max_tokens=128,
-                    stop=["Document Excerpt:", "Summary:"],
-                    echo=False,
-                    temperature=0.1
-                )
-            result = output['choices'][0]['text'].strip()
+                try:
+                    output = llm.create_chat_completion(
+                        messages=_build_local_chat_messages(None, prompt_text, real_model_path),
+                        max_tokens=128,
+                        temperature=0.1,
+                    )
+                    result = (output['choices'][0].get('message', {}).get('content') or "").strip()
+                except Exception as chat_err:
+                    logger.info(f"[LLM] Smart-summary chat template unavailable ({chat_err}); using raw completion.")
+
+                if not result:
+                    output = llm.create_completion(
+                        prompt_text,
+                        max_tokens=128,
+                        stop=["Document Excerpt:", "Summary:"],
+                        echo=False,
+                        temperature=0.1
+                    )
+                    result = output['choices'][0]['text'].strip()
 
         # Handle LangChain Clients
         else:
