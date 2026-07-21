@@ -1,0 +1,505 @@
+# Instincts generated from https://github.com/BhurkeSiddhesh/Docu-AI-Search
+# Generated: 2026-07-21T11:10:32.698Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: Docu-AI-Search-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: fix
+
+## Evidence
+
+- 3 commits analyzed
+- Detected conventional commit pattern
+- Examples: fix: resolve settings loading failure, model download hanging, and add error test coverage, fix: add folder timeout/cap, loading state, model dropdown reorder, and comprehensive test coverage
+
+---
+id: Docu-AI-Search-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Commit Length
+
+## Action
+
+Write moderate-length commit messages (~91 characters)
+
+## Evidence
+
+- Average commit message length: 91 chars
+- Based on 3 commits
+
+---
+id: Docu-AI-Search-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Naming Files
+
+## Action
+
+Use PascalCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: PascalCase
+
+---
+id: Docu-AI-Search-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: Docu-AI-Search-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Export Style
+
+## Action
+
+Prefer mixed exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: mixed
+
+---
+id: Docu-AI-Search-arch-type-based
+trigger: "when adding new code"
+confidence: 0.8
+domain: architecture
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Arch Type Based
+
+## Action
+
+Place code in the appropriate type folder (components/, services/, utils/, etc.)
+
+## Evidence
+
+- Type-based module organization detected
+- Folders: 
+
+---
+id: Docu-AI-Search-test-framework
+trigger: "when writing tests"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Test Framework
+
+## Action
+
+Use vitest as the test framework
+
+## Evidence
+
+- Test framework detected: vitest
+- File pattern: *.test.ts
+
+---
+id: Docu-AI-Search-test-naming
+trigger: "when creating a test file"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Test Naming
+
+## Action
+
+Name test files using the pattern: *.test.ts
+
+## Evidence
+
+- File pattern: *.test.ts
+- Consistent across test files
+
+---
+id: Docu-AI-Search-test-mocking
+trigger: "when mocking dependencies in tests"
+confidence: 0.75
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Test Mocking
+
+## Action
+
+Use vi.mock for mocking
+
+## Evidence
+
+- Mocking pattern detected: vi.mock
+- Consistent across test files
+
+---
+id: Docu-AI-Search-test-types
+trigger: "when planning tests for a feature"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Test Types
+
+## Action
+
+Write unit, integration tests to match project standards
+
+## Evidence
+
+- Test types detected: unit, integration
+- Coverage config: no
+
+---
+id: Docu-AI-Search-workflow-feature-or-bugfix-with-api-frontend-test-and-doc-update
+trigger: "when doing feature or bugfix with api frontend test and doc update"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu AI Search Workflow Feature Or Bugfix With Api Frontend Test And Doc Update
+
+## Action
+
+Follow the feature-or-bugfix-with-api-frontend-test-and-doc-update workflow:
+1. Update backend/api.py to implement or fix API logic.
+2. Update or add backend tests (backend/tests/test_api.py, backend/tests/test_database.py, backend/tests/test_config_and_edge_cases.py).
+3. Update frontend components (frontend/src/components/SettingsModal.jsx, frontend/src/components/SearchView.jsx, frontend/src/components/LibraryView.jsx).
+4. Update or add frontend tests (frontend/src/test/SettingsModal.test.jsx).
+5. Update documentation (AGENTS.md).
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: backend/api.py, backend/tests/test_api.py, backend/tests/test_database.py
+
+---
+id: docu-ai-search-instinct-file-naming
+trigger: "When creating or renaming files in the codebase"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct File Naming
+
+## Action
+
+Use PascalCase for file names
+
+## Evidence
+
+- Pattern in namingConventions.files
+- Observed in frontend/src/components/SettingsModal.jsx
+
+---
+id: docu-ai-search-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Function Naming
+
+## Action
+
+Use camelCase for function names
+
+## Evidence
+
+- Pattern in namingConventions.functions
+
+---
+id: docu-ai-search-instinct-class-naming
+trigger: "When defining a new class"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Class Naming
+
+## Action
+
+Use PascalCase for class names
+
+## Evidence
+
+- Pattern in namingConventions.classes
+
+---
+id: docu-ai-search-instinct-constant-naming
+trigger: "When declaring a constant"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Constant Naming
+
+## Action
+
+Use SCREAMING_SNAKE_CASE for constant names
+
+## Evidence
+
+- Pattern in namingConventions.constants
+
+---
+id: docu-ai-search-instinct-import-style
+trigger: "When importing modules in Python files"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Import Style
+
+## Action
+
+Use relative imports
+
+## Evidence
+
+- Pattern in importStyle: relative
+
+---
+id: docu-ai-search-instinct-export-style
+trigger: "When exporting modules or functions"
+confidence: 0.6
+domain: code-style
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Export Style
+
+## Action
+
+Use mixed export styles as appropriate
+
+## Evidence
+
+- Pattern in exportStyle: mixed
+
+---
+id: docu-ai-search-instinct-test-file-pattern
+trigger: "When adding a new test file"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Test File Pattern
+
+## Action
+
+Name the file with the pattern *.test.ts
+
+## Evidence
+
+- Pattern in testing.filePattern
+- Seen in frontend/src/test/SettingsModal.test.jsx
+
+---
+id: docu-ai-search-instinct-test-types
+trigger: "When writing tests"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Test Types
+
+## Action
+
+Include both unit and integration tests as relevant
+
+## Evidence
+
+- Pattern in testing.testTypes
+- backend/tests/test_api.py includes both
+
+---
+id: docu-ai-search-instinct-mocking-style
+trigger: "When mocking dependencies in tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Mocking Style
+
+## Action
+
+Use vi.mock for mocking
+
+## Evidence
+
+- Pattern in testing.mockingStyle
+
+---
+id: docu-ai-search-instinct-no-coverage-config
+trigger: "When configuring test coverage"
+confidence: 0.6
+domain: testing
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct No Coverage Config
+
+## Action
+
+Do not add coverageConfig (not used in this repo)
+
+## Evidence
+
+- Pattern in testing.coverageConfig: false
+
+---
+id: docu-ai-search-instinct-git-conventional-commits
+trigger: "When writing a commit message"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Git Conventional Commits
+
+## Action
+
+Use conventional commit format with a prefix (e.g., fix: ...)
+
+## Evidence
+
+- Pattern in commits.type: conventional
+- Seen in commit: fix: resolve settings loading failure...
+
+---
+id: docu-ai-search-instinct-git-fix-prefix
+trigger: "When committing a bug fix"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Git Fix Prefix
+
+## Action
+
+Start the commit message with 'fix:'
+
+## Evidence
+
+- Pattern in commits.prefixes
+- Seen in commit: fix: add folder timeout/cap...
+
+---
+id: docu-ai-search-instinct-git-commit-length
+trigger: "When writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Git Commit Length
+
+## Action
+
+Keep commit messages around 90 characters on average
+
+## Evidence
+
+- Pattern in commits.averageLength
+
+---
+id: docu-ai-search-instinct-feature-bugfix-workflow
+trigger: "When adding or fixing a feature that affects both backend and frontend, and requires test and documentation updates"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: BhurkeSiddhesh/Docu-AI-Search
+---
+
+# Docu Ai Search Instinct Feature Bugfix Workflow
+
+## Action
+
+Update backend/api.py, backend tests, frontend components, frontend tests, and AGENTS.md in sequence
+
+## Evidence
+
+- Workflow: feature-or-bugfix-with-api-frontend-test-and-doc-update
+- Example commit sequence
+
