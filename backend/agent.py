@@ -100,8 +100,15 @@ class ReActAgent:
 
         config = global_state['config']
         self.provider = config.get('LocalLLM', 'provider', fallback='openai')
-        self.api_key = config.get('APIKeys', f"{self.provider}_api_key", fallback='')
-        self.model_path = config.get('LocalLLM', 'model_path', fallback='')
+        if self.provider in ('ollama', 'lmstudio'):
+            # External servers key off ExternalProviders, not APIKeys/LocalLLM.
+            # (The old APIKeys.<provider>_api_key lookup never existed, and the
+            # LocalLLM gguf path is not a valid external model id.)
+            self.api_key = config.get('ExternalProviders', 'external_api_key', fallback='')
+            self.model_path = config.get('ExternalProviders', 'external_model_name', fallback='')
+        else:
+            self.api_key = config.get('APIKeys', f"{self.provider}_api_key", fallback='')
+            self.model_path = config.get('LocalLLM', 'model_path', fallback='')
 
         self.is_local = (self.provider == 'local')
         # Local models: fewer steps (prevents multi-search spiral), smaller context

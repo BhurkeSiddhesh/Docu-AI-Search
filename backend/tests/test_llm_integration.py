@@ -64,13 +64,18 @@ class TestLLMIntegrationV2(unittest.TestCase):
         mock_get_client.return_value = "LOCAL:model.gguf"
         
         mock_llm = MagicMock()
-        mock_llm.create_completion.return_value = {'choices': [{'text': 'Local summary'}]}
+        # Local summaries now prefer the model's chat template (correct turn
+        # tokens); create_completion is only a fallback when that yields nothing.
+        mock_llm.create_chat_completion.return_value = {
+            'choices': [{'message': {'content': 'Local summary'}}]
+        }
         mock_get_local.return_value = mock_llm
 
         summary = smart_summary("Long text...", "Query", "local", model_path="model.gguf")
-        
+
         self.assertEqual(summary, "Local summary")
-        mock_llm.create_completion.assert_called_once()
+        mock_llm.create_chat_completion.assert_called_once()
+        mock_llm.create_completion.assert_not_called()
 
     @patch('backend.llm_integration.get_embeddings')
     def test_get_embeddings_routing(self, mock_get_emb):
