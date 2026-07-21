@@ -98,6 +98,18 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
         }
     };
 
+    const handleBrowse = async () => {
+        try {
+            const res = await api.browse();
+            if (res.data && res.data.folder) {
+                // If they picked a folder, add it automatically
+                addFolder(res.data.folder);
+            }
+        } catch (e) {
+            toast.error('Could not open folder browser');
+        }
+    };
+
     const removeFolder = (path) => {
         setConfig((c) => ({ ...c, folders: c.folders.filter((x) => x !== path) }));
     };
@@ -204,6 +216,9 @@ export default function SettingsModal({ isOpen, onClose, onSaved }) {
                                                         onChange={(e) => setNewFolder(e.target.value)}
                                                         onKeyDown={(e) => e.key === 'Enter' && addFolder()}
                                                     />
+                                                    <button onClick={handleBrowse} type="button" className="btn-ghost whitespace-nowrap">
+                                                        Browse
+                                                    </button>
                                                     <button onClick={() => addFolder(newFolder)} disabled={validatingFolder} className="btn-secondary whitespace-nowrap disabled:opacity-50">
                                                         {validatingFolder ? 'Validating…' : 'Add folder'}
                                                     </button>
