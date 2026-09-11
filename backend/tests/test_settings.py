@@ -75,6 +75,30 @@ class TestEmbeddingSettingsRouter(unittest.TestCase):
         self.assertEqual(data["provider_type"], "huggingface_api")
         self.assertTrue(data["api_key_set"])
 
+    def test_get_embedding_presets_with_ram_tiers(self):
+        """GET /api/settings/embeddings/presets returns curated presets with RAM tiers and metadata."""
+        response = self.client.get("/api/settings/embeddings/presets")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertIn("presets", data)
+        self.assertIn("active_model", data)
+        presets = data["presets"]
+        self.assertGreaterEqual(len(presets), 5)
+
+        # Check for premier models
+        model_names = [p["model_name"] for p in presets]
+        self.assertIn("nomic-ai/nomic-embed-text-v1.5", model_names)
+        self.assertIn("BAAI/bge-small-en-v1.5", model_names)
+        self.assertIn("BAAI/bge-m3", model_names)
+
+        # Verify RAM tier and metadata keys on each preset
+        for preset in presets:
+            self.assertIn("ram_tier", preset)
+            self.assertTrue(any(tier in preset["ram_tier"] for tier in ["8GB", "16GB", "32GB"]))
+            self.assertIn("dim", preset)
+            self.assertIn("context_tokens", preset)
+            self.assertIn("speed", preset)
+
     # ------------------------------------------------------------------
     # POST – success cases
     # ------------------------------------------------------------------

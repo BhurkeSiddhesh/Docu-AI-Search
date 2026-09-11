@@ -28,7 +28,7 @@ class IndexingEventHandler(FileSystemEventHandler):
     Listens for creation, modification, and deletion events within a
     monitored folder and triggers the indexing pipeline.
     """
-    def __init__(self, folder, provider, api_key, model_path, debounce_delay=0.0):
+    def __init__(self, folder, provider="openai", api_key=None, model_path=None, debounce_delay=0.0, on_reindex=None):
         """
         Initializes the event handler with indexing configuration.
 
@@ -38,12 +38,14 @@ class IndexingEventHandler(FileSystemEventHandler):
             api_key (str, optional): API key for the provider.
             model_path (str, optional): Path to the local GGUF model if applicable.
             debounce_delay (float): Wait time in seconds before triggering index rebuild.
+            on_reindex (callable, optional): Custom reindexing function to execute instead of default create_index.
         """
         self.folder = folder
         self.provider = provider
         self.api_key = api_key
         self.model_path = model_path
         self.debounce_delay = debounce_delay
+        self.on_reindex = on_reindex
         self._lock = threading.Lock()
         self._timer = None
 
@@ -80,29 +82,86 @@ class IndexingEventHandler(FileSystemEventHandler):
         """
         Triggers the indexing and saving process.
 
-        Executes the `create_index` pipeline and persists the results to
-        the absolute INDEX_PATH.
+        Executes either `self.on_reindex()` or the default `create_index` pipeline
+        and persists the results to the absolute INDEX_PATH.
         """
         if not _indexing_lock.acquire(blocking=False):
             logger.info("Indexing already in progress; skipping this trigger.")
             return
         logger.info("Change detected, updating index...")
         try:
-            # previous_index_path enables incremental re-indexing: only files that
-            # actually changed are re-extracted and re-embedded.
-            res = create_index(self.folder, self.provider, self.api_key, self.model_path,
-                               previous_index_path=INDEX_PATH)
-            index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
-            meta = res[7] if len(res) > 7 else {}
-            if index:
-                save_index(index, docs, tags, INDEX_PATH, idx_sum, clus_sum, clus_map, bm25,
-                           model_name=meta.get('model_name', 'unknown'),
-                           embedding_dim=meta.get('embedding_dim', 0))
-                logger.info("Index updated.")
+            if callable(self.on_reindex):
+                self.on_reindex()
+            else:
+                # previous_index_path enables incremental re-indexing: only files that
+                # actually changed are re-extracted and re-embedded.
+                res = create_index(self.folder, self.provider, self.api_key, self.model_path,
+                                   previous_index_path=INDEX_PATH)
+                index, docs, tags, idx_sum, clus_sum, clus_map, bm25 = res[:7]
+                meta = res[7] if len(res) > 7 else {}
+                if index:
+                    save_index(index, docs, tags, INDEX_PATH, idx_sum, clus_sum, clus_map, bm25,
+                               model_name=meta.get('model_name', 'unknown'),
+                               embedding_dim=meta.get('embedding_dim', 0))
+                    logger.info("Index updated.")
         except Exception as e:
             logger.error("Background index update failed for %s: %s", self.folder, e, exc_info=True)
         finally:
             _indexing_lock.release()
+
+
+_active_observer = None
+_observer_lock = threading.Lock()
+
+
+def start_watcher(folders, provider='openai', api_key=None, model_path=None, debounce_delay=2.0, on_reindex=None):
+    """
+    Start a non-blocking Watchdog Observer on the given folder(s).
+    Stops any existing watcher first.
+
+    Returns:
+        Observer: The started observer, or None if no valid folders exist.
+    """
+    global _active_observer
+    with _observer_lock:
+        stop_watcher()
+        if not folders:
+            return None
+
+        folder_list = [folders] if isinstance(folders, str) else list(folders)
+        valid_folders = [f for f in folder_list if f and os.path.exists(f)]
+        if not valid_folders:
+            logger.warning("No existing folders found to watch for auto-indexing: %s", folder_list)
+            return None
+
+        event_handler = IndexingEventHandler(
+            folder_list, provider, api_key, model_path,
+            debounce_delay=debounce_delay, on_reindex=on_reindex
+        )
+        observer = Observer()
+        for folder in valid_folders:
+            observer.schedule(event_handler, folder, recursive=True)
+            logger.info("Auto-indexing watcher monitoring folder: %s", folder)
+
+        observer.daemon = True
+        observer.start()
+        _active_observer = observer
+        logger.info("Background watcher started successfully.")
+        return observer
+
+
+def stop_watcher():
+    """Stop any active background Watchdog Observer."""
+    global _active_observer
+    if _active_observer is not None:
+        try:
+            _active_observer.stop()
+            _active_observer.join(timeout=2.0)
+            logger.info("Background watcher stopped.")
+        except Exception as e:
+            logger.warning("Error stopping background watcher: %s", e)
+        finally:
+            _active_observer = None
 
 def start_background_indexing():
     """

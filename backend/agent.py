@@ -204,6 +204,18 @@ class ReActAgent:
         history = [f"Question: {user_query}"]
         has_searched = False  # Guard: only allow non-tool answers AFTER a search
 
+        # ── 0. Fast-path routing for portfolio calculation questions ──
+        try:
+            from backend.portfolio import tools as portfolio_tools
+            if portfolio_tools.is_portfolio_question(user_query):
+                portfolio_ans = portfolio_tools.answer_query(user_query)
+                if portfolio_ans:
+                    content = portfolio_ans.get("answer_summary", str(portfolio_ans)) if isinstance(portfolio_ans, dict) else str(portfolio_ans)
+                    yield {"type": "answer", "content": content}
+                    return
+        except ImportError:
+            pass
+
         for step in range(self.max_steps):
             # Trim history for local models to avoid context overflow.
             # Keep the first entry (question) + last 4 entries (recent context).

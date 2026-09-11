@@ -84,6 +84,34 @@ class TestLLMIntegrationV2(unittest.TestCase):
         pass
 
 
+class TestTabularSummarization(unittest.TestCase):
+    """Tests for newline-delimited tabular/spreadsheet row extraction."""
+
+    def test_extract_answer_splits_newlines(self):
+        from backend.llm_integration import extract_answer
+        table = (
+            "Sheet: in\n"
+            "Transaction Id | Action | Currency | Amount\n"
+            "tx1 | WithdrawBTC | BTC | 0.05\n"
+            "tx2 | BuyBitcoin | BTC | 0.014\n"
+            "tx3 | DepositINR | INR | 5000\n"
+        )
+        ans = extract_answer(table, "How much BTC did user buy?")
+        self.assertIn("BuyBitcoin", ans)
+        self.assertIn("0.014", ans)
+
+    def test_summarize_with_question_targets_matching_row(self):
+        from backend.llm_integration import summarize
+        table = (
+            "Header row without periods\n"
+            "row 1 | irrelevant data\n"
+            "row 2 | Siddhesh purchased Bitcoin 0.0014\n"
+            "row 3 | another row\n"
+        )
+        res = summarize(table, question="How much Bitcoin did Siddhesh buy?")
+        self.assertIn("Siddhesh purchased Bitcoin 0.0014", res)
+
+
 class TestInvokeWithRetry(unittest.TestCase):
 
     @patch('time.sleep')
@@ -170,7 +198,7 @@ class TestResolveModelPath(unittest.TestCase):
         from backend.llm_integration import _resolve_model_path
         with patch.dict(os.environ, {"DOCU_MODEL_ROOTS": "/srv/gguf"}):
             self.assertEqual(
-                _resolve_model_path("/srv/gguf/model.gguf"), "/srv/gguf/model.gguf"
+                _resolve_model_path("/srv/gguf/model.gguf"), os.path.abspath("/srv/gguf/model.gguf")
             )
 
     def test_get_local_llm_rejects_out_of_root_path(self):
@@ -179,6 +207,77 @@ class TestResolveModelPath(unittest.TestCase):
             self.skipTest("llama_cpp not installed")
         with patch("os.path.exists", return_value=True):
             self.assertIsNone(llm_mod.get_local_llm("/etc/passwd"))
+
+
+class TestContentExtractionAndGemini(unittest.TestCase):
+    """Test safe content extraction for Gemini and structured block responses."""
+
+    def test_extract_content_text_string(self):
+        from backend.llm_integration import _extract_content_text
+        self.assertEqual(_extract_content_text("plain text"), "plain text")
+
+    def test_extract_content_text_list_of_dicts(self):
+        from backend.llm_integration import _extract_content_text
+        blocks = [
+            {"type": "text", "text": "Hello "},
+            {"type": "text", "text": "world!"},
+        ]
+        self.assertEqual(_extract_content_text(blocks), "Hello world!")
+
+    def test_extract_content_text_content_key(self):
+        from backend.llm_integration import _extract_content_text
+        blocks = [{"content": "summary text"}]
+        self.assertEqual(_extract_content_text(blocks), "summary text")
+
+    def test_extract_content_text_list_of_strings(self):
+        from backend.llm_integration import _extract_content_text
+        self.assertEqual(_extract_content_text(["foo", "bar"]), "foobar")
+
+    def test_extract_content_text_empty(self):
+        from backend.llm_integration import _extract_content_text
+        self.assertEqual(_extract_content_text([]), "")
+        self.assertEqual(_extract_content_text(None), "")
+
+    @patch('backend.llm_integration.get_llm_client')
+    def test_generate_ai_answer_with_structured_blocks(self, mock_get_client):
+        from backend.llm_integration import generate_ai_answer
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [{"type": "text", "text": "Gemini generated answer"}]
+        mock_client.invoke.return_value = mock_response
+        mock_client.bind.return_value = mock_client
+        mock_get_client.return_value = mock_client
+
+        ans = generate_ai_answer("Doc context", "Question?", "gemini", "key")
+        self.assertEqual(ans, "Gemini generated answer")
+
+    @patch('backend.llm_integration.get_llm_client')
+    def test_stream_ai_answer_with_structured_blocks(self, mock_get_client):
+        from backend.llm_integration import stream_ai_answer
+        mock_client = MagicMock()
+        chunk1 = MagicMock()
+        chunk1.content = [{"type": "text", "text": "Gemini "}]
+        chunk2 = MagicMock()
+        chunk2.content = [{"type": "text", "text": "token"}]
+        chunk3 = MagicMock()
+        chunk3.content = []
+        mock_client.stream.return_value = [chunk1, chunk2, chunk3]
+        mock_get_client.return_value = mock_client
+
+        tokens = list(stream_ai_answer("Doc context", "Question?", "gemini", "key"))
+        self.assertEqual(tokens, ["Gemini ", "token"])
+
+    @patch('backend.llm_integration.get_llm_client')
+    def test_smart_summary_with_structured_blocks(self, mock_get_client):
+        from backend.llm_integration import smart_summary
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = [{"type": "text", "text": "Structured summary result"}]
+        mock_client.invoke.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
+        summary = smart_summary("Long document text...", "query", "gemini", "key")
+        self.assertEqual(summary, "Structured summary result")
 
 
 if __name__ == '__main__':

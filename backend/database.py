@@ -610,6 +610,7 @@ def delete_folder_history_item(path: str) -> bool:
     Returns:
         bool: True if the folder was removed, False otherwise.
     """
+    path = _normalize_folder_path(path)
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute('DELETE FROM folder_history WHERE path = ?', (path,))

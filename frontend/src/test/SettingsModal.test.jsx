@@ -223,6 +223,44 @@ describe('SettingsModal Component', () => {
         await waitFor(() => expect(screen.getByLabelText(/API Key/i)).toBeDefined())
     })
 
+    it('renders curated embedding preset cards and filters by RAM tier', async () => {
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('C:/Users/test/Documents'))
+        fireEvent.click(screen.getByText('Embeddings'))
+        await waitFor(() => screen.getByText('Curated Open-Source Models'))
+
+        // Presets should be rendered
+        expect(screen.getByText('Fast (MiniLM-L6)')).toBeDefined()
+        expect(screen.getByText('SOTA RAG & Long Docs (Nomic Embed v1.5)')).toBeDefined()
+        expect(screen.getByText('⭐ Recommended for RAG')).toBeDefined()
+
+        // Filter by 8GB
+        fireEvent.click(screen.getByRole('button', { name: 'Compatible with 8GB' }))
+        expect(screen.getByText('Fast (MiniLM-L6)')).toBeDefined()
+        expect(screen.queryByText('SOTA RAG & Long Docs (Nomic Embed v1.5)')).toBeNull()
+
+        // Filter by 16GB
+        fireEvent.click(screen.getByRole('button', { name: 'Compatible with 16GB' }))
+        expect(screen.getByText('SOTA RAG & Long Docs (Nomic Embed v1.5)')).toBeDefined()
+        expect(screen.queryByText('Fast (MiniLM-L6)')).toBeNull()
+    })
+
+    it('selects an embedding preset card and displays re-index warning when model changes', async () => {
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSave={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('C:/Users/test/Documents'))
+        fireEvent.click(screen.getByText('Embeddings'))
+        await waitFor(() => screen.getByText('Curated Open-Source Models'))
+
+        // Click on Nomic Embed v1.5 preset
+        fireEvent.click(screen.getByText('SOTA RAG & Long Docs (Nomic Embed v1.5)'))
+
+        // Re-index warning banner should appear
+        await waitFor(() => {
+            expect(screen.getByText('Embedding model changed')).toBeDefined()
+            expect(screen.getByText('Save & Re-index Now')).toBeDefined()
+        })
+    })
+
     // ── Save + toast ─────────────────────────────────────────────────────────
 
     it('POSTs to /api/settings/embeddings when Save is clicked', async () => {
@@ -365,4 +403,74 @@ describe('SettingsModal Component', () => {
         const validateCalls = axios.post.mock.calls.filter(c => c[0]?.includes('validate-path'))
         expect(validateCalls.length).toBe(0)
     })
+
+    it('deletes an API key when delete button is clicked', async () => {
+        const configWithKey = {
+            ...mockConfig,
+            gemini_api_key_set: true,
+            provider: 'gemini',
+        }
+        axios.get.mockImplementation((url) => {
+            if (url.includes('config')) return Promise.resolve({ data: configWithKey })
+            return Promise.resolve({ data: {} })
+        })
+        axios.delete.mockResolvedValue({ data: { status: 'success', provider: 'local' } })
+
+        render(<SettingsModal isOpen={true} onClose={vi.fn()} onSaved={vi.fn()} activeModel="" />)
+        await waitFor(() => screen.getByText('Cloud Providers'))
+
+        await act(async () => {
+            fireEvent.click(screen.getByText('Cloud Providers'))
+        })
+
+        const deleteBtn = await waitFor(() => screen.getByLabelText('Delete Google Gemini API key'))
+        expect(deleteBtn).toBeDefined()
+
+        await act(async () => {
+            fireEvent.click(deleteBtn)
+        })
+
+        expect(axios.delete).toHaveBeenCalledWith('/config/key/gemini')
+    })
+
+    // ── Appearance & Theme section ──────────────────────────────────────────
+
+    it('renders Appearance tab and allows switching theme preferences', async () => {
+        const setDarkModeMock = vi.fn()
+        render(
+            <SettingsModal
+                isOpen={true}
+                onClose={vi.fn()}
+                onSaved={vi.fn()}
+                activeModel=""
+                darkMode={false}
+                setDarkMode={setDarkModeMock}
+            />
+        )
+        await waitFor(() => screen.getByText('C:/Users/test/Documents'))
+
+        // Click Appearance in tabs sidebar
+        fireEvent.click(screen.getByText('Appearance'))
+
+        await waitFor(() => {
+            expect(screen.getByText('Appearance & Theme')).toBeDefined()
+            expect(screen.getByText('Theme Preference')).toBeDefined()
+        })
+
+        // Verify options
+        expect(screen.getByText('Light')).toBeDefined()
+        expect(screen.getByText('Dark')).toBeDefined()
+        expect(screen.getAllByText('System').length).toBeGreaterThanOrEqual(1)
+
+        // Switch to Dark
+        fireEvent.click(screen.getByText('Dark'))
+        expect(setDarkModeMock).toHaveBeenCalledWith(true)
+        expect(localStorage.getItem('docu-ai-theme')).toBe('dark')
+
+        // Switch to Light
+        fireEvent.click(screen.getByText('Light'))
+        expect(setDarkModeMock).toHaveBeenCalledWith(false)
+        expect(localStorage.getItem('docu-ai-theme')).toBe('light')
+    })
 })
+

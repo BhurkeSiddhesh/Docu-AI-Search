@@ -216,7 +216,7 @@ class TestIndexingMultipleFolders(unittest.TestCase):
         mock_summary.return_value = "Sum"
         
         calls = []
-        def cb(c, t, m=None): calls.append(c)
+        def cb(c, t, m=None, **kwargs): calls.append(c)
         create_index(self.folder1, "openai", "k", progress_callback=cb)
         self.assertTrue(len(calls) > 0)
 
@@ -368,8 +368,9 @@ class TestIndexingBoundaryCases(unittest.TestCase):
         mock_extract_text.return_value = "x" * 1000000
 
         mock_embeddings_model = MagicMock()
-        # Return embeddings for all chunks
-        mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3] for _ in range(100)]
+        # Return embeddings matching the actual batch size — avoid hardcoding 100
+        # which breaks when EMBEDDING_BATCH_SIZE < 100 (now defaults to 32).
+        mock_embeddings_model.embed_documents.side_effect = lambda texts: [[0.1, 0.2, 0.3] for _ in texts]
         mock_get_embeddings.return_value = mock_embeddings_model
 
         with patch('backend.indexing.get_tags', return_value="large"), \
@@ -760,7 +761,7 @@ class TestProgressCallbackBehavior(unittest.TestCase):
 
         progress_calls = []
 
-        def progress_callback(current, total, message=None):
+        def progress_callback(current, total, message=None, **kwargs):
             progress_calls.append((current, total, message))
 
         with patch('backend.indexing.get_tags', return_value="test"), \
@@ -791,7 +792,7 @@ class TestProgressCallbackBehavior(unittest.TestCase):
         mock_embeddings_model.embed_documents.return_value = [[0.1, 0.2, 0.3]]
         mock_get_embeddings.return_value = mock_embeddings_model
 
-        def bad_callback(current, total, message=None):
+        def bad_callback(current, total, message=None, **kwargs):
             raise RuntimeError("Callback error")
 
         with patch('backend.indexing.get_tags', return_value="test"), \
@@ -1081,7 +1082,7 @@ class TestIndexingProgressCallback(unittest.TestCase):
 
         progress_calls = []
 
-        def progress_callback(current, total, message=None):
+        def progress_callback(current, total, message=None, **kwargs):
             """
             Record a progress update by appending a structured entry to the enclosing `progress_calls` list.
             
@@ -1089,6 +1090,7 @@ class TestIndexingProgressCallback(unittest.TestCase):
                 current (int): The current progress count or step.
                 total (int): The total number of steps or items.
                 message (str | None): Optional human-readable status or stage description.
+                **kwargs: Additional keyword arguments (stage, total_files, processed_files, etc.).
             
             Notes:
                 This function has a side effect of mutating the outer-scope `progress_calls` list by appending a dict with keys `'current'`, `'total'`, and `'message'`.
@@ -1096,7 +1098,8 @@ class TestIndexingProgressCallback(unittest.TestCase):
             progress_calls.append({
                 'current': current,
                 'total': total,
-                'message': message
+                'message': message,
+                **{k: v for k, v in kwargs.items() if k in ('stage', 'total_files', 'processed_files')},
             })
 
         with patch('backend.indexing.get_tags', return_value="test"), \

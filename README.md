@@ -89,6 +89,9 @@ npm run install-all
 # Or manually:
 pip install -r requirements.txt
 cd frontend && npm install && cd ..
+
+# Optional: enable GPU acceleration for local models (no-op if you don't have an NVIDIA GPU)
+npm run setup:gpu
 ```
 
 ### 2. Start the Application (Single Command!)

@@ -8,7 +8,7 @@ import unittest
 import os
 import tempfile
 import shutil
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 import configparser
 
 def setUpModule():
@@ -181,11 +181,13 @@ class TestErrorHandling(unittest.TestCase):
     
     def test_search_without_index(self):
         """Test search returns appropriate error when no index exists."""
-        with patch('backend.api.index', None):
+        with patch('backend.api.index', None), \
+             patch('backend.api.ensure_index_loaded', new_callable=AsyncMock, return_value=False) as mock_load:
             response = self.client.post("/api/search", json={"query": "test"})
             
-            # Should return 400 when no index
-            self.assertIn(response.status_code, [400, 500])
+            self.assertEqual(response.status_code, 400)
+            self.assertIn('Index not loaded', response.json()['detail'])
+            mock_load.assert_awaited_once_with()
     
     def test_invalid_config_data(self):
         """Test handling of invalid config data."""

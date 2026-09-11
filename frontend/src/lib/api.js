@@ -19,6 +19,7 @@ export const api = {
     // Config
     getConfig: () => client.get('/config'),
     saveConfig: (data) => client.post('/config', data),
+    deleteApiKey: (provider) => client.delete(`/config/key/${provider}`),
 
     // Embeddings
     getEmbeddingConfig: () => client.get('/settings/embeddings'),
@@ -27,6 +28,21 @@ export const api = {
 
     // Knowledge graph
     getGraph: () => client.get('/graph'),
+
+    // Portfolio — parsing, review, and calculations stay on the local backend.
+    portfolioSources: () => client.get('/portfolio/sources'),
+    discoverPortfolioSources: () => client.post('/portfolio/discover'),
+    uploadPortfolioSource: (file) => {
+        const form = new FormData();
+        form.append('file', file);
+        return client.post('/portfolio/upload', form);
+    },
+    previewPortfolioSource: (id) => client.get(`/portfolio/sources/${encodeURIComponent(id)}/preview`),
+    savePortfolioMapping: (id, data) => client.post(`/portfolio/sources/${encodeURIComponent(id)}/mapping`, data),
+    importPortfolioSource: (id) => client.post(`/portfolio/sources/${encodeURIComponent(id)}/import`),
+    ignorePortfolioSource: (id) => client.post(`/portfolio/sources/${encodeURIComponent(id)}/ignore`),
+    deletePortfolioSource: (id) => client.delete(`/portfolio/sources/${encodeURIComponent(id)}`),
+    portfolioSummary: (filters = {}) => client.get('/portfolio/summary', { params: filters }),
 
     // Folders
     browse: () => client.get('/browse'),

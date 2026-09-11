@@ -26,7 +26,8 @@
       "Bash(curl -s -m 2 http://127.0.0.1:8000/api/health)",
       "Bash(break)",
       "Read(//tmp/**)",
-      "mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__send_later"
+      "mcp__bf7c680d-5fdc-5ef4-b4a0-abadb619bf0a__send_later",
+      "Bash(curl *)"
     ]
   }
 }
