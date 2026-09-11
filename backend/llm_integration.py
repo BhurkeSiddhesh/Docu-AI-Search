@@ -1,17 +1,80 @@
 import sys
 import os
+import glob
 import logging
 import hashlib
 import re
 import threading
 import multiprocessing
+import importlib.util
 from backend import database
 from typing import Any, Iterator, List, Dict, Optional, Tuple, Union
 
 
+def _preload_cuda_runtime_dlls() -> None:
+    """
+    llama-cpp-python's prebuilt CUDA wheels (see scripts/setup_llama_gpu.py)
+    link against the CUDA 12 runtime (cudart64_12.dll, cublas64_12.dll,
+    cublasLt64_12.dll) but don't bundle it, and most machines have no
+    system-wide CUDA Toolkit install (or, like a dev machine here, one with a
+    non-matching major version). The redistributable runtime is installed
+    separately via the `nvidia-cuda-runtime-cu12` / `nvidia-cublas-cu12` pip
+    packages, but registering their directories with os.add_dll_directory
+    is not enough: llama_cpp's own loader calls ctypes.CDLL(..., winmode=
+    RTLD_GLOBAL), and that explicit winmode does not reliably search
+    directories added via add_dll_directory for llama.dll's *transitive*
+    dependencies (empirically verified on Windows/Python 3.12). Loading the
+    dependency DLLs into the process directly, before llama_cpp is
+    imported, sidesteps this: Windows resolves llama.dll's imports against
+    already-loaded modules instead of re-searching for them. No-op if the
+    nvidia-* packages aren't installed (CPU-only setups, non-Windows).
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+    except ImportError:
+        return
+
+    def _bin_dir(pkg: str) -> Optional[str]:
+        try:
+            spec = importlib.util.find_spec(pkg)
+        except (ImportError, ValueError):
+            return None
+        if not spec or not spec.submodule_search_locations:
+            return None
+        return os.path.join(list(spec.submodule_search_locations)[0], "bin")
+
+    cudart_dir = _bin_dir("nvidia.cuda_runtime")
+    cublas_dir = _bin_dir("nvidia.cublas")
+    llama_spec = importlib.util.find_spec("llama_cpp")
+    llama_lib_dir = (
+        os.path.join(os.path.dirname(llama_spec.origin), "lib")
+        if llama_spec and llama_spec.origin else None
+    )
+
+    patterns = []
+    if cudart_dir:
+        patterns.append(os.path.join(cudart_dir, "cudart64_12*.dll"))
+    if cublas_dir:
+        patterns.append(os.path.join(cublas_dir, "cublasLt64_12*.dll"))
+        patterns.append(os.path.join(cublas_dir, "cublas64_12*.dll"))
+    if llama_lib_dir:
+        patterns.append(os.path.join(llama_lib_dir, "ggml*.dll"))
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    LOAD_LIBRARY_SEARCH_DEFAULT_DIRS = 0x00001000
+    for pattern in patterns:
+        for dll_path in glob.glob(pattern):
+            kernel32.LoadLibraryExW(dll_path, None, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS)
+
+
+_preload_cuda_runtime_dlls()
+
 try:
     from llama_cpp import Llama
-except ImportError:
+except (ImportError, OSError, RuntimeError) as e:
+    logging.getLogger(__name__).warning("llama_cpp unavailable, local models disabled: %s", e)
     Llama = None
 
 try:
@@ -73,6 +136,28 @@ def _invoke_with_retry(client, messages, retries: int = 3):
                 raise
             import time as _time
             _time.sleep(2 ** attempt)
+
+
+def _extract_content_text(content: Any) -> str:
+    """Safely extract plain text from LangChain message content.
+    
+    Handles strings, list of text blocks/dicts (as returned by google-genai and
+    langchain-google-genai), and list of strings.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                if "text" in item and isinstance(item["text"], str):
+                    parts.append(item["text"])
+                elif "content" in item and isinstance(item["content"], str):
+                    parts.append(item["content"])
+        return "".join(parts)
+    return str(content or "")
 
 
 logging.basicConfig(level=logging.INFO)
@@ -190,33 +275,74 @@ EMBEDDING_PRESETS = [
         "id": "fast",
         "model_name": "sentence-transformers/all-MiniLM-L6-v2",
         "label": "Fast (MiniLM-L6)",
+        "ram_tier": "Compatible with 8GB",
         "dim": 384,
+        "context_tokens": 256,
         "size": "~90 MB",
-        "description": "Best speed on CPU. Great default for most folders.",
+        "speed": "⚡ Ultra Fast",
+        "retrieval": "Good",
+        "description": "Blazing speed on CPU. Great default for simple documents and quick indexing.",
     },
     {
         "id": "balanced",
         "model_name": "BAAI/bge-small-en-v1.5",
-        "label": "Balanced (BGE-small)",
+        "label": "Balanced (BGE-Small v1.5)",
+        "ram_tier": "Compatible with 8GB",
         "dim": 384,
+        "context_tokens": 512,
         "size": "~130 MB",
-        "description": "Stronger semantics than MiniLM, still fast on CPU.",
+        "speed": "⚡ Ultra Fast",
+        "retrieval": "High",
+        "description": "Stronger semantics than MiniLM with 2x context window, while remaining ultra fast on CPU.",
+    },
+    {
+        "id": "nomic",
+        "model_name": "nomic-ai/nomic-embed-text-v1.5",
+        "label": "SOTA RAG & Long Docs (Nomic Embed v1.5)",
+        "ram_tier": "Compatible with 16GB",
+        "dim": 768,
+        "context_tokens": 8192,
+        "size": "~550 MB",
+        "speed": "⚡ Fast",
+        "retrieval": "Very High",
+        "recommended": True,
+        "description": "Premier open-source model for document RAG. Massive 8k token context window; outperforms OpenAI text-embedding-3-small.",
     },
     {
         "id": "quality",
         "model_name": "BAAI/bge-base-en-v1.5",
-        "label": "Quality (BGE-base)",
+        "label": "Quality (BGE-Base v1.5)",
+        "ram_tier": "Compatible with 16GB",
         "dim": 768,
+        "context_tokens": 512,
         "size": "~440 MB",
-        "description": "Higher accuracy; ~3x slower indexing than Fast.",
+        "speed": "⚡ Fast",
+        "retrieval": "Very High",
+        "description": "High-accuracy dense semantic retrieval. Ideal for technical research and detailed contracts.",
+    },
+    {
+        "id": "bge-m3",
+        "model_name": "BAAI/bge-m3",
+        "label": "Elite Multilingual (BGE-M3)",
+        "ram_tier": "Compatible with 32GB+",
+        "dim": 1024,
+        "context_tokens": 8192,
+        "size": "~2.2 GB",
+        "speed": "⚡ Moderate",
+        "retrieval": "Elite",
+        "description": "Multi-functionality (dense, lexical BM25, multi-vector) across 100+ languages with 8k token context.",
     },
     {
         "id": "max",
         "model_name": "Alibaba-NLP/gte-Qwen2-1.5B-instruct",
         "label": "Max (GTE-Qwen2 1.5B)",
+        "ram_tier": "Compatible with 32GB+",
         "dim": 1536,
+        "context_tokens": 32768,
         "size": "~6 GB",
-        "description": "Top retrieval quality but very slow without a GPU.",
+        "speed": "⚡ Moderate",
+        "retrieval": "Elite",
+        "description": "Leaderboard-topping retrieval precision. Best when GPU acceleration is available.",
     },
 ]
 
@@ -770,7 +896,7 @@ def generate_ai_answer(context: str, question: str, provider: str,
             else:
                 response = _invoke_with_retry(client, messages)
 
-            return response.content.strip()
+            return _extract_content_text(response.content).strip()
 
     except Exception as e:
         logger.error(f"Generation error ({provider}): {e}")
@@ -918,8 +1044,10 @@ def stream_ai_answer(context: str, question: str, provider: str,
                 yielded_any = False
                 try:
                     for chunk in client.stream(messages):
-                        yield chunk.content
-                        yielded_any = True
+                        token = _extract_content_text(chunk.content)
+                        if token:
+                            yield token
+                            yielded_any = True
                     break
                 except Exception as e:
                     # Never retry once content reached the client — a fresh
@@ -1132,7 +1260,7 @@ Key findings:"""
         else:
             from langchain_core.messages import HumanMessage
             response = client.invoke([HumanMessage(content=prompt_text)])
-            result = response.content.strip()
+            result = _extract_content_text(response.content).strip()
 
         if "No relevant info" in result or len(result) < 5:
             return summarize(text, provider, api_key, model_path, query) # Fallback
@@ -1167,7 +1295,8 @@ def extract_answer(text: str, question: str) -> str:
     if not question_terms:
         return ""
     
-    sentences = re.split(r'(?<=[.!?])\s+', text)
+    # Split on sentence boundaries OR line breaks (essential for tabular/spreadsheet/markdown/CSV files)
+    sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n+', text) if s.strip()]
     scored_sentences = []
     for sent in sentences:
         sent_lower = sent.lower()
@@ -1178,10 +1307,10 @@ def extract_answer(text: str, question: str) -> str:
     scored_sentences.sort(reverse=True, key=lambda x: x[0])
     
     if scored_sentences:
-        best_sentences = [s[1].strip() for s in scored_sentences[:2]]
-        answer = ' '.join(best_sentences)
-        if len(answer) > 300:
-            answer = answer[:297] + "..."
+        best_sentences = [s[1].strip() for s in scored_sentences[:3]]
+        answer = ' \n '.join(best_sentences)
+        if len(answer) > 600:
+            answer = answer[:597] + "..."
         return answer
     
     return ""
@@ -1207,19 +1336,19 @@ def summarize(text: str, provider: str = None, api_key: str = None,
             if answer:
                 return answer
         
-        text = re.sub(r'\s+', ' ', text).strip()
-        sentences = re.split(r'(?<=[.!?])\s+', text)
+        text_clean = text.strip()
+        sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+|\n+', text_clean) if s.strip()]
         
         summary_sentences = []
         for sent in sentences:
-            if len(sent) > 30:
+            if len(sent) > 20:
                 summary_sentences.append(sent)
                 if len(summary_sentences) >= 2:
                     break
         
         if summary_sentences:
             return ' '.join(summary_sentences)
-        return text[:150] + "..." if len(text) > 150 else text
+        return text_clean[:200] + "..." if len(text_clean) > 200 else text_clean
     except Exception as e:
         logger.error(f"Error: {e}")
         return ""

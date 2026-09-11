@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Menu, Search as SearchIcon } from 'lucide-react';
+import { Menu } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
+import Logo from './components/Logo';
 import Sidebar from './components/Sidebar';
 import SearchView from './components/SearchView';
 import LibraryView from './components/LibraryView';
@@ -75,7 +77,7 @@ export default function App() {
                         <Menu className="w-5 h-5 text-ink dark:text-[#ededed]" />
                     </button>
                     <div className="flex items-center gap-2 text-sm font-semibold text-ink dark:text-[#ededed]">
-                        <SearchIcon className="w-4 h-4" />
+                        <Logo size={22} className="shrink-0" />
                         Docu AI
                     </div>
                     <div className="w-9" />
@@ -90,17 +92,28 @@ export default function App() {
 
                 <main className={`flex-1 min-w-0 min-h-0 ${activeTab === 'search' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
                     <ErrorBoundary>
-                        {activeTab === 'search' && (
-                            <SearchView
-                                key={resetKey}
-                                pendingQuery={pendingQuery}
-                            />
-                        )}
-                        {activeTab === 'library' && (
-                            <LibraryView onOpenSettings={() => setSettingsOpen(true)} />
-                        )}
-                        {activeTab === 'graph' && <GraphView />}
-                        {activeTab === 'benchmarks' && <BenchmarkView />}
+                        <AnimatePresence mode="wait" initial={false}>
+                            <motion.div
+                                key={activeTab}
+                                className="h-full min-h-0"
+                                initial={{ opacity: 0, y: 4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -4 }}
+                                transition={{ duration: 0.18, ease: 'easeOut' }}
+                            >
+                                {activeTab === 'search' && (
+                                    <SearchView
+                                        key={resetKey}
+                                        pendingQuery={pendingQuery}
+                                    />
+                                )}
+                                {activeTab === 'library' && (
+                                    <LibraryView onOpenSettings={() => setSettingsOpen(true)} />
+                                )}
+                                {activeTab === 'graph' && <GraphView />}
+                                {activeTab === 'benchmarks' && <BenchmarkView />}
+                            </motion.div>
+                        </AnimatePresence>
                     </ErrorBoundary>
                 </main>
             </div>
@@ -108,7 +121,10 @@ export default function App() {
             <SettingsModal
                 isOpen={settingsOpen}
                 onClose={() => setSettingsOpen(false)}
-                onSaved={() => { /* config reloads itself on next open */ }}
+                onSaved={() => setResetKey((k) => k + 1)}
+                darkMode={darkMode}
+                setDarkMode={setDarkMode}
+                onToggleDark={() => setDarkMode((v) => !v)}
             />
 
             <HistoryDrawer

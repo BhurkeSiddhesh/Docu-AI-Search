@@ -160,6 +160,11 @@ def run_quick_tests():
         'backend.tests.test_config_and_edge_cases',
         'backend.tests.test_security',
         'backend.tests.test_rate_limit',
+        'backend.tests.test_portfolio_importers',
+        'backend.tests.test_portfolio_calculations',
+        'backend.tests.test_portfolio_service',
+        'backend.tests.test_portfolio_api',
+        'backend.tests.test_portfolio_agent',
         # New coverage additions
         'backend.tests.test_agent',
         'backend.tests.test_extraction',
@@ -213,6 +218,8 @@ def main():
     from backend import database
     original_db_path = database.DATABASE_PATH
     database.DATABASE_PATH = os.path.join(temp_dir, 'test_metadata.db')
+    original_portfolio_db = os.environ.get('DOCU_PORTFOLIO_DB')
+    os.environ['DOCU_PORTFOLIO_DB'] = os.path.join(temp_dir, 'test_portfolio.db')
 
     # Snapshot config.ini: several API tests exercise POST /api/config and
     # would otherwise overwrite the developer's real configuration.
@@ -321,6 +328,10 @@ def main():
         # Cleanup
         print(f"\n{Colors.CYAN}Cleaning up test environment...{Colors.ENDC}")
         database.DATABASE_PATH = original_db_path
+        if original_portfolio_db is None:
+            os.environ.pop('DOCU_PORTFOLIO_DB', None)
+        else:
+            os.environ['DOCU_PORTFOLIO_DB'] = original_portfolio_db
         if config_backup is not None:
             try:
                 with open(config_path, 'w', encoding='utf-8', newline='') as fh:

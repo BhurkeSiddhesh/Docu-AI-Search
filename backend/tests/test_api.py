@@ -8,7 +8,7 @@ search, models, benchmarks, history, and file operations.
 import os
 import unittest
 import sys
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 from backend.api import app
 
@@ -120,12 +120,15 @@ class TestAPISearch(unittest.TestCase):
 
 
     def test_search_without_index(self):
-        """Test search when no index is loaded."""
-        with patch('backend.api.index', None):
+        """Test search when no in-memory or persisted index is available."""
+        with patch('backend.api.index', None), \
+             patch('backend.api.ensure_index_loaded', new_callable=AsyncMock, return_value=False) as mock_load:
             response = self.client.post("/api/search", json={
                 "query": "test query"
             })
             self.assertEqual(response.status_code, 400)
+            self.assertIn('Index not loaded', response.json()['detail'])
+            mock_load.assert_awaited_once_with()
 
 
 class TestAPIModels(unittest.TestCase):
@@ -464,8 +467,9 @@ class TestAPIStreamingEndpoint(unittest.TestCase):
             self.assertIsInstance(content, str)
 
     def test_stream_answer_without_index(self):
-        """Test streaming answer when index is not loaded."""
-        with patch('backend.api.index', None):
+        """Test streaming answer when no in-memory or persisted index exists."""
+        with patch('backend.api.index', None), \
+             patch('backend.api.ensure_index_loaded', new_callable=AsyncMock, return_value=False) as mock_load:
             response = self.client.post("/api/stream-answer", json={
                 "query": "test query"
             })
@@ -474,6 +478,7 @@ class TestAPIStreamingEndpoint(unittest.TestCase):
             # Raw-text stream protocol: error is surfaced as a readable token
             content = response.read().decode('utf-8')
             self.assertIn('Error: Index not loaded', content)
+            mock_load.assert_awaited_once_with()
 
 
 class TestAPIRateLimiting(unittest.TestCase):
@@ -740,6 +745,48 @@ class TestAPIConfigEdgeCases(unittest.TestCase):
         })
 
         self.assertEqual(response.status_code, 200)
+
+    @patch('backend.api.save_config_file')
+    @patch('backend.api.load_config')
+    def test_delete_api_key_endpoint(self, mock_load, mock_save):
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg['APIKeys'] = {'gemini_api_key': 'key123'}
+        cfg['LocalLLM'] = {'provider': 'gemini'}
+        mock_load.return_value = cfg
+
+        response = self.client.delete("/api/config/key/gemini")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(cfg['APIKeys']['gemini_api_key'], '')
+        self.assertEqual(cfg['LocalLLM']['provider'], 'local')
+        mock_save.assert_called_once()
+
+    @patch('backend.api.save_config_file')
+    @patch('backend.api.load_config')
+    def test_delete_api_key_invalid_provider(self, mock_load, mock_save):
+        response = self.client.delete("/api/config/key/invalid_prov")
+        self.assertEqual(response.status_code, 400)
+
+    @patch('backend.api.save_config_file')
+    @patch('backend.api.load_config')
+    def test_update_config_delete_keys(self, mock_load, mock_save):
+        import configparser
+        cfg = configparser.ConfigParser()
+        cfg['APIKeys'] = {'gemini_api_key': 'key123', 'openai_api_key': 'openaikey'}
+        cfg['General'] = {'folders': '', 'auto_index': 'False'}
+        cfg['LocalLLM'] = {'model_path': '', 'provider': 'openai', 'tensor_split': ''}
+        cfg['AdvancedRAG'] = {'query_rewriting': 'False', 'cross_encoder_reranking': 'False', 'reranker_model': ''}
+        cfg['ExternalProviders'] = {'ollama_base_url': '', 'lmstudio_base_url': '', 'external_model_name': '', 'external_api_key': ''}
+        mock_load.return_value = cfg
+
+        response = self.client.post("/api/config", json={
+            "folders": [],
+            "delete_keys": ["gemini_api_key"],
+            "provider": "openai"
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(cfg['APIKeys']['gemini_api_key'], '')
+        self.assertEqual(cfg['APIKeys']['openai_api_key'], 'openaikey')
 
 
 class TestAPIIndexingEdgeCases(unittest.TestCase):
@@ -1969,4 +2016,4 @@ class TestIPv4Monkeypatch(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+    unittest.main()

@@ -505,6 +505,38 @@ def _parse_tensor_split(config) -> Optional[List[float]]:
 # broadcasts onto the running event loop via run_coroutine_threadsafe.
 _main_event_loop = None
 
+def trigger_auto_indexing():
+    """Called by background watcher when filesystem events occur in monitored folders."""
+    config = load_config()
+    folders_str = config.get('General', 'folders', fallback='')
+    folders = [f.strip() for f in folders_str.split(',') if f.strip()]
+    if not folders:
+        single = config.get('General', 'folder', fallback='')
+        if single:
+            folders = [single]
+    if folders:
+        logger.info("[AutoIndex] Change detected in monitored folder. Rebuilding index...")
+        run_indexing(config, folders)
+
+def update_background_watcher():
+    """Start or stop the background folder watcher according to current configuration."""
+    from backend.background import start_watcher, stop_watcher
+    config = load_config()
+    auto_index = config.getboolean('General', 'auto_index', fallback=False)
+    if not auto_index:
+        stop_watcher()
+        return
+    folders_str = config.get('General', 'folders', fallback='')
+    folders = [f.strip() for f in folders_str.split(',') if f.strip()]
+    if not folders:
+        single = config.get('General', 'folder', fallback='')
+        if single:
+            folders = [single]
+    if not folders:
+        stop_watcher()
+        return
+    start_watcher(folders, debounce_delay=3.0, on_reindex=trigger_auto_indexing)
+
 # Initialize index on startup if available
 @app.on_event("startup")
 async def startup_event():
@@ -526,6 +558,20 @@ async def startup_event():
     # Pre-warm the local LLM and embedding model in the background so the
     # first search/answer doesn't pay the multi-second model load.
     asyncio.create_task(warmup_models())
+    # Start auto-indexing folder watcher if enabled in config
+    try:
+        update_background_watcher()
+    except Exception as watcher_err:
+        logger.warning("[AutoIndex] Could not initialize background watcher: %s", watcher_err)
+
+@app.on_event("shutdown")
+def shutdown_event():
+    """Clean up background watchers and resources on server shutdown."""
+    from backend.background import stop_watcher
+    try:
+        stop_watcher()
+    except Exception as e:
+        logger.warning("[Shutdown] Error stopping watcher: %s", e)
 
 async def warmup_models():
     """Load the embedding model and local GGUF into memory off the hot path."""
@@ -784,6 +830,9 @@ indexing_status = {
     "current_file": None,
     "total_files": 0,
     "processed_files": 0,
+    "stage": None,           # "extracting" | "chunking" | "embedding" | "indexing" | "finalizing"
+    "eta_seconds": None,     # estimated seconds remaining (float) or None
+    "started_at": None,      # unix timestamp when current run started
     "error": None
 }
 
@@ -977,6 +1026,7 @@ class ConfigModel(BaseModel):
     lmstudio_base_url: Optional[str] = "http://localhost:1234/v1"
     external_model_name: Optional[str] = ""
     external_api_key: Optional[str] = ""
+    delete_keys: Optional[List[str]] = []
 
 @app.get("/api/config")
 async def get_config(request: Request):
@@ -1037,15 +1087,20 @@ async def update_config(config_data: ConfigModel, request: Request, _=Depends(ve
         'auto_index': str(config_data.auto_index)
     }
     # Preserve existing key if client submits empty string (i.e. user left it blank)
-    def _key(new_val, section, option):
+    # unless explicitly requested for deletion via delete_keys or '__DELETE__'
+    def _key(new_val, section, option, field_name=None):
+        if field_name and config_data.delete_keys and field_name in config_data.delete_keys:
+            return ''
+        if new_val == '__DELETE__':
+            return ''
         if new_val:
             return new_val
         return config.get(section, option, fallback='')
     config['APIKeys'] = {
-        'openai_api_key': _key(config_data.openai_api_key, 'APIKeys', 'openai_api_key'),
-        'gemini_api_key': _key(config_data.gemini_api_key, 'APIKeys', 'gemini_api_key'),
-        'anthropic_api_key': _key(config_data.anthropic_api_key, 'APIKeys', 'anthropic_api_key'),
-        'grok_api_key': _key(config_data.grok_api_key, 'APIKeys', 'grok_api_key'),
+        'openai_api_key': _key(config_data.openai_api_key, 'APIKeys', 'openai_api_key', 'openai_api_key'),
+        'gemini_api_key': _key(config_data.gemini_api_key, 'APIKeys', 'gemini_api_key', 'gemini_api_key'),
+        'anthropic_api_key': _key(config_data.anthropic_api_key, 'APIKeys', 'anthropic_api_key', 'anthropic_api_key'),
+        'grok_api_key': _key(config_data.grok_api_key, 'APIKeys', 'grok_api_key', 'grok_api_key'),
     }
     config['LocalLLM'] = {
         'model_path': config_data.local_model_path or '', 
@@ -1061,7 +1116,7 @@ async def update_config(config_data: ConfigModel, request: Request, _=Depends(ve
         'ollama_base_url': config_data.ollama_base_url or 'http://localhost:11434',
         'lmstudio_base_url': config_data.lmstudio_base_url or 'http://localhost:1234/v1',
         'external_model_name': config_data.external_model_name or '',
-        'external_api_key': _key(config_data.external_api_key, 'ExternalProviders', 'external_api_key'),
+        'external_api_key': _key(config_data.external_api_key, 'ExternalProviders', 'external_api_key', 'external_api_key'),
     }
     save_config_file(config)
     
@@ -1072,8 +1127,55 @@ async def update_config(config_data: ConfigModel, request: Request, _=Depends(ve
                 database.add_folder_to_history(folder)
     except Exception as e:
         logger.info(f"Failed to update folder history: {e}")
+
+    # Update auto-indexing folder watcher if configuration changed
+    try:
+        update_background_watcher()
+    except Exception as watcher_err:
+        logger.warning(f"[AutoIndex] Failed to update watcher on config save: {watcher_err}")
         
     return {"status": "success", "message": "Configuration saved"}
+
+@app.delete("/api/config/key/{provider}")
+@limiter.limit("10/minute")
+async def delete_api_key(provider: str, request: Request, _=Depends(verify_local_request)):
+    """
+    Delete an API key for a specified provider.
+    
+    Args:
+        provider (str): The provider ID ('openai', 'gemini', 'anthropic', 'grok', 'external').
+        request (Request): The incoming request object.
+    """
+    valid_providers = {
+        'openai': ('APIKeys', 'openai_api_key'),
+        'gemini': ('APIKeys', 'gemini_api_key'),
+        'anthropic': ('APIKeys', 'anthropic_api_key'),
+        'grok': ('APIKeys', 'grok_api_key'),
+        'external': ('ExternalProviders', 'external_api_key'),
+    }
+    p = provider.lower()
+    if p not in valid_providers:
+        raise HTTPException(status_code=400, detail=f"Invalid provider: {provider}")
+    
+    section, option = valid_providers[p]
+    config = load_config()
+    if not config.has_section(section):
+        config[section] = {}
+    config[section][option] = ""
+    
+    # If the active provider was the one deleted, fall back to 'local'
+    current_provider = config.get('LocalLLM', 'provider', fallback='openai')
+    if current_provider == p:
+        if not config.has_section('LocalLLM'):
+            config['LocalLLM'] = {}
+        config['LocalLLM']['provider'] = 'local'
+        
+    save_config_file(config)
+    return {
+        "status": "success",
+        "message": f"API key for {provider} deleted.",
+        "provider": config.get('LocalLLM', 'provider', fallback='local')
+    }
 
 @app.post("/api/search")
 @limiter.limit("30/minute")
@@ -1141,6 +1243,20 @@ async def search_files(search_data: SearchRequest, request: Request, background_
 
         model_path = config.get('LocalLLM', 'model_path', fallback=None)
 
+
+        try:
+            from backend.portfolio import tools as portfolio_tools
+            if portfolio_tools.is_portfolio_question(search_data.query):
+                portfolio_ans = portfolio_tools.answer_query(search_data.query)
+                if portfolio_ans:
+                    content_str = portfolio_ans.get("answer_summary", str(portfolio_ans)) if isinstance(portfolio_ans, dict) else str(portfolio_ans)
+                    return SearchResponse(
+                        results=[SearchResult(document=content_str, summary=content_str, file_name="Portfolio Ledger", score=1.0)],
+                        ai_answer="",
+                        active_model="Portfolio Engine"
+                    )
+        except ImportError:
+            pass
 
         # Run Search — use the active embedding client from settings state
         from backend.search import EmbeddingDimensionMismatchError
@@ -1322,6 +1438,16 @@ async def stream_answer_endpoint(search_data: SearchRequest, request: Request, _
     Returns:
         StreamingResponse: A server-sent event stream of AI response tokens.
     """
+    try:
+        from backend.portfolio import tools as portfolio_tools
+        if portfolio_tools.is_portfolio_question(search_data.query):
+            portfolio_ans = portfolio_tools.answer_query(search_data.query)
+            if portfolio_ans:
+                content_str = portfolio_ans.get("answer_summary", str(portfolio_ans)) if isinstance(portfolio_ans, dict) else str(portfolio_ans)
+                return StreamingResponse(iter([content_str]), media_type="text/event-stream")
+    except ImportError:
+        pass
+
     # Only pay the reload cost when we actually need the index (no caller
     # context supplied). Recovers the on-disk index after a --reload.
     if not search_data.context:
@@ -2142,53 +2268,109 @@ async def trigger_indexing(background_tasks: BackgroundTasks, request: Request, 
         raise HTTPException(status_code=400, detail="No folders configured for indexing")
     
     # Initialize status
+    _now = time.time()
     indexing_status = {
         "running": True,
         "progress": 0,
-        "current_file": "Scanning folders...",
+        "current_file": "Scanning folders…",
         "total_files": 0,
         "processed_files": 0,
+        "stage": "starting",
+        "eta_seconds": None,
+        "started_at": _now,
         "error": None
     }
-    
+
+    # Broadcast immediately so the IndexingBanner appears before the first file
+    # completes — previously the banner stayed hidden until ~20 % was reached.
+    _broadcast_indexing_event({
+        "type": "indexing_progress",
+        "percent": 0,
+        "current_file": "Scanning folders…",
+        "stage": "starting",
+        "total_files": 0,
+        "processed_files": 0,
+        "eta_seconds": None,
+    })
+
     background_tasks.add_task(run_indexing, config, folders)
     return {"status": "accepted", "message": "Indexing started in background"}
 
-def indexing_progress_callback(current, total, message=None):
+
+# Throttle: track the last time a WS progress message was sent (per-thread is fine
+# because the callback always runs from the indexing background thread).
+_last_ws_broadcast_time: float = 0.0
+_WS_THROTTLE_SECS: float = 0.2  # minimum interval between WS progress messages
+
+def indexing_progress_callback(current, total, message=None, **kwargs):
     """
     Callback function to update the global indexing progress state.
 
     Args:
-        current (int): Number of files processed or current progress value.
-        total (int): Total number of files or maximum progress value.
-        message (Optional[str]): Status message about the current task.
+        current (int): Percent (0-100) or processed-item count.
+        total (int): 100 when passing percent directly; item count otherwise.
+        message (Optional[str]): Human-readable status string.
+        stage (str): Pipeline stage name (extracting/chunking/embedding/indexing/finalizing).
+        total_files (int): Total document count for the active run.
+        processed_files (int): How many documents have been processed so far.
     """
-    global indexing_status
+    global indexing_status, _last_ws_broadcast_time
     if message:
-        indexing_status["current_file"] = message # Reuse current_file field for generic status message
+        indexing_status["current_file"] = message
 
-    indexing_status["processed_files"] = current
-    indexing_status["total_files"] = total
-    # If 0-100 scale is passed directly as current, respect it
-    if total == 100 and current > 1:
+    stage = kwargs.get("stage")
+    if stage:
+        indexing_status["stage"] = stage
+
+    pf = kwargs.get("processed_files")
+    tf = kwargs.get("total_files")
+    if pf is not None:
+        indexing_status["processed_files"] = pf
+    if tf is not None and tf > 0:
+        indexing_status["total_files"] = tf
+
+    # Resolve the overall percent
+    if total == 100 and current >= 0:
         indexing_status["progress"] = current
     else:
         indexing_status["progress"] = int((current / total) * 100) if total else 0
 
-    # Debug log
-    if indexing_status["progress"] % 10 == 0 or message:
-        logger.info(f"Indexing Progress: {indexing_status['progress']}% - {indexing_status['current_file']}")
+    # Compute ETA based on elapsed time and percent complete
+    started_at = indexing_status.get("started_at")
+    pct = indexing_status["progress"]
+    if started_at and pct and pct > 2:
+        elapsed = time.time() - started_at
+        estimated_total = elapsed / (pct / 100.0)
+        indexing_status["eta_seconds"] = max(0, estimated_total - elapsed)
+    else:
+        indexing_status["eta_seconds"] = None
 
-    # Broadcast to WebSocket clients. This callback runs in a worker thread,
-    # so schedule the coroutine onto the main loop captured at startup
-    # (asyncio.get_event_loop()/create_task are invalid from other threads).
+    # Log at meaningful intervals
+    if indexing_status["progress"] % 10 == 0 or message:
+        logger.info(
+            "Indexing Progress: %d%% [%s] — %s",
+            indexing_status["progress"],
+            indexing_status.get("stage", ""),
+            indexing_status.get("current_file", ""),
+        )
+
+    # Throttle WebSocket broadcasts: cap at one message per _WS_THROTTLE_SECS
+    # to avoid flooding the event loop on large corpora.
+    now = time.time()
+    if now - _last_ws_broadcast_time < _WS_THROTTLE_SECS:
+        return
+    _last_ws_broadcast_time = now
+
     if _main_event_loop is not None and not _main_event_loop.is_closed():
         try:
             asyncio.run_coroutine_threadsafe(ws_manager.broadcast({
                 "type": "indexing_progress",
                 "percent": indexing_status["progress"],
                 "current_file": indexing_status.get("current_file", ""),
-                "total": total,
+                "stage": indexing_status.get("stage"),
+                "total_files": indexing_status.get("total_files", 0),
+                "processed_files": indexing_status.get("processed_files", 0),
+                "eta_seconds": indexing_status.get("eta_seconds"),
             }), _main_event_loop)
         except RuntimeError:
             pass  # loop shutting down

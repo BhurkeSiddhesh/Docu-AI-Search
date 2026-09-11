@@ -185,7 +185,9 @@ describe('ResultCard preview', () => {
         await act(async () => {
             fireEvent.click(closeBtn);
         });
-        expect(screen.queryByText('Preview')).toBeNull();
+        await waitFor(() => {
+            expect(screen.queryByText('Preview')).toBeNull();
+        });
     });
 
     it('does not re-fetch preview when toggling close then open again', async () => {
@@ -198,7 +200,9 @@ describe('ResultCard preview', () => {
 
         // Close via the eye button toggle
         await act(async () => { fireEvent.click(previewBtn); });
-        expect(screen.queryByText('Preview')).toBeNull();
+        await waitFor(() => {
+            expect(screen.queryByText('Preview')).toBeNull();
+        });
 
         // Re-open — should NOT trigger another API call
         await act(async () => { fireEvent.click(previewBtn); });

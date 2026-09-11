@@ -105,9 +105,14 @@ export default function ModelManager({ activeModelPath, onSelectModel }) {
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <div className="font-semibold text-sm text-ink dark:text-[#ededed] truncate tracking-[-0.28px]" title={m.name}>{m.name}</div>
-                                            <div className="text-xs text-mute font-mono">
-                                                {m.size ? formatBytes(m.size) : '—'}
-                                                {m.ram_required && ` · ${m.ram_required} GB RAM`}
+                                            <div className="text-xs text-mute font-mono flex items-center gap-1.5 flex-wrap mt-0.5">
+                                                <span>{m.size ? formatBytes(m.size) : '—'}</span>
+                                                {m.ram_tier ? (
+                                                    <span className="badge text-[10px] py-0 px-1.5 bg-canvas-soft dark:bg-[rgba(255,255,255,0.08)] font-sans">{m.ram_tier}</span>
+                                                ) : m.ram_required ? (
+                                                    <span>· {m.ram_required} GB RAM</span>
+                                                ) : null}
+                                                {m.speed && <span className="text-[10px] text-link font-sans font-medium">⚡ {m.speed}</span>}
                                             </div>
                                         </div>
                                         {isActive && (
@@ -148,17 +153,22 @@ export default function ModelManager({ activeModelPath, onSelectModel }) {
                 </div>
 
                 <div className="flex flex-wrap gap-2 mb-3">
-                    {['all', 'small', 'medium', 'large'].map((c) => (
+                    {[
+                        { id: 'all', label: 'All Models' },
+                        { id: '8gb', label: 'Compatible with 8GB' },
+                        { id: '16gb', label: 'Compatible with 16GB' },
+                        { id: '32gb', label: 'Compatible with 32GB+' }
+                    ].map(({ id, label }) => (
                         <button
-                            key={c}
-                            onClick={() => setFilter(c)}
-                            className={`px-3 py-1.5 rounded-pill-sm text-xs font-medium capitalize transition ${
-                                filter === c
+                            key={id}
+                            onClick={() => setFilter(id)}
+                            className={`px-3 py-1.5 rounded-pill-sm text-xs font-medium transition ${
+                                filter === id
                                     ? 'bg-ink dark:bg-[#ededed] text-white dark:text-ink'
                                     : 'bg-canvas-soft dark:bg-[rgba(255,255,255,0.06)] text-body dark:text-[#888] border border-hairline dark:border-[rgba(255,255,255,0.1)] hover:border-hairline-strong dark:hover:border-[rgba(255,255,255,0.2)]'
                             }`}
                         >
-                            {c === 'all' ? 'All' : c}
+                            {label}
                         </button>
                     ))}
                     <input
@@ -179,14 +189,38 @@ export default function ModelManager({ activeModelPath, onSelectModel }) {
                                     {m.recommended ? <Star className="w-4 h-4" /> : <Cpu className="w-4 h-4" />}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-0.5">
+                                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                                         <div className="font-semibold text-sm text-ink dark:text-[#ededed] truncate tracking-[-0.28px]">{m.name}</div>
+                                        {m.ram_tier && (
+                                            <span className="badge text-[10px] bg-canvas-soft dark:bg-[rgba(255,255,255,0.08)] text-ink dark:text-[#ededed] font-medium border border-hairline dark:border-[rgba(255,255,255,0.1)]">
+                                                {m.ram_tier}
+                                            </span>
+                                        )}
                                         {m.recommended && <span className="badge text-[10px] bg-warning-soft dark:bg-[rgba(245,166,35,0.15)] text-warning-deep dark:text-warning">Recommended</span>}
                                     </div>
-                                    <div className="text-xs text-mute truncate mb-1">{m.description}</div>
-                                    <div className="text-[11px] text-mute font-mono">
-                                        {m.size} · {m.ram_required}GB RAM · {m.quantization}
+                                    <div className="text-xs text-mute line-clamp-2 mb-1.5">{m.description}</div>
+                                    <div className="flex items-center gap-2 flex-wrap text-[11px] text-mute font-mono">
+                                        <span>{m.size}</span>
+                                        <span>·</span>
+                                        <span>{m.quantization}</span>
+                                        {m.speed && (
+                                            <>
+                                                <span>·</span>
+                                                <span className="text-link font-sans font-medium">⚡ {m.speed}</span>
+                                            </>
+                                        )}
+                                        {m.intelligence && (
+                                            <>
+                                                <span>·</span>
+                                                <span className="text-accent dark:text-[#9d72ff] font-sans font-medium">🧠 {m.intelligence}</span>
+                                            </>
+                                        )}
                                     </div>
+                                    {m.use_case && (
+                                        <div className="text-[11px] text-mute/80 mt-1 truncate">
+                                            <span className="font-medium text-body dark:text-[#aaa]">Best for:</span> {m.use_case}
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="flex-shrink-0">
                                     {ready ? (

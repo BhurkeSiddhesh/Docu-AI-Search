@@ -1,7 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshCw, FileText, Hash, ZoomIn, ZoomOut, Maximize2, Network } from 'lucide-react';
+import { RefreshCw, FileText, FileSpreadsheet, Presentation, FileType, Hash, ZoomIn, ZoomOut, Maximize2, Network } from 'lucide-react';
+import { motion } from 'framer-motion';
 import api from '../lib/api';
 import logger from '../lib/logger';
+
+export function getDocIcon(fileType) {
+    const ext = (fileType || '').toLowerCase().replace(/^\./, '');
+    if (ext === 'pdf') return FileText;
+    if (['xlsx', 'xls', 'csv'].includes(ext)) return FileSpreadsheet;
+    if (['pptx', 'ppt'].includes(ext)) return Presentation;
+    if (['docx', 'doc', 'txt', 'md'].includes(ext)) return FileText;
+    return FileType;
+}
 
 const TYPE_COLORS = {
     '.pdf':  '#f43f5e', // rose-500
@@ -244,12 +254,12 @@ export default function GraphView() {
     };
 
     const nodeRadius = (node) => {
-        if (node.type !== 'document') return 6;
+        if (node.type !== 'document') return 5;
         try {
             const meta = JSON.parse(node.metadata || '{}');
-            return Math.min(14 + (meta.chunks || 1) * 1.5, 26);
+            return Math.min(10 + Math.sqrt(meta.chunks || 1) * 1.2, 15);
         } catch {
-            return 14;
+            return 11;
         }
     };
 
@@ -362,15 +372,32 @@ export default function GraphView() {
                             if (!p1 || !p2) return null;
                             const similar = e.relation_type === 'similar_to';
                             const dim = hovered && !(e.source_id === hovered || e.target_id === hovered);
+                            const connected = hovered && (e.source_id === hovered || e.target_id === hovered);
                             return (
-                                <line
+                                <React.Fragment key={i}>
+                                <motion.line
                                     key={i}
                                     x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                                     stroke={similar ? '#6366f1' : '#94a3b8'}
                                     strokeWidth={similar ? Math.max(1.5, (e.weight ?? 0) * 3) : 1}
                                     strokeOpacity={dim ? 0.06 : similar ? 0.55 : 0.25}
                                     strokeDasharray={similar ? undefined : '2 3'}
+                                    initial={{ pathLength: 0, opacity: 0 }}
+                                    animate={{ pathLength: 1, opacity: 1 }}
+                                    transition={{ duration: 0.45, delay: Math.min(i * 0.015, 0.4), ease: 'easeOut' }}
                                 />
+                                {connected && (
+                                    <motion.line
+                                        x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                                        stroke={similar ? '#6366f1' : '#94a3b8'}
+                                        strokeWidth={similar ? Math.max(2, (e.weight ?? 0) * 3.5) : 1.5}
+                                        strokeLinecap="round"
+                                        initial={{ pathLength: 0, strokeOpacity: 0 }}
+                                        animate={{ pathLength: [0, 1], strokeOpacity: [0, 0.45, 0] }}
+                                        transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
+                                    />
+                                )}
+                                </React.Fragment>
                             );
                         })}
 
@@ -382,43 +409,71 @@ export default function GraphView() {
                             const color = nodeColor(node);
                             const dim = isDimmed(node.id);
                             const isDoc = node.type === 'document';
+                            let DocIcon = FileText;
+                            if (isDoc) {
+                                try {
+                                    const meta = JSON.parse(node.metadata || '{}');
+                                    DocIcon = getDocIcon(meta.file_type);
+                                } catch {
+                                    DocIcon = FileText;
+                                }
+                            }
+                            const iconSize = Math.max(8, Math.min(Math.round(r * 0.75), 11));
                             return (
-                                <g
+                                <motion.g
                                     key={node.id}
-                                    transform={`translate(${p.x} ${p.y})`}
-                                    opacity={dim ? 0.15 : 1}
-                                    style={{ cursor: 'pointer', transition: 'opacity 150ms' }}
+                                    style={{ cursor: 'pointer' }}
+                                    initial={{ x: WIDTH / 2, y: HEIGHT / 2, opacity: 0, scale: 0.8 }}
+                                    animate={{ x: p.x, y: p.y, opacity: dim ? 0.15 : 1, scale: 1 }}
+                                    transition={{
+                                        x: { type: 'spring', stiffness: 80, damping: 16 },
+                                        y: { type: 'spring', stiffness: 80, damping: 16 },
+                                        opacity: { duration: 0.15 },
+                                        scale: { duration: 0.22 },
+                                    }}
                                     onPointerEnter={() => setHovered(node.id)}
                                     onPointerLeave={() => setHovered(null)}
                                     onPointerDown={(evt) => { evt.stopPropagation(); setDragNode(node.id); }}
                                 >
-                                    {isDoc && <circle r={r + 5} fill={color} opacity="0.15" />}
-                                    <circle
+                                    {isDoc && (
+                                        <motion.circle
+                                            r={r + 3}
+                                            fill={color}
+                                            opacity="0.15"
+                                            animate={hovered === node.id ? { r: [r + 3, r + 8, r + 3], opacity: [0.16, 0.08, 0.16] } : undefined}
+                                            transition={{ duration: 1.2, repeat: hovered === node.id ? Infinity : 0, ease: 'easeInOut' }}
+                                        />
+                                    )}
+                                    <motion.circle
                                         r={r}
                                         fill={isDoc ? color : 'white'}
                                         stroke={color}
                                         strokeWidth={isDoc ? 0 : 2}
                                         className={isDoc ? '' : 'dark:fill-slate-900'}
+                                        whileHover={{ scale: 1.08 }}
                                     />
                                     {isDoc && (
-                                        <FileText
-                                            x={-r * 0.5} y={-r * 0.5}
-                                            width={r} height={r}
+                                        <DocIcon
+                                            x={-iconSize / 2}
+                                            y={-iconSize / 2}
+                                            width={iconSize}
+                                            height={iconSize}
                                             color="white"
-                                            strokeWidth={2.2}
+                                            strokeWidth={2}
+                                            data-testid="graph-file-icon"
                                         />
                                     )}
-                                    <text
-                                        y={r + (isDoc ? 16 : 13)}
+                                    <motion.text
+                                        y={r + (isDoc ? 13 : 10)}
                                         textAnchor="middle"
-                                        fontSize={isDoc ? 13 : 10.5}
+                                        fontSize={isDoc ? 11.5 : 9.5}
                                         fontWeight={isDoc ? 600 : 500}
                                         className="fill-slate-700 dark:fill-slate-300"
                                         style={{ pointerEvents: 'none' }}
                                     >
                                         {node.label.length > 24 ? node.label.slice(0, 22) + '…' : node.label}
-                                    </text>
-                                </g>
+                                    </motion.text>
+                                </motion.g>
                             );
                         })}
                     </g>

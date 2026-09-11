@@ -113,11 +113,16 @@ export default {
                     "0%, 100%": { backgroundPosition: "0% 50%" },
                     "50%": { backgroundPosition: "100% 50%" },
                 },
+                shimmer: {
+                    "0%": { transform: "translateX(-100%)" },
+                    "100%": { transform: "translateX(300%)" },
+                },
             },
             animation: {
                 "fade-in": "fade-in 0.25s ease-out",
                 "slide-up": "slide-up 0.3s ease-out",
                 "gradient-x": "gradient-x 6s ease infinite",
+                shimmer: "shimmer 1.5s ease-in-out infinite",
             },
         },
     },

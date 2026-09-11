@@ -4,6 +4,7 @@
     "description": "AI-Powered Local Document Search Engine",
     "scripts": {
         "install-all": "npm install && cd frontend && npm install",
+        "setup:gpu": ".\\venv_new\\Scripts\\python.exe scripts/setup_llama_gpu.py",
         "start": "node scripts/start_all.js",
         "start:backend": ".\\venv_new\\Scripts\\python.exe -m uvicorn backend.api:app --reload --host 0.0.0.0 --port 8000",
         "start:frontend": "cd frontend && npm run dev",

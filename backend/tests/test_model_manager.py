@@ -62,12 +62,51 @@ class TestDownloadStatusLock(unittest.TestCase):
         model_manager_module.download_status['downloading'] = True
         try:
             from backend.model_manager import start_download
-            success, msg = start_download('tinyllama-1.1b-chat-v1.0.Q4_K_M')
+            success, msg = start_download('Qwen2.5-3B-Instruct.Q4_K_M')
             self.assertFalse(success)
             self.assertIn('progress', msg.lower())
         finally:
             model_manager_module.download_status.update(original)
 
 
+class TestCuratedAvailableModels(unittest.TestCase):
+    def test_available_models_structure_and_ram_tiers(self):
+        from backend.model_manager import get_available_models
+        models = get_available_models()
+        self.assertGreaterEqual(len(models), 8)
+
+        categories = {m.get('category') for m in models}
+        self.assertEqual(categories, {'8gb', '16gb', '32gb'})
+
+        # Verify required metadata fields on every model
+        for m in models:
+            self.assertIn('id', m)
+            self.assertIn('name', m)
+            self.assertIn('description', m)
+            self.assertIn('size', m)
+            self.assertIn('ram_required', m)
+            self.assertIn('ram_tier', m)
+            self.assertIn('speed', m)
+            self.assertIn('intelligence', m)
+            self.assertIn('url', m)
+            self.assertTrue(m['url'].startswith('https://huggingface.co/'))
+            self.assertTrue(m['url'].endswith('.gguf'))
+
+        # Verify obsolete models are excluded
+        model_ids = {m['id'] for m in models}
+        self.assertNotIn('tinyllama-1.1b-chat-v1.0.Q4_K_M', model_ids)
+        self.assertNotIn('gemma-2b-it.Q4_K_M', model_ids)
+        self.assertNotIn('phi-2.Q4_K_M', model_ids)
+        self.assertNotIn('llama-2-7b-chat.Q4_K_M', model_ids)
+
+        # Verify premier modern models are present
+        self.assertIn('gemma-2-2b-it.Q4_K_M', model_ids)
+        self.assertIn('Llama-3.2-3B-Instruct.Q4_K_M', model_ids)
+        self.assertIn('Qwen2.5-3B-Instruct.Q4_K_M', model_ids)
+        self.assertIn('Qwen2.5-7B-Instruct.Q4_K_M', model_ids)
+        self.assertIn('Meta-Llama-3.1-8B-Instruct.Q4_K_M', model_ids)
+
+
 if __name__ == '__main__':
     unittest.main()
+

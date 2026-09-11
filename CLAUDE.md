@@ -14,6 +14,7 @@ Docu-AI-Search is an AI-powered local document search engine. The backend is Pyt
 python -m venv venv_new        # use venv_new specifically — avoids file lock issues with npm scripts
 pip install -r requirements.txt
 npm run install-all             # installs root + frontend npm deps
+npm run setup:gpu               # optional: swaps in CUDA-accelerated llama-cpp-python if an NVIDIA GPU is detected; no-op otherwise
 ```
 
 ### Running the App

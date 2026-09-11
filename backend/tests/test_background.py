@@ -217,5 +217,34 @@ class TestStartBackgroundIndexingFolderParsing(unittest.TestCase):
         MockObserver.assert_not_called()
 
 
+class TestStartStopWatcher(unittest.TestCase):
+    """Tests for start_watcher and stop_watcher lifecycle functions."""
+
+    @patch('backend.background.os.path.exists', return_value=True)
+    @patch('backend.background.Observer')
+    def test_start_watcher_starts_daemon_observer(self, MockObserver, mock_exists):
+        from backend.background import start_watcher, stop_watcher
+        mock_obs_instance = MagicMock()
+        MockObserver.return_value = mock_obs_instance
+
+        cb = MagicMock()
+        observer = start_watcher(['/valid/folder'], on_reindex=cb)
+
+        self.assertIsNotNone(observer)
+        self.assertTrue(mock_obs_instance.daemon)
+        mock_obs_instance.schedule.assert_called_once()
+        mock_obs_instance.start.assert_called_once()
+
+        stop_watcher()
+        mock_obs_instance.stop.assert_called_once()
+
+    def test_on_reindex_invoked_on_update(self):
+        cb = MagicMock()
+        handler = IndexingEventHandler('/valid/folder', on_reindex=cb)
+        handler.update_index()
+        cb.assert_called_once()
+
+
 if __name__ == '__main__':
     unittest.main()
+

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { FileText, FileSpreadsheet, Presentation, FileType, ExternalLink, Eye, X, Link2 } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import api from '../lib/api';
 import { useToast } from './Toast';
 import { fileExt } from '../lib/format';
@@ -55,7 +56,10 @@ export default function ResultCard({ result }) {
     };
 
     return (
-        <div className="card p-4 hover:border-hairline-strong dark:hover:border-[rgba(255,255,255,0.2)] transition group">
+        <motion.div
+            layout
+            className="card p-4 hover:border-hairline-strong dark:hover:border-[rgba(255,255,255,0.2)] transition group"
+        >
             <div className="flex items-start gap-3">
                 <div className="w-9 h-9 flex-shrink-0 rounded-v-sm bg-canvas-soft dark:bg-[rgba(255,255,255,0.06)] text-ink dark:text-[#ededed] flex items-center justify-center border border-hairline dark:border-[rgba(255,255,255,0.1)]">
                     <Icon className="w-4 h-4" />
@@ -144,24 +148,36 @@ export default function ResultCard({ result }) {
                         </div>
                     )}
 
-                    {showPreview && (
-                        <div className="mt-3 pt-3 border-t border-hairline dark:border-[rgba(255,255,255,0.08)] animate-fade-in">
-                            <div className="flex items-center justify-between mb-2">
-                                <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-mute">Preview</div>
-                                <button
-                                    onClick={() => setShowPreview(false)}
-                                    className="text-mute hover:text-ink dark:hover:text-[#ededed]"
-                                >
-                                    <X className="w-3.5 h-3.5" />
-                                </button>
-                            </div>
-                            <div className="text-xs text-body dark:text-[#888] whitespace-pre-wrap max-h-64 overflow-y-auto bg-canvas-soft-2 dark:bg-[rgba(255,255,255,0.03)] p-3 rounded-v-sm font-mono leading-relaxed">
-                                {loadingPreview ? 'Loading preview...' : previewText || 'No preview available.'}
-                            </div>
-                        </div>
-                    )}
+                    <AnimatePresence initial={false}>
+                        {showPreview && (
+                            <motion.div
+                                key="preview"
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                exit={{ opacity: 0, height: 0 }}
+                                transition={{ duration: 0.2, ease: 'easeOut' }}
+                                className="overflow-hidden"
+                            >
+                                <div className="mt-3 pt-3 border-t border-hairline dark:border-[rgba(255,255,255,0.08)]">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-mute">Preview</div>
+                                        <button
+                                            onClick={() => setShowPreview(false)}
+                                            className="text-mute hover:text-ink dark:hover:text-[#ededed]"
+                                            aria-label="Close preview"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                    <div className="text-xs text-body dark:text-[#888] whitespace-pre-wrap max-h-64 overflow-y-auto bg-canvas-soft-2 dark:bg-[rgba(255,255,255,0.03)] p-3 rounded-v-sm font-mono leading-relaxed">
+                                        {loadingPreview ? 'Loading preview...' : previewText || 'No preview available.'}
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
             </div>
-        </div>
+        </motion.div>
     );
 }

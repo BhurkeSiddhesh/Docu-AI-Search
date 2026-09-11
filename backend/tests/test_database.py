@@ -78,10 +78,10 @@ class TestDatabaseFolderOperations(TestDatabaseBase):
         history = database.get_folder_history()
 
         self.assertIsInstance(history, list)
-        if history:
-            self.assertEqual(history[0]['path'], path)
-            self.assertIn('added_at', history[0])
-            self.assertIn('last_accessed_at', history[0])
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]['path'], os.path.normpath(path))
+        self.assertIn('added_at', history[0])
+        self.assertIn('last_accessed_at', history[0])
 
     def test_clear_folder_history(self):
         """Test clearing folder history."""
@@ -189,7 +189,7 @@ class TestDatabaseFolderOperations(TestDatabaseBase):
 
         # Verify added
         history = database.get_folder_history()
-        found = any(item['path'] == path for item in history)
+        found = any(item['path'] == os.path.normpath(path) for item in history)
         self.assertTrue(found)
 
         # Delete
@@ -198,7 +198,7 @@ class TestDatabaseFolderOperations(TestDatabaseBase):
 
         # Verify deleted
         history = database.get_folder_history()
-        found = any(item['path'] == path for item in history)
+        found = any(item['path'] == os.path.normpath(path) for item in history)
         self.assertFalse(found)
 
     def test_delete_nonexistent_folder_history_item(self):
@@ -630,16 +630,14 @@ class TestDatabaseMarkFolderIndexed(unittest.TestCase):
         database.clear_folder_history()
 
     def test_mark_folder_indexed_new_folder(self):
-        """Test marking a new folder as indexed after adding it to history."""
+        """Test marking a new folder as indexed inserts it into history."""
         from backend import database
 
-        # mark_folder_indexed only UPDATEs existing rows, so add first
-        database.add_folder_to_history('/new/folder')
         database.mark_folder_indexed('/new/folder')
 
         history = database.get_folder_history(indexed_only=True)
         paths = [item['path'] for item in history]
-        self.assertIn('/new/folder', paths)
+        self.assertEqual(paths, [os.path.normpath('/new/folder')])
 
     def test_mark_folder_indexed_existing_folder(self):
         """Test marking an existing folder as indexed."""
@@ -650,7 +648,7 @@ class TestDatabaseMarkFolderIndexed(unittest.TestCase):
 
         history = database.get_folder_history(indexed_only=True)
         paths = [item['path'] for item in history]
-        self.assertIn('/existing/folder', paths)
+        self.assertEqual(paths, [os.path.normpath('/existing/folder')])
 
 
 class TestDatabaseBatchOperations(unittest.TestCase):

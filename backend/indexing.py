@@ -286,6 +286,13 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
         if cached_path in all_files and cached_text and cached_path not in reuse_map:
             valid_docs.append((cached_path, cached_text))
 
+    total_files = len(all_files)
+    # Emit immediately so the UI banner appears and shows "Scanning…" rather
+    # than staying invisible until the first file completes.
+    if progress_callback:
+        progress_callback(0, 100, "Scanning files…",
+                          stage="extracting", total_files=total_files)
+
     # Use fewer workers for CPU bound tasks to keep UI responsive.
     # Process pools cost ~5s/worker to spawn on Windows (each re-imports the
     # backend stack), so only pay that for corpora large enough to benefit.
@@ -296,7 +303,6 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
     with _executor_cls(max_workers=4) as executor:
         future_to_file = {executor.submit(safe_extract_text, f): f for f in files_to_extract}
 
-        total_files = len(all_files)
         compete_count = total_files - len(files_to_extract)  # checkpointed + reused files
         _since_save = 0
         for future in concurrent.futures.as_completed(future_to_file):
@@ -312,9 +318,13 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
 
             compete_count += 1
             if progress_callback:
-                # Map 0-total_files to 0-20%
-                percent = int((compete_count / total_files) * 20)
-                progress_callback(percent, 100, f"Extracting: {os.path.basename(filepath)}")
+                # Map 0-total_files to 1-20% (starts at 1 so bar is visibly moving)
+                percent = max(1, int((compete_count / total_files) * 20))
+                progress_callback(percent, 100,
+                                  f"Extracting: {os.path.basename(filepath)}",
+                                  stage="extracting",
+                                  processed_files=compete_count,
+                                  total_files=total_files)
         # Flush any remaining entries
         if _since_save:
             _save_checkpoint(checkpoint, _fingerprint)
@@ -322,7 +332,9 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
     logger.info(f"Successfully extracted text from {len(valid_docs)} files.")
 
     # 6. Chunking - 20% to 25%
-    if progress_callback: progress_callback(22, 100, "Chunking text...")
+    if progress_callback:
+        progress_callback(22, 100, "Chunking text…",
+                          stage="chunking", total_files=total_files)
     logger.info("Step 2/5: Chunking Text...")
     # Recursive splitting honours the chunk budget even for text without blank
     # lines (PDF extractions often have none) by falling back through
@@ -408,13 +420,17 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
         return None, None, None, None, None, None, None, {}
 
     # 7. Parallel Embedding of new/changed chunks (I/O Bound) - 25% to 65%
-    if progress_callback: progress_callback(25, 100, "Starting embeddings...")
+    if progress_callback:
+        progress_callback(25, 100, "Starting embeddings…",
+                          stage="embedding", total_files=total_files)
     logger.info("Step 3/5: Embedding Chunks (Parallel)...")
 
     new_embeddings = []
     if pending_texts:
         # Embed in batches to be efficient but safe
-        batch_size = int(os.getenv("EMBEDDING_BATCH_SIZE", "100"))
+        # Smaller batches (32) means progress ticks every ~5-8 s on a local model
+        # instead of every 30 s with 100-chunk batches. Override via env var for large GPU setups.
+        batch_size = int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
         batches = [pending_texts[i:i + batch_size] for i in range(0, len(pending_texts), batch_size)]
 
         # Use ThreadPool for Network/GPU bound
@@ -440,7 +456,12 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
                 if progress_callback:
                     # Map 0-total_batches to 25-65% (range of 40)
                     percent = 25 + int((completed / total_batches) * 40)
-                    progress_callback(percent, 100, f"Embedding batch {completed}/{total_batches}")
+                    chunks_done = min(completed * batch_size, len(pending_texts))
+                    progress_callback(percent, 100,
+                                      f"Embedding batch {completed}/{total_batches}",
+                                      stage="embedding",
+                                      processed_files=chunks_done,
+                                      total_files=len(pending_texts))
         # Reassemble in order
         for i in range(len(batches)):
             if i in chunk_embeddings_map:
@@ -473,13 +494,17 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
     chunk_embeddings = [vec if vec is not None else next(_new_iter) for vec in chunk_vectors]
 
     # 5b. BM25 Indexing - 65% to 68%
-    if progress_callback: progress_callback(66, 100, "Building Keyword Index...")
+    if progress_callback:
+        progress_callback(66, 100, "Building keyword index…",
+                          stage="indexing", total_files=total_files)
     logger.info("Step 3.5/5: Building BM25 Index...")
     tokenized_corpus = [tokenize(doc) for doc in chunk_strings]
     bm25 = BM25Okapi(tokenized_corpus)
 
     # 6. Build Knowledge Graph (Fast) - 68% to 95%
-    if progress_callback: progress_callback(70, 100, "Building Knowledge Graph...")
+    if progress_callback:
+        progress_callback(70, 100, "Building knowledge graph…",
+                          stage="indexing", total_files=total_files)
     logger.info("Step 4/5: Building Knowledge Graph...")
     
     database.clear_graph()
@@ -588,7 +613,9 @@ def create_index(folder_paths: List[str] | str, provider: str, api_key: str = No
     final_cluster_map = {}
     
     # 8. Create FAISS Indices - 95% to 99%
-    if progress_callback: progress_callback(97, 100, "Finalizing Indices...")
+    if progress_callback:
+        progress_callback(97, 100, "Finalizing indices…",
+                          stage="finalizing", total_files=total_files)
     logger.info("Finalizing Indices...")
 
     # Chunk Index
