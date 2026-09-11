@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Search, Sparkles, Loader2, Bot, ChevronDown, Filter, Cpu, Cloud, Zap } from 'lucide-react';
 import ResultCard from './ResultCard';
 import AgentView from './AgentView';
-import ErrorBoundary from './ErrorBoundary';
 import api from '../lib/api';
 import { useToast } from './Toast';
 
@@ -205,7 +204,7 @@ export default function SearchView({ pendingQuery }) {
                     // Keep the LLM prompt small: on CPU every extra snippet adds
                     // seconds before the first token appears.
                     const context = res.data.results.map((r) => r.summary || r.document).slice(0, 4);
-                    await api.streamAnswer(q, context, (chunk) => {
+                    await api.streamAnswer(q, context, null, (chunk) => {
                         if (controller.signal.aborted) return;
                         acc += chunk;
                         setAiAnswer(acc);
@@ -354,34 +353,8 @@ export default function SearchView({ pendingQuery }) {
 
                         {showModelPicker && (
                             <div className="absolute left-0 top-full mt-1 z-50 w-72 bg-canvas dark:bg-[#171717] border border-hairline dark:border-[rgba(255,255,255,0.1)] rounded-v-md shadow-v-5 dark:shadow-v-dark-5 p-1 animate-slide-up">
-                                {/* Local models */}
-                                {localModels.length > 0 && (
-                                    <>
-                                        <div className="px-2 pt-1.5 pb-1">
-                                            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-mute">Local GGUF</div>
-                                        </div>
-                                        {localModels.map((m, i) => {
-                                            const isActive = selectedProvider === 'local' && norm(m.path) === norm(selectedModelPath);
-                                            return (
-                                                <button
-                                                    key={i}
-                                                    onClick={() => selectModel('local', m.path)}
-                                                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-v-sm text-sm transition ${
-                                                        isActive
-                                                            ? 'bg-ink dark:bg-[#ededed] text-white dark:text-ink font-medium'
-                                                            : 'text-ink dark:text-[#ededed] hover:bg-canvas-soft-2 dark:hover:bg-[rgba(255,255,255,0.06)]'
-                                                    }`}
-                                                >
-                                                    <Cpu className="w-3.5 h-3.5 flex-shrink-0" />
-                                                    <span className="flex-1 text-left truncate">{m.name || m.filename}</span>
-                                                </button>
-                                            );
-                                        })}
-                                    </>
-                                )}
-
                                 {/* Cloud providers */}
-                                <div className={`px-2 ${localModels.length > 0 ? 'pt-2.5' : 'pt-1.5'} pb-1`}>
+                                <div className="px-2 pt-1.5 pb-1">
                                     <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-mute">Cloud</div>
                                 </div>
                                 {CLOUD_PROVIDERS.map((p) => {
@@ -426,6 +399,32 @@ export default function SearchView({ pendingQuery }) {
                                         <span className="flex-1 text-left">{id === 'ollama' ? 'Ollama' : 'LM Studio'}</span>
                                     </button>
                                 ))}
+
+                                {/* Local models */}
+                                {localModels.length > 0 && (
+                                    <>
+                                        <div className="px-2 pt-2.5 pb-1">
+                                            <div className="font-mono text-[10px] uppercase tracking-[0.05em] text-mute">Local GGUF</div>
+                                        </div>
+                                        {localModels.map((m, i) => {
+                                            const isActive = selectedProvider === 'local' && norm(m.path) === norm(selectedModelPath);
+                                            return (
+                                                <button
+                                                    key={i}
+                                                    onClick={() => selectModel('local', m.path)}
+                                                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-v-sm text-sm transition ${
+                                                        isActive
+                                                            ? 'bg-ink dark:bg-[#ededed] text-white dark:text-ink font-medium'
+                                                            : 'text-ink dark:text-[#ededed] hover:bg-canvas-soft-2 dark:hover:bg-[rgba(255,255,255,0.06)]'
+                                                    }`}
+                                                >
+                                                    <Cpu className="w-3.5 h-3.5 flex-shrink-0" />
+                                                    <span className="flex-1 text-left truncate">{m.name || m.filename}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </>
+                                )}
                             </div>
                         )}
                     </div>
@@ -507,16 +506,9 @@ export default function SearchView({ pendingQuery }) {
                                     </div>
                                 )}
                             </div>
-                            {/^(Error:|\n?\[ERROR\])/.test((aiAnswer || '').trim()) ? (
-                                <div className="text-sm text-error leading-relaxed flex items-start gap-2">
-                                    <span className="mt-0.5">⚠</span>
-                                    <span>{aiAnswer.replace(/^\[ERROR\]\s*/, '').replace(/^Error:\s*/, '')} — configure a model under Settings → Local Models or Cloud Providers.</span>
-                                </div>
-                            ) : (
-                                <div className="prose-stream text-sm text-body dark:text-[#a1a1a1] leading-relaxed whitespace-pre-wrap">
-                                    {aiAnswer || (isStreaming ? 'Thinking...' : '')}
-                                </div>
-                            )}
+                            <div className="prose-stream text-sm text-body dark:text-[#a1a1a1] leading-relaxed whitespace-pre-wrap">
+                                {aiAnswer || (isStreaming ? 'Thinking...' : '')}
+                            </div>
                         </section>
                     )}
 
@@ -554,9 +546,7 @@ export default function SearchView({ pendingQuery }) {
 
             {hasSearched && agentMode && (
                 <div className="flex-1 min-h-0 overflow-y-auto -mx-1 px-1">
-                    <ErrorBoundary>
-                        <AgentView query={agentQuery} />
-                    </ErrorBoundary>
+                    <AgentView query={agentQuery} />
                 </div>
             )}
         </div>
